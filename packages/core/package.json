@@ -1,0 +1,22 @@
+{
+  "name": "@entropy/core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "build": "tsc -p tsconfig.json --noEmit false --outDir dist",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --config vitest.config.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vitest": "^2.1.8"
+  }
+}

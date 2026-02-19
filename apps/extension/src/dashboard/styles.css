@@ -1,0 +1,33 @@
+:root {
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: #ecf5ff;
+  background: radial-gradient(circle at top left, #1a3f6f, #06090f 70%);
+}
+
+body {
+  margin: 0;
+}
+
+.dashboard {
+  max-width: 760px;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #66b8ff, #8dffd9);
+  color: #081123;
+}
+
+pre {
+  margin-top: 1rem;
+  border-radius: 10px;
+  background: rgba(5, 12, 25, 0.9);
+  color: #94ffe7;
+  padding: 0.9rem;
+}

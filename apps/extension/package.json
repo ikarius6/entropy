@@ -1,0 +1,20 @@
+{
+  "name": "@entropy/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:manifest": "node ./scripts/prepare-manifest.mjs",
+    "dev": "pnpm run prepare:manifest && vite build --watch --mode development",
+    "build": "pnpm run prepare:manifest && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@entropy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vite": "^5.4.14"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "entropy",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:web": "pnpm --filter @entropy/web dev",
+    "dev:extension": "pnpm --filter @entropy/extension dev",
+    "dev:core": "pnpm --filter @entropy/core dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "vitest": "^2.1.8"
+  }
+}

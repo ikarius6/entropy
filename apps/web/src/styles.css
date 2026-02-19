@@ -1,0 +1,127 @@
+:root {
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: #f3f5ff;
+  background: radial-gradient(circle at top left, #1c2b58, #070910 68%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: transparent;
+}
+
+.layout {
+  width: min(960px, 100% - 2rem);
+  margin: 2rem auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  border: 1px solid rgba(175, 194, 255, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(17, 26, 53, 0.88), rgba(7, 9, 16, 0.92));
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.32);
+  padding: 1.25rem;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #91b6ff;
+  font-size: 0.75rem;
+}
+
+h1,
+h2 {
+  margin-top: 0.4rem;
+}
+
+.file-picker input {
+  width: 100%;
+  margin: 0.75rem 0;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.meta-grid strong {
+  color: #a6c4ff;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.extension-status ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.root-list {
+  margin-top: 0.85rem;
+  border-top: 1px solid rgba(150, 180, 255, 0.2);
+  padding-top: 0.6rem;
+}
+
+.root-list p {
+  margin: 0 0 0.5rem;
+  color: #b8cbff;
+  font-size: 0.9rem;
+}
+
+.root-list code {
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+  color: #95ffe5;
+}
+
+button {
+  margin-top: 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.6rem 1.2rem;
+  background: linear-gradient(135deg, #5ea4ff, #79f0ff);
+  color: #081323;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.output pre {
+  margin: 0;
+  padding: 0.8rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  background: rgba(8, 15, 34, 0.95);
+  color: #a8ffef;
+  font-size: 0.8rem;
+}
+
+.error {
+  color: #ff8ea1;
+}
+
+.warning {
+  color: #ffd58d;
+}
+
+.muted {
+  color: #b9c5e9;
+}

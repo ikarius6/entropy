@@ -1,0 +1,39 @@
+:root {
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: #e9f4ff;
+  background: radial-gradient(circle at top right, #18335f, #070b12 70%);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#app {
+  padding: 1rem;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6fc2ff, #8dffe4);
+  color: #081020;
+}
+
+pre {
+  margin: 0.75rem 0 0;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: rgba(6, 11, 22, 0.9);
+  color: #8fffe5;
+  white-space: pre-wrap;
+  font-size: 0.78rem;
+}
