@@ -11,7 +11,7 @@ import { ChunkMapOutput } from "./components/ChunkMapOutput";
 import { CreditPanel } from "./components/CreditPanel";
 import { FilePickerSection } from "./components/FilePickerSection";
 import { NodeStatusPanel } from "./components/NodeStatusPanel";
-import { delegateSeeding } from "./lib/extension-bridge";
+import { delegateSeeding, storeChunk } from "./lib/extension-bridge";
 
 interface GeneratedArtifacts {
   chunking: ChunkingResult;
@@ -73,14 +73,29 @@ export function App(): JSX.Element {
         content: `Entropy chunk map for ${file.name}`
       });
 
-      void delegateSeeding(delegationPayload).catch((caughtError) => {
-        const message =
-          caughtError instanceof Error
-            ? caughtError.message
-            : "Extension bridge did not accept the delegation request.";
+      void (async () => {
+        try {
+          for (const chunk of chunking.chunks) {
+            const payload = chunk.data.slice();
 
-        setExtensionWarning(message);
-      });
+            await storeChunk({
+              hash: chunk.hash,
+              rootHash: delegationPayload.rootHash,
+              index: chunk.index,
+              data: payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength)
+            });
+          }
+
+          await delegateSeeding(delegationPayload);
+        } catch (caughtError) {
+          const message =
+            caughtError instanceof Error
+              ? caughtError.message
+              : "Extension bridge did not accept the chunk storage/delegation request.";
+
+          setExtensionWarning(message);
+        }
+      })();
 
       setArtifacts({
         chunking,

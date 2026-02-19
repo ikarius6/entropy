@@ -9,7 +9,34 @@
   <body>
     <main class="dashboard">
       <h1>Entropy Node Dashboard</h1>
-      <button id="refresh" type="button">Refresh</button>
+      <div class="toolbar">
+        <button id="refresh" type="button">Refresh</button>
+        <button id="load-pubkey" type="button">Load Public Key</button>
+      </div>
+
+      <section class="settings-card">
+        <h2>Node identity</h2>
+        <label for="import-privkey">Import private key (hex)</label>
+        <div class="settings-row">
+          <input id="import-privkey" type="password" placeholder="64-char hex private key" />
+          <button id="import-keypair" type="button">Import</button>
+        </div>
+        <p id="key-status">Public key: loading...</p>
+      </section>
+
+      <section class="inventory-card">
+        <h2>Chunk inventory</h2>
+        <p id="inventory-summary">Loading inventory...</p>
+        <div class="quota-track" aria-label="Storage quota">
+          <div id="quota-fill" class="quota-fill"></div>
+        </div>
+        <ul id="root-inventory" class="inventory-list"></ul>
+        <details class="inventory-details">
+          <summary>Chunk details</summary>
+          <ul id="chunk-inventory" class="inventory-list compact"></ul>
+        </details>
+      </section>
+
       <pre id="status">Loading...</pre>
     </main>
     <script type="module" src="./src/dashboard/main.ts"></script>

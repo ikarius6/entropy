@@ -14,6 +14,106 @@ body {
   padding: 1rem;
 }
 
+.toolbar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.settings-card {
+  margin-top: 1rem;
+  border-radius: 12px;
+  background: rgba(5, 12, 25, 0.84);
+  border: 1px solid rgba(130, 213, 255, 0.28);
+  padding: 0.85rem;
+}
+
+.inventory-card {
+  margin-top: 1rem;
+  border-radius: 12px;
+  background: rgba(5, 12, 25, 0.84);
+  border: 1px solid rgba(130, 213, 255, 0.28);
+  padding: 0.85rem;
+}
+
+.inventory-card h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+#inventory-summary {
+  margin: 0.6rem 0;
+  font-size: 0.82rem;
+  color: #b3fce8;
+}
+
+.quota-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(10, 21, 40, 0.92);
+  border: 1px solid rgba(140, 220, 255, 0.25);
+  overflow: hidden;
+}
+
+.quota-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #60beff, #93ffda);
+  transition: width 220ms ease;
+}
+
+.inventory-list {
+  margin: 0.7rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #d7ebff;
+}
+
+.inventory-list.compact {
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 0.4rem;
+}
+
+.inventory-details {
+  margin-top: 0.75rem;
+}
+
+.inventory-details summary {
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: #9fd8ff;
+}
+
+.settings-card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.settings-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.settings-row input {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid rgba(144, 214, 255, 0.35);
+  background: rgba(8, 17, 33, 0.95);
+  color: #ecf5ff;
+  padding: 0.5rem 0.6rem;
+}
+
+#key-status {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  color: #9eead6;
+  word-break: break-all;
+}
+
 button {
   border: 0;
   border-radius: 999px;

@@ -16,6 +16,41 @@ export interface ServeChunkPayload {
   peerPubkey: string;
 }
 
+export interface StoreChunkPayload {
+  hash: string;
+  rootHash: string;
+  index: number;
+  data: ArrayBuffer;
+  pinned?: boolean;
+}
+
+export interface ImportKeypairPayload {
+  privkey: string;
+}
+
+export interface PublicKeyPayload {
+  pubkey: string;
+}
+
+export interface RelayStatusPayload {
+  url: string;
+  status: "connecting" | "connected" | "disconnected" | "error";
+}
+
+export interface NodeSettingsPayload {
+  relayUrls: string[];
+  relayStatuses: RelayStatusPayload[];
+  seedingActive: boolean;
+}
+
+export interface RelayUrlPayload {
+  url: string;
+}
+
+export interface SetSeedingActivePayload {
+  active: boolean;
+}
+
 export interface NodeStatusPayload {
   delegatedCount: number;
   delegatedRootHashes: string[];
@@ -51,7 +86,11 @@ export interface CreditSummaryPayload {
   }>;
 }
 
-export type EntropyRuntimePayload = NodeStatusPayload | CreditSummaryPayload;
+export type EntropyRuntimePayload =
+  | NodeStatusPayload
+  | CreditSummaryPayload
+  | PublicKeyPayload
+  | NodeSettingsPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -80,13 +119,53 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "SERVE_CHUNK";
       payload: ServeChunkPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "STORE_CHUNK";
+      payload: StoreChunkPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "IMPORT_KEYPAIR";
+      payload: ImportKeypairPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_PUBLIC_KEY";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_NODE_SETTINGS";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "ADD_RELAY";
+      payload: RelayUrlPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "REMOVE_RELAY";
+      payload: RelayUrlPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "SET_SEEDING_ACTIVE";
+      payload: SetSeedingActivePayload;
     };
 
 export type EntropyRuntimeResponse =
   | {
       ok: true;
       requestId: string;
-      type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT";
+      type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK";
       payload?: NodeStatusPayload;
     }
   | {
@@ -100,6 +179,18 @@ export type EntropyRuntimeResponse =
       requestId: string;
       type: "SERVE_CHUNK";
       payload: CreditSummaryPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "IMPORT_KEYPAIR" | "GET_PUBLIC_KEY";
+      payload: PublicKeyPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "GET_NODE_SETTINGS" | "ADD_RELAY" | "REMOVE_RELAY" | "SET_SEEDING_ACTIVE";
+      payload: NodeSettingsPayload;
     }
   | {
       ok: false;
@@ -133,13 +224,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return Object.prototype.toString.call(value) === "[object ArrayBuffer]";
+}
+
 function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["type"] {
   return (
     value === "DELEGATE_SEEDING" ||
     value === "GET_NODE_STATUS" ||
     value === "HEARTBEAT" ||
     value === "GET_CREDIT_SUMMARY" ||
-    value === "SERVE_CHUNK"
+    value === "SERVE_CHUNK" ||
+    value === "STORE_CHUNK" ||
+    value === "IMPORT_KEYPAIR" ||
+    value === "GET_PUBLIC_KEY" ||
+    value === "GET_NODE_SETTINGS" ||
+    value === "ADD_RELAY" ||
+    value === "REMOVE_RELAY" ||
+    value === "SET_SEEDING_ACTIVE"
   );
 }
 
@@ -186,6 +288,36 @@ export function isNodeStatusPayload(value: unknown): value is NodeStatusPayload 
   );
 }
 
+export function isNodeSettingsPayload(value: unknown): value is NodeSettingsPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (!Array.isArray(value.relayUrls) || !value.relayUrls.every((entry) => typeof entry === "string")) {
+    return false;
+  }
+
+  if (!Array.isArray(value.relayStatuses)) {
+    return false;
+  }
+
+  const hasValidStatuses = value.relayStatuses.every((entry) => {
+    if (!isRecord(entry)) {
+      return false;
+    }
+
+    return (
+      typeof entry.url === "string" &&
+      (entry.status === "connecting" ||
+        entry.status === "connected" ||
+        entry.status === "disconnected" ||
+        entry.status === "error")
+    );
+  });
+
+  return hasValidStatuses && typeof value.seedingActive === "boolean";
+}
+
 export function isCreditSummaryPayload(value: unknown): value is CreditSummaryPayload {
   if (!isRecord(value) || !Array.isArray(value.history)) {
     return false;
@@ -229,6 +361,52 @@ function isServeChunkPayload(value: unknown): value is ServeChunkPayload {
   );
 }
 
+function isStoreChunkPayload(value: unknown): value is StoreChunkPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.hash === "string" &&
+    typeof value.rootHash === "string" &&
+    typeof value.index === "number" &&
+    isArrayBuffer(value.data) &&
+    (value.pinned === undefined || typeof value.pinned === "boolean")
+  );
+}
+
+function isImportKeypairPayload(value: unknown): value is ImportKeypairPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.privkey === "string";
+}
+
+function isRelayUrlPayload(value: unknown): value is RelayUrlPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.url === "string" && value.url.trim().length > 0;
+}
+
+function isSetSeedingActivePayload(value: unknown): value is SetSeedingActivePayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.active === "boolean";
+}
+
+export function isPublicKeyPayload(value: unknown): value is PublicKeyPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.pubkey === "string" && value.pubkey.length > 0;
+}
+
 export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntimeMessage {
   if (
     !isRecord(value) ||
@@ -247,7 +425,44 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isServeChunkPayload(value.payload);
   }
 
+  if (value.type === "STORE_CHUNK") {
+    return isStoreChunkPayload(value.payload);
+  }
+
+  if (value.type === "IMPORT_KEYPAIR") {
+    return isImportKeypairPayload(value.payload);
+  }
+
+  if (value.type === "ADD_RELAY" || value.type === "REMOVE_RELAY") {
+    return isRelayUrlPayload(value.payload);
+  }
+
+  if (value.type === "SET_SEEDING_ACTIVE") {
+    return isSetSeedingActivePayload(value.payload);
+  }
+
   return true;
+}
+
+function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], payload: unknown): boolean {
+  if (requestType === "GET_CREDIT_SUMMARY" || requestType === "SERVE_CHUNK") {
+    return isCreditSummaryPayload(payload);
+  }
+
+  if (
+    requestType === "GET_NODE_SETTINGS" ||
+    requestType === "ADD_RELAY" ||
+    requestType === "REMOVE_RELAY" ||
+    requestType === "SET_SEEDING_ACTIVE"
+  ) {
+    return isNodeSettingsPayload(payload);
+  }
+
+  if (requestType === "IMPORT_KEYPAIR" || requestType === "GET_PUBLIC_KEY") {
+    return isPublicKeyPayload(payload);
+  }
+
+  return isNodeStatusPayload(payload);
 }
 
 export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntimeResponse {
@@ -262,6 +477,19 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
   if (value.ok) {
     if (value.type === "GET_CREDIT_SUMMARY" || value.type === "SERVE_CHUNK") {
       return isCreditSummaryPayload(value.payload);
+    }
+
+    if (value.type === "IMPORT_KEYPAIR" || value.type === "GET_PUBLIC_KEY") {
+      return isPublicKeyPayload(value.payload);
+    }
+
+    if (
+      value.type === "GET_NODE_SETTINGS" ||
+      value.type === "ADD_RELAY" ||
+      value.type === "REMOVE_RELAY" ||
+      value.type === "SET_SEEDING_ACTIVE"
+    ) {
+      return isNodeSettingsPayload(value.payload);
     }
 
     return value.payload === undefined || isNodeStatusPayload(value.payload);
@@ -280,10 +508,7 @@ export function isEntropyExtensionResponseEvent(value: unknown): value is Entrop
     value.type === "EXTENSION_RESPONSE" &&
     isRequestId(value.requestId) &&
     isEntropyRequestType(value.requestType) &&
-    (value.payload === undefined ||
-      (value.requestType === "GET_CREDIT_SUMMARY"
-        ? isCreditSummaryPayload(value.payload)
-        : isNodeStatusPayload(value.payload)))
+    (value.payload === undefined || isPayloadForRequestType(value.requestType, value.payload))
   );
 }
 

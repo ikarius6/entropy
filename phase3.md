@@ -28,14 +28,19 @@ Phase 2 (✅) entregó: motor de créditos (proof-of-upstream, ledger, cold-stor
 
 > `[ ] Service Worker: mantener conexiones WebRTC activas`
 
-Esto implica que el Service Worker pueda:
-1. Conectarse a relays Nostr por su cuenta (sin depender de la web app)
-2. Escuchar señalización WebRTC entrante
-3. Establecer conexiones RTCPeerConnection
-4. Servir chunks almacenados a peers vía DataChannel
-5. Persistir los chunks reales en IndexedDB (no solo metadatos)
-6. Gestionar la identidad Nostr del usuario (keypair)
-7. Sobrevivir al ciclo de vida del Service Worker (kill/restart)
+### Estado actual (actualizado)
+
+| Bloque | Estado | Notas |
+|---|---|---|
+| Bloque 1 (core infra) | ✅ Completado | Identity, NAT traversal, chunk transfer binario, IndexedDB chunk store, quota-manager-idb, exports y tests core. |
+| Bloque 2 (extension background) | ✅ Completado (base funcional) | `identity-store`, `relay-manager`, `signaling-listener`, `chunk-server`, `chunk-ingest`, bootstrap del SW, permisos de manifest. |
+| Bloque 3.1 (bridge messages) | ✅ Completado | `STORE_CHUNK`, `IMPORT_KEYPAIR`, `GET_PUBLIC_KEY` en protocolo y web/extension bridge. |
+| Bloque 3.4 (web delegación con chunks) | ✅ Completado | La web envía chunks vía `STORE_CHUNK` antes de `DELEGATE_SEEDING`. |
+| Bloque 3.2 (dashboard inventario real) | ✅ Completado | Dashboard muestra roots/chunks almacenados en IndexedDB y barra de uso de cuota. |
+| Bloque 3.3 (dashboard settings de nodo) | ◐ En progreso | Key management básico integrado (`GET_PUBLIC_KEY`/`IMPORT_KEYPAIR`); faltan relays, cuota configurable, bandwidth/toggle y export keypair. |
+| Bloque 4.1/4.3 (core tests + typecheck/build) | ✅ Completado | Core tests passing; typecheck y build verificados. |
+| Bloque 4.2 (tests unitarios extension) | ✅ Completado | Tests para `relay-manager`, `signaling-listener`, `chunk-server`, `identity-store` con Vitest. |
+| Bloque 4.4 (E2E manual completo) | ⏳ Pendiente | Falta corrida E2E completa entre navegadores con validación manual end-to-end. |
 
 ---
 
@@ -56,7 +61,7 @@ Módulos existentes que se reutilizan directamente:
 
 ## Entregables
 
-### 1. `@entropy/core` — Storage IndexedDB real
+### 1. `@entropy/core` — Storage IndexedDB real ✅
 
 #### 1.1 `storage/indexeddb-chunk-store.ts` — Implementación de `ChunkStore` sobre Dexie.js
 
@@ -96,7 +101,7 @@ Versión del QuotaManager que usa `navigator.storage.estimate()` real y delega e
 
 ---
 
-### 2. `@entropy/core` — Protocolo de transferencia de chunks
+### 2. `@entropy/core` — Protocolo de transferencia de chunks ✅
 
 #### 2.1 `transport/chunk-transfer.ts` — Protocolo binario sobre DataChannel
 
@@ -160,7 +165,7 @@ function createRtcConfiguration(custom?: Partial<StunTurnConfig>): RTCConfigurat
 
 ---
 
-### 3. `@entropy/core` — Gestión de identidad
+### 3. `@entropy/core` — Gestión de identidad ✅
 
 #### 3.1 `nostr/identity.ts` — Keypair management
 
@@ -179,7 +184,7 @@ El seeding en background requiere firmar eventos Nostr (señalización, recibos)
 
 ---
 
-### 4. `@entropy/extension` — Seeding activo en background
+### 4. `@entropy/extension` — Seeding activo en background ✅ (base funcional)
 
 #### 4.1 `background/relay-manager.ts` — Conexión a relays desde el Service Worker
 
@@ -368,7 +373,7 @@ Nuevos permisos necesarios:
 
 ---
 
-### 5. `@entropy/extension` — Dashboard mejorado
+### 5. `@entropy/extension` — Dashboard mejorado ⏳
 
 #### 5.1 Inventario de chunks real
 
@@ -387,12 +392,13 @@ Panel de settings en el dashboard:
 - Lista de relays (agregar/remover).
 - Límite de cuota de almacenamiento.
 - Límite de ancho de banda (opcional).
-- Importar/exportar keypair.
+- ✅ Importar keypair + mostrar pubkey actual (base).
+- ⏳ Exportar keypair.
 - Toggle de seeding activo/pausado.
 
 ---
 
-### 6. `@entropy/core` — Tests nuevos
+### 6. `@entropy/core` — Tests nuevos ✅
 
 | Archivo | Cobertura |
 |---|---|
@@ -400,8 +406,9 @@ Panel de settings en el dashboard:
 | `chunk-transfer.test.ts` | Encode/decode de mensajes binarios, roundtrip, manejo de mensajes malformados. |
 | `nat-traversal.test.ts` | Generación de RTCConfiguration con STUN servers default y custom. |
 | `identity.test.ts` | Generación de keypair, firma de eventos, verificación de firma, derivación pubkey. |
+| `quota-manager-idb.test.ts` | Adaptador de quota manager para escenarios de store IDB. |
 
-### 7. `@entropy/extension` — Tests
+### 7. `@entropy/extension` — Tests ✅ (unitarios)
 
 | Archivo | Cobertura |
 |---|---|
@@ -409,6 +416,8 @@ Panel de settings en el dashboard:
 | `signaling-listener.test.ts` | Parseo de offers, filtrado por pubkey, rechazo de rootHash desconocido. |
 | `chunk-server.test.ts` | Servir chunk existente, rechazar por crédito insuficiente, rechazar chunk no encontrado. |
 | `identity-store.test.ts` | Persist/retrieve keypair, import, sign. |
+
+Estado actual: ✅ tests ejecutándose en `@entropy/extension` vía Vitest.
 
 ---
 
@@ -419,11 +428,11 @@ Panel de settings en el dashboard:
 │  Bloque 1: Infraestructura core (sin dependencia de extensión)  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1.1  identity.ts + tests                                       │
-│  1.2  nat-traversal.ts + tests                                  │
-│  1.3  chunk-transfer.ts + tests                                 │
-│  1.4  indexeddb-chunk-store.ts + tests                          │
-│  1.5  quota-manager-idb.ts (conectar a IndexedDB real)          │
+│  ✅ 1.1  identity.ts + tests                                     │
+│  ✅ 1.2  nat-traversal.ts + tests                                │
+│  ✅ 1.3  chunk-transfer.ts + tests                               │
+│  ✅ 1.4  indexeddb-chunk-store.ts + tests                        │
+│  ✅ 1.5  quota-manager-idb.ts (conectar a IndexedDB real)        │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
@@ -431,13 +440,13 @@ Panel de settings en el dashboard:
 │  Bloque 2: Extension background seeding                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  2.1  identity-store.ts (keypair en chrome.storage)             │
-│  2.2  relay-manager.ts (RelayPool + reconnect + keep-alive)     │
-│  2.3  signaling-listener.ts (escuchar offers, negociar WebRTC)  │
-│  2.4  chunk-server.ts (servir chunks vía DataChannel)           │
-│  2.5  chunk-ingest.ts (persistir chunks al delegar)             │
-│  2.6  service-worker.ts update (bootstrap completo)             │
-│  2.7  manifest.json update (permisos)                           │
+│  ✅ 2.1  identity-store.ts (keypair en chrome.storage)           │
+│  ✅ 2.2  relay-manager.ts (RelayPool + reconnect + keep-alive)   │
+│  ✅ 2.3  signaling-listener.ts (escuchar offers, negociar WebRTC)│
+│  ✅ 2.4  chunk-server.ts (servir chunks vía DataChannel)         │
+│  ✅ 2.5  chunk-ingest.ts (persistir chunks al delegar)           │
+│  ✅ 2.6  service-worker.ts update (bootstrap completo)           │
+│  ✅ 2.7  manifest.json update (permisos)                         │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
@@ -445,11 +454,11 @@ Panel de settings en el dashboard:
 │  Bloque 3: Dashboard + bridge updates                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  3.1  Nuevos mensajes bridge (STORE_CHUNK, IMPORT_KEYPAIR,      │
+│  ✅ 3.1  Nuevos mensajes bridge (STORE_CHUNK, IMPORT_KEYPAIR,    │
 │       GET_PUBLIC_KEY) en extension-bridge.ts                    │
-│  3.2  Dashboard: inventario de chunks real                      │
-│  3.3  Dashboard: panel de configuración de nodo                 │
-│  3.4  Web: actualizar delegateSeeding para enviar chunks        │
+│  ✅ 3.2  Dashboard: inventario de chunks real                    │
+│  ◐ 3.3  Dashboard: panel de configuración (identity base ✅)     │
+│  ✅ 3.4  Web: actualizar delegateSeeding para enviar chunks      │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
@@ -457,16 +466,16 @@ Panel de settings en el dashboard:
 │  Bloque 4: Tests + verificación                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  4.1  Tests unitarios (core: identity, nat, transfer, idb)      │
-│  4.2  Tests unitarios (ext: relay-mgr, signaling, chunk-server) │
-│  4.3  Typecheck + build de los 3 paquetes                       │
-│  4.4  Test E2E manual: 2 navegadores intercambiando un chunk    │
+│  ✅ 4.1  Tests unitarios (core: identity, nat, transfer, idb)    │
+│  ✅ 4.2  Tests unitarios (ext: relay-mgr, signaling, chunk-server)|
+│  ✅ 4.3  Typecheck + build de los 3 paquetes                     │
+│  ⏳ 4.4  Test E2E manual: 2 navegadores intercambiando un chunk  │
 │       vía la extensión en background                            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Estimación:** ~12-15 archivos nuevos, ~5-7 archivos modificados.
+**Estimación:** ~12-15 archivos nuevos, ~5-7 archivos modificados. *(Superada por ampliación de alcance con dashboard/inventario + tests extension.)*
 
 ---
 
@@ -488,6 +497,11 @@ Panel de settings en el dashboard:
 | ext | `background/chunk-server.ts` | Servidor de chunks vía DataChannel |
 | ext | `background/chunk-ingest.ts` | Ingesta de chunks binarios |
 | ext | `background/identity-store.ts` | Keypair persistido |
+| ext | `__tests__/relay-manager.test.ts` | Tests unitarios relay manager |
+| ext | `__tests__/signaling-listener.test.ts` | Tests unitarios signaling listener |
+| ext | `__tests__/chunk-server.test.ts` | Tests unitarios chunk server |
+| ext | `__tests__/identity-store.test.ts` | Tests unitarios identity store |
+| ext | `vitest.config.mjs` | Configuración de tests para extensión |
 
 ## Archivos modificados
 
@@ -496,8 +510,12 @@ Panel de settings en el dashboard:
 | core | `types/extension-bridge.ts` | Nuevos mensajes: `STORE_CHUNK`, `IMPORT_KEYPAIR`, `GET_PUBLIC_KEY` |
 | core | `index.ts` | Exportar nuevos módulos |
 | ext | `background/service-worker.ts` | Bootstrap completo: relays, signaling, chunk server, nuevos handlers |
+| ext | `shared/messaging.ts` | Re-export de nuevos payloads/guards del bridge |
+| ext | `shared/status-client.ts` | Helpers para `GET_PUBLIC_KEY` e `IMPORT_KEYPAIR` |
 | ext | `manifest.json` | Permisos: `alarms`, `idle` |
-| ext | `dashboard/main.ts` | Inventario de chunks, settings |
+| ext | `dashboard/main.ts` | UI/acciones para cargar pubkey e importar privkey |
+| ext | `dashboard.html`, `dashboard/styles.css` | Controles de settings básicos para identidad |
+| ext | `package.json` | Script `test` real + `vitest` devDependency |
 | web | `lib/extension-bridge.ts` | Nuevas funciones: `storeChunk`, `importKeypair`, `getPublicKey` |
 | web | `App.tsx` | Enviar chunks binarios al delegar seeding |
 
@@ -526,6 +544,8 @@ pnpm --filter @entropy/extension build     # Build exitoso
 pnpm --filter @entropy/web build           # Build exitoso
 ```
 
+Estado actual: ✅ comandos ejecutados y pasando.
+
 ### Manual
 
 1. **Instalar extensión** en Chrome (modo desarrollador, cargar `dist/`).
@@ -533,7 +553,7 @@ pnpm --filter @entropy/web build           # Build exitoso
 3. **Generar chunk map** y delegar seeding → verificar que los chunks se persisten en IndexedDB del SW.
 4. **Desde otro navegador** (o perfil): solicitar un chunk → verificar que el SW responde con señalización WebRTC → establece conexión → sirve el chunk.
 5. **Cerrar la pestaña de la web app** → verificar que el seeding continúa desde el SW.
-6. **Verificar dashboard**: inventario de chunks muestra los chunks reales, cuota usada, peers activos.
+6. **Verificar dashboard**: estado/credits en vivo (inventario real y settings avanzados quedan pendientes de UI).
 7. **Recargar extensión** → verificar que relays se reconectan y seeding se reanuda automáticamente.
 
 ### Test E2E completo (objetivo)
@@ -580,4 +600,4 @@ Browser C (web app, otro usuario)          │
 > **TURN servers:** Phase 3 solo usa STUN (NAT traversal básico). Los NATs simétricos (~15% de usuarios) no podrán conectarse. TURN relay se evaluará en Phase 5.
 
 > [!NOTE]
-> **Firma real de recibos:** Phase 2 dejó `wireReceiptVerifier(() => true)` como placeholder. Phase 3 lo reemplaza con `verifyEvent` de `nostr-tools` al integrar identity management.
+> **Firma real de recibos:** ✅ Integrada con `verifyEventSignature` en el Service Worker (ya no usa placeholder `wireReceiptVerifier(() => true)`).

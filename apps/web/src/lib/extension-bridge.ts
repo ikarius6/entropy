@@ -3,22 +3,34 @@ import {
   ENTROPY_WEB_SOURCE,
   isCreditSummaryPayload,
   isEntropyExtensionResponseEvent,
+  isPublicKeyPayload,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
   type CreditSummaryPayload,
   type DelegateSeedingPayload,
+  type ImportKeypairPayload,
   type EntropyRuntimeMessage,
   type NodeStatusPayload,
+  type PublicKeyPayload,
+  type StoreChunkPayload,
   type ServeChunkPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
-export type { CreditSummaryPayload, DelegateSeedingPayload, NodeStatusPayload, ServeChunkPayload };
+export type {
+  CreditSummaryPayload,
+  DelegateSeedingPayload,
+  ImportKeypairPayload,
+  NodeStatusPayload,
+  PublicKeyPayload,
+  StoreChunkPayload,
+  ServeChunkPayload
+};
 
 function buildMessage(
   requestId: string,
   type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload | ServeChunkPayload
+  payload?: DelegateSeedingPayload | ServeChunkPayload | StoreChunkPayload | ImportKeypairPayload
 ): EntropyRuntimeMessage {
   if (type === "DELEGATE_SEEDING") {
     if (!payload) {
@@ -46,6 +58,32 @@ function buildMessage(
     };
   }
 
+  if (type === "STORE_CHUNK") {
+    if (!payload) {
+      throw new Error("STORE_CHUNK requires a payload.");
+    }
+
+    return {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type,
+      payload: payload as StoreChunkPayload
+    };
+  }
+
+  if (type === "IMPORT_KEYPAIR") {
+    if (!payload) {
+      throw new Error("IMPORT_KEYPAIR requires a payload.");
+    }
+
+    return {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type,
+      payload: payload as ImportKeypairPayload
+    };
+  }
+
   return {
     source: ENTROPY_WEB_SOURCE,
     requestId,
@@ -69,15 +107,30 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<CreditSummaryPayload>;
 export function sendExtensionRequest(
+  type: "STORE_CHUNK",
+  payload: StoreChunkPayload,
+  timeoutMs?: number
+): Promise<NodeStatusPayload | undefined>;
+export function sendExtensionRequest(
+  type: "IMPORT_KEYPAIR",
+  payload: ImportKeypairPayload,
+  timeoutMs?: number
+): Promise<PublicKeyPayload>;
+export function sendExtensionRequest(
+  type: "GET_PUBLIC_KEY",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<PublicKeyPayload>;
+export function sendExtensionRequest(
   type: "SERVE_CHUNK",
   payload: ServeChunkPayload,
   timeoutMs?: number
 ): Promise<CreditSummaryPayload>;
 export function sendExtensionRequest(
   type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload | ServeChunkPayload,
+  payload?: DelegateSeedingPayload | ServeChunkPayload | StoreChunkPayload | ImportKeypairPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | undefined> {
   return new Promise((resolve, reject) => {
     const requestId = createEntropyRequestId("web");
 
@@ -125,6 +178,16 @@ export function sendExtensionRequest(
         return;
       }
 
+      if (type === "IMPORT_KEYPAIR" || type === "GET_PUBLIC_KEY") {
+        if (!isPublicKeyPayload(event.data.payload)) {
+          reject(new Error("Entropy extension bridge returned an invalid public key payload."));
+          return;
+        }
+
+        resolve(event.data.payload);
+        return;
+      }
+
       if (event.data.payload !== undefined && !isNodeStatusPayload(event.data.payload)) {
         reject(new Error("Entropy extension bridge returned an invalid node status payload."));
         return;
@@ -152,6 +215,18 @@ export function sendHeartbeat(): Promise<NodeStatusPayload | undefined> {
 
 export function getCreditSummary(): Promise<CreditSummaryPayload> {
   return sendExtensionRequest("GET_CREDIT_SUMMARY");
+}
+
+export function storeChunk(payload: StoreChunkPayload): Promise<NodeStatusPayload | undefined> {
+  return sendExtensionRequest("STORE_CHUNK", payload);
+}
+
+export function importKeypair(payload: ImportKeypairPayload): Promise<PublicKeyPayload> {
+  return sendExtensionRequest("IMPORT_KEYPAIR", payload);
+}
+
+export function getExtensionPublicKey(): Promise<PublicKeyPayload> {
+  return sendExtensionRequest("GET_PUBLIC_KEY");
 }
 
 export function serveChunk(payload: ServeChunkPayload): Promise<CreditSummaryPayload> {

@@ -3,7 +3,7 @@
   "name": "Entropy Extension",
   "version": "0.1.0",
   "description": "Background seeding bridge for Entropy PoC.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms", "idle"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background/service-worker.js",
