@@ -525,7 +525,7 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [x] Crear página web mínima: subir archivo → generar chunk map → seed → descargar desde otro navegador
 - [x] Tests unitarios para chunking y hashing
 
-### Fase 2 — Motor de Créditos
+### Fase 2 — Motor de Créditos ✅
 
 **Objetivo:** Sistema funcional de Proof of Upstream y ratio de ancho de banda.
 
@@ -539,12 +539,24 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [x] Onboarding Seeder: asignar chunks fríos a nuevos usuarios en red real
 - [x] Tests de integración del flujo de créditos end-to-end
 
-### Fase 3 — Extensión de Navegador (parcial)
+### Fase 3 — Extensión de Navegador: Background Seeding Real
 
-**Objetivo:** Seeding persistente en background con dashboard de nodo.
+> Plan detallado en [`phase3.md`](./phase3.md)
+
+**Objetivo:** El Service Worker mantiene conexiones WebRTC activas y sirve chunks a peers en background.
 
 - [x] Scaffold extensión Manifest V3 con Vite
-- [ ] Service Worker: mantener conexiones WebRTC activas
+- [ ] `@entropy/core`: Identity management (`nostr/identity.ts`) — keypair, firma, verificación con `nostr-tools`
+- [ ] `@entropy/core`: Protocolo de transferencia (`transport/chunk-transfer.ts`) — binario sobre DataChannel
+- [ ] `@entropy/core`: NAT traversal (`transport/nat-traversal.ts`) — configuración STUN
+- [ ] `@entropy/core`: IndexedDB ChunkStore (`storage/indexeddb-chunk-store.ts`) — persistencia real con Dexie.js
+- [ ] `@entropy/extension`: Relay manager (`background/relay-manager.ts`) — conexión a relays desde SW
+- [ ] `@entropy/extension`: Signaling listener (`background/signaling-listener.ts`) — escuchar offers WebRTC
+- [ ] `@entropy/extension`: Chunk server (`background/chunk-server.ts`) — servir chunks vía DataChannel
+- [ ] `@entropy/extension`: Chunk ingest (`background/chunk-ingest.ts`) — persistir chunks binarios
+- [ ] `@entropy/extension`: Identity store (`background/identity-store.ts`) — keypair persistido
+- [ ] `@entropy/extension`: Service Worker bootstrap completo (relays + signaling + chunk server)
+- [ ] `@entropy/extension`: Dashboard mejorado (inventario de chunks real, configuración de nodo)
 - [x] Content script: puente de comunicación con la web app
 - [x] Popup: mini-dashboard (ratio, peers, estado)
 - [x] Dashboard completo: estadísticas, inventario de chunks, configuración

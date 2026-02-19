@@ -14,9 +14,14 @@ let latestStatus: NodeStatusPayload | null = null;
 let latestCredits: CreditSummaryPayload | null = null;
 
 function formatCredits(summary: CreditSummaryPayload): string[] {
+  const ratioLabel =
+    typeof summary.ratio === "number" && Number.isFinite(summary.ratio)
+      ? summary.ratio.toFixed(2)
+      : "∞";
+
   return [
     `Balance: ${(summary.balance / (1024 * 1024)).toFixed(2)} MB`,
-    `Ratio: ${Number.isFinite(summary.ratio) ? summary.ratio.toFixed(2) : "∞"}`,
+    `Ratio: ${ratioLabel}`,
     `Eligible cold storage: ${summary.coldStorageEligible ? "yes" : "no"}`
   ];
 }
