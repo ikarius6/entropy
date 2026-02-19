@@ -34,11 +34,11 @@ Phase 2 (✅) entregó: motor de créditos (proof-of-upstream, ledger, cold-stor
 |---|---|---|
 | Bloque 1 (core infra) | ✅ Completado | Identity, NAT traversal, chunk transfer binario, IndexedDB chunk store, quota-manager-idb, exports y tests core. |
 | Bloque 2 (extension background) | ✅ Completado (base funcional) | `identity-store`, `relay-manager`, `signaling-listener`, `chunk-server`, `chunk-ingest`, bootstrap del SW, permisos de manifest. |
-| Bloque 3.1 (bridge messages) | ✅ Completado | `STORE_CHUNK`, `IMPORT_KEYPAIR`, `GET_PUBLIC_KEY` en protocolo y web/extension bridge. |
+| Bloque 3.1 (bridge messages) | ✅ Completado | `STORE_CHUNK`, `IMPORT_KEYPAIR`, `GET_PUBLIC_KEY`, `GET_NODE_SETTINGS`, `ADD_RELAY`, `REMOVE_RELAY`, `SET_SEEDING_ACTIVE` en protocolo y web/extension bridge. |
 | Bloque 3.4 (web delegación con chunks) | ✅ Completado | La web envía chunks vía `STORE_CHUNK` antes de `DELEGATE_SEEDING`. |
 | Bloque 3.2 (dashboard inventario real) | ✅ Completado | Dashboard muestra roots/chunks almacenados en IndexedDB y barra de uso de cuota. |
-| Bloque 3.3 (dashboard settings de nodo) | ◐ En progreso | Key management básico integrado (`GET_PUBLIC_KEY`/`IMPORT_KEYPAIR`); faltan relays, cuota configurable, bandwidth/toggle y export keypair. |
-| Bloque 4.1/4.3 (core tests + typecheck/build) | ✅ Completado | Core tests passing; typecheck y build verificados. |
+| Bloque 3.3 (dashboard settings de nodo) | ✅ Completado | Key management (`GET_PUBLIC_KEY`/`IMPORT_KEYPAIR`), relay list con add/remove, toggle seeding activo. SW maneja los 4 nuevos mensajes. |
+| Bloque 4.1/4.3 (core tests + typecheck/build) | ✅ Completado | 86 tests core passing; typecheck 3 paquetes y build verificados. |
 | Bloque 4.2 (tests unitarios extension) | ✅ Completado | Tests para `relay-manager`, `signaling-listener`, `chunk-server`, `identity-store` con Vitest. |
 | Bloque 4.4 (E2E manual completo) | ⏳ Pendiente | Falta corrida E2E completa entre navegadores con validación manual end-to-end. |
 

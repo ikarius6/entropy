@@ -107,27 +107,11 @@ export async function importRuntimeKeypair(payload: ImportKeypairPayload): Promi
   return response.payload;
 }
 
-async function requestNodeSettingsResponse(
+async function validateNodeSettingsResponse(
+  requestId: string,
   requestType: "GET_NODE_SETTINGS" | "ADD_RELAY" | "REMOVE_RELAY" | "SET_SEEDING_ACTIVE",
-  payload?: RelayUrlPayload | SetSeedingActivePayload
+  response: unknown
 ): Promise<NodeSettingsPayload> {
-  const requestId = createEntropyRequestId("ext");
-
-  const message: EntropyRuntimeMessage = payload
-    ? {
-        source: ENTROPY_WEB_SOURCE,
-        requestId,
-        type: requestType,
-        payload
-      }
-    : {
-        source: ENTROPY_WEB_SOURCE,
-        requestId,
-        type: requestType
-      };
-
-  const response = await sendRuntimeMessage(message);
-
   if (!isEntropyRuntimeResponse(response)) {
     throw new Error("Invalid runtime response payload received.");
   }
@@ -148,21 +132,48 @@ async function requestNodeSettingsResponse(
 }
 
 export async function requestNodeSettings(): Promise<NodeSettingsPayload> {
-  return requestNodeSettingsResponse("GET_NODE_SETTINGS");
+  const requestId = createEntropyRequestId("ext");
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "GET_NODE_SETTINGS"
+  });
+  return validateNodeSettingsResponse(requestId, "GET_NODE_SETTINGS", response);
 }
 
 export async function addRuntimeRelay(payload: RelayUrlPayload): Promise<NodeSettingsPayload> {
-  return requestNodeSettingsResponse("ADD_RELAY", payload);
+  const requestId = createEntropyRequestId("ext");
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "ADD_RELAY",
+    payload
+  });
+  return validateNodeSettingsResponse(requestId, "ADD_RELAY", response);
 }
 
 export async function removeRuntimeRelay(payload: RelayUrlPayload): Promise<NodeSettingsPayload> {
-  return requestNodeSettingsResponse("REMOVE_RELAY", payload);
+  const requestId = createEntropyRequestId("ext");
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "REMOVE_RELAY",
+    payload
+  });
+  return validateNodeSettingsResponse(requestId, "REMOVE_RELAY", response);
 }
 
 export async function setRuntimeSeedingActive(
   payload: SetSeedingActivePayload
 ): Promise<NodeSettingsPayload> {
-  return requestNodeSettingsResponse("SET_SEEDING_ACTIVE", payload);
+  const requestId = createEntropyRequestId("ext");
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "SET_SEEDING_ACTIVE",
+    payload
+  });
+  return validateNodeSettingsResponse(requestId, "SET_SEEDING_ACTIVE", response);
 }
 
 export async function requestCreditSummary(): Promise<CreditSummaryPayload> {

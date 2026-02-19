@@ -16,6 +16,7 @@ import {
   type EntropyRuntimePushMessage,
   type EntropyRuntimeMessage,
   type EntropyRuntimeResponse,
+  type NodeSettingsPayload,
   type NodeStatusPayload,
   type PublicKeyPayload
 } from "../shared/messaging";
@@ -23,7 +24,17 @@ import { handleDataChannel } from "./chunk-server";
 import { hasDelegatedChunks, storeChunkPayload } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { getOrCreateKeypair, getPublicKey, importKeypair } from "./identity-store";
-import { ensureRelayConnections, getRelayPool, initRelayManager } from "./relay-manager";
+import {
+  addRelay,
+  ensureRelayConnections,
+  getRelayPool,
+  getRelayStatuses,
+  getRelayUrls,
+  getSeedingActive,
+  initRelayManager,
+  removeRelay,
+  setSeedingActive
+} from "./relay-manager";
 import { enqueueDelegation, getDelegationCount, getDelegatedRootHashes, pruneDelegations } from "./seeder";
 import { scheduleMaintenance } from "./scheduler";
 import { startSignalingListener } from "./signaling-listener";
@@ -60,33 +71,34 @@ async function buildNodeStatus(): Promise<NodeStatusPayload> {
 
 function successResponse(
   requestId: string,
-  type: EntropyRuntimeMessage["type"],
-  payload?: NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload
+  type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK",
+  payload?: NodeStatusPayload
 ): EntropyRuntimeResponse {
-  if (type === "GET_CREDIT_SUMMARY" || type === "SERVE_CHUNK") {
-    return {
-      ok: true,
-      requestId,
-      type,
-      payload: payload as CreditSummaryPayload
-    };
-  }
+  return { ok: true, requestId, type, payload };
+}
 
-  if (type === "IMPORT_KEYPAIR" || type === "GET_PUBLIC_KEY") {
-    return {
-      ok: true,
-      requestId,
-      type,
-      payload: payload as PublicKeyPayload
-    };
-  }
+function creditResponse(
+  requestId: string,
+  type: "GET_CREDIT_SUMMARY" | "SERVE_CHUNK",
+  payload: CreditSummaryPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type, payload };
+}
 
-  return {
-    ok: true,
-    requestId,
-    type,
-    payload: payload as NodeStatusPayload | undefined
-  };
+function pubkeyResponse(
+  requestId: string,
+  type: "IMPORT_KEYPAIR" | "GET_PUBLIC_KEY",
+  payload: PublicKeyPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type, payload };
+}
+
+function nodeSettingsResponse(
+  requestId: string,
+  type: "GET_NODE_SETTINGS" | "ADD_RELAY" | "REMOVE_RELAY" | "SET_SEEDING_ACTIVE",
+  payload: NodeSettingsPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type, payload };
 }
 
 function errorResponse(
@@ -265,19 +277,19 @@ chrome.runtime.onMessage.addListener(
             const payload = await importKeypair(message.payload.privkey);
             bootstrapPromise = null;
             await ensureBootstrap();
-            sendResponse(successResponse(message.requestId, message.type, payload));
+            sendResponse(pubkeyResponse(message.requestId, message.type, payload));
             break;
           }
 
           case "GET_PUBLIC_KEY": {
             const pubkey = await getPublicKey();
-            sendResponse(successResponse(message.requestId, message.type, { pubkey }));
+            sendResponse(pubkeyResponse(message.requestId, message.type, { pubkey }));
             break;
           }
 
           case "GET_CREDIT_SUMMARY": {
             const summary = await getCreditSummary();
-            sendResponse(successResponse(message.requestId, message.type, summary));
+            sendResponse(creditResponse(message.requestId, message.type, summary));
             emitCreditUpdate(summary);
             break;
           }
@@ -317,8 +329,87 @@ chrome.runtime.onMessage.addListener(
               timestamp: Math.floor(Date.now() / 1000)
             });
 
-            sendResponse(successResponse(message.requestId, message.type, updatedSummary));
+            sendResponse(creditResponse(message.requestId, message.type, updatedSummary));
             emitCreditUpdate(updatedSummary);
+            break;
+          }
+
+          case "GET_NODE_SETTINGS": {
+            const [relayUrls, seedingActive] = await Promise.all([
+              getRelayUrls(),
+              getSeedingActive()
+            ]);
+            const relayStatuses = getRelayStatuses().map((info) => ({
+              url: info.url,
+              status: info.status
+            }));
+            sendResponse(
+              nodeSettingsResponse(message.requestId, message.type, {
+                relayUrls,
+                relayStatuses,
+                seedingActive
+              })
+            );
+            break;
+          }
+
+          case "ADD_RELAY": {
+            await addRelay(message.payload.url);
+            const [relayUrls, seedingActive] = await Promise.all([
+              getRelayUrls(),
+              getSeedingActive()
+            ]);
+            const relayStatuses = getRelayStatuses().map((info) => ({
+              url: info.url,
+              status: info.status
+            }));
+            sendResponse(
+              nodeSettingsResponse(message.requestId, message.type, {
+                relayUrls,
+                relayStatuses,
+                seedingActive
+              })
+            );
+            break;
+          }
+
+          case "REMOVE_RELAY": {
+            await removeRelay(message.payload.url);
+            const [relayUrls, seedingActive] = await Promise.all([
+              getRelayUrls(),
+              getSeedingActive()
+            ]);
+            const relayStatuses = getRelayStatuses().map((info) => ({
+              url: info.url,
+              status: info.status
+            }));
+            sendResponse(
+              nodeSettingsResponse(message.requestId, message.type, {
+                relayUrls,
+                relayStatuses,
+                seedingActive
+              })
+            );
+            break;
+          }
+
+          case "SET_SEEDING_ACTIVE": {
+            await setSeedingActive(message.payload.active);
+            const [relayUrls, seedingActiveNow] = await Promise.all([
+              getRelayUrls(),
+              getSeedingActive()
+            ]);
+            const relayStatuses = getRelayStatuses().map((info) => ({
+              url: info.url,
+              status: info.status
+            }));
+            sendResponse(
+              nodeSettingsResponse(message.requestId, message.type, {
+                relayUrls,
+                relayStatuses,
+                seedingActive: seedingActiveNow
+              })
+            );
             break;
           }
         }

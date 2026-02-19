@@ -2,9 +2,11 @@ import { RelayPool, type RelayInfo } from "@entropy/core";
 
 interface RelayStorageSchema {
   entropyRelayUrls?: string[];
+  entropySeedingActive?: boolean;
 }
 
 const RELAY_STORAGE_KEY = "entropyRelayUrls";
+const SEEDING_ACTIVE_KEY = "entropySeedingActive";
 
 export const DEFAULT_RELAY_URLS = ["wss://relay.damus.io", "wss://nos.lol"];
 
@@ -119,6 +121,15 @@ export async function removeRelay(url: string): Promise<void> {
 
 export function getRelayStatuses(): RelayInfo[] {
   return relayPool?.getRelayStatuses() ?? [];
+}
+
+export async function getSeedingActive(): Promise<boolean> {
+  const result = (await chrome.storage.local.get(SEEDING_ACTIVE_KEY)) as RelayStorageSchema;
+  return result[SEEDING_ACTIVE_KEY] !== false;
+}
+
+export async function setSeedingActive(active: boolean): Promise<void> {
+  await chrome.storage.local.set({ [SEEDING_ACTIVE_KEY]: active });
 }
 
 export async function ensureRelayConnections(): Promise<void> {

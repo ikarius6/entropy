@@ -7,10 +7,14 @@ import {
 
 import type { CreditSummaryPayload, NodeStatusPayload } from "../shared/messaging";
 import {
+  addRuntimeRelay,
   importRuntimeKeypair,
+  removeRuntimeRelay,
   requestCreditSummary,
+  requestNodeSettings,
   requestNodeStatus,
   requestPublicKey,
+  setRuntimeSeedingActive,
   subscribeCreditUpdates,
   subscribeNodeStatusUpdates
 } from "../shared/status-client";
@@ -25,6 +29,12 @@ const inventorySummaryElement = document.getElementById("inventory-summary");
 const rootInventoryElement = document.getElementById("root-inventory");
 const chunkInventoryElement = document.getElementById("chunk-inventory");
 const quotaFillElement = document.getElementById("quota-fill");
+const relayUrlInput = document.getElementById("relay-url-input");
+const addRelayButton = document.getElementById("add-relay");
+const relayListElement = document.getElementById("relay-list");
+const relayStatusElement = document.getElementById("relay-status");
+const seedingToggle = document.getElementById("seeding-toggle");
+const seedingStatusElement = document.getElementById("seeding-status");
 
 let latestStatus: NodeStatusPayload | null = null;
 let latestCredits: CreditSummaryPayload | null = null;
@@ -236,6 +246,134 @@ async function importKeypairFromInput(): Promise<void> {
   }
 }
 
+function setRelayStatus(message: string): void {
+  if (!(relayStatusElement instanceof HTMLElement)) {
+    return;
+  }
+
+  relayStatusElement.textContent = message;
+}
+
+function setSeedingStatus(message: string): void {
+  if (!(seedingStatusElement instanceof HTMLElement)) {
+    return;
+  }
+
+  seedingStatusElement.textContent = message;
+}
+
+function renderRelayList(
+  relayUrls: string[],
+  relayStatuses: Array<{ url: string; status: string }>
+): void {
+  if (!(relayListElement instanceof HTMLElement)) {
+    return;
+  }
+
+  clearList(relayListElement);
+
+  if (relayUrls.length === 0) {
+    appendListMessage(relayListElement, "No relays configured.");
+    return;
+  }
+
+  const statusMap = new Map(relayStatuses.map((entry) => [entry.url, entry.status]));
+
+  for (const url of relayUrls) {
+    const status = statusMap.get(url) ?? "unknown";
+    const item = document.createElement("li");
+    item.className = "relay-item";
+
+    const urlSpan = document.createElement("span");
+    urlSpan.textContent = `${url} (${status})`;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Remove";
+    removeBtn.type = "button";
+    removeBtn.className = "relay-remove-btn";
+    removeBtn.addEventListener("click", () => {
+      void (async () => {
+        setRelayStatus("Removing relay...");
+
+        try {
+          const settings = await removeRuntimeRelay({ url });
+          renderRelayList(settings.relayUrls, settings.relayStatuses);
+          setRelayStatus(`Removed ${url}.`);
+        } catch (caughtError) {
+          const message = caughtError instanceof Error ? caughtError.message : "Unknown error.";
+          setRelayStatus(`Remove failed: ${message}`);
+        }
+      })();
+    });
+
+    item.appendChild(urlSpan);
+    item.appendChild(removeBtn);
+    relayListElement.appendChild(item);
+  }
+}
+
+async function refreshRelaySettings(): Promise<void> {
+  setRelayStatus("Loading relay settings...");
+
+  try {
+    const settings = await requestNodeSettings();
+    renderRelayList(settings.relayUrls, settings.relayStatuses);
+
+    if (seedingToggle instanceof HTMLInputElement) {
+      seedingToggle.checked = settings.seedingActive;
+    }
+
+    setRelayStatus(`${settings.relayUrls.length} relay(s) configured.`);
+    setSeedingStatus(settings.seedingActive ? "Seeding is active." : "Seeding is paused.");
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown relay error.";
+    setRelayStatus(`Relay settings unavailable: ${message}`);
+  }
+}
+
+async function addRelayFromInput(): Promise<void> {
+  if (!(relayUrlInput instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const url = relayUrlInput.value.trim();
+
+  if (url.length === 0) {
+    setRelayStatus("Enter a relay URL before adding.");
+    return;
+  }
+
+  setRelayStatus("Adding relay...");
+
+  try {
+    const settings = await addRuntimeRelay({ url });
+    relayUrlInput.value = "";
+    renderRelayList(settings.relayUrls, settings.relayStatuses);
+    setRelayStatus(`Added ${url}.`);
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown error.";
+    setRelayStatus(`Add failed: ${message}`);
+  }
+}
+
+async function onSeedingToggleChange(): Promise<void> {
+  if (!(seedingToggle instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const active = seedingToggle.checked;
+  setSeedingStatus(active ? "Enabling seeding..." : "Pausing seeding...");
+
+  try {
+    const settings = await setRuntimeSeedingActive({ active });
+    setSeedingStatus(settings.seedingActive ? "Seeding is active." : "Seeding is paused.");
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown error.";
+    setSeedingStatus(`Toggle failed: ${message}`);
+    seedingToggle.checked = !active;
+  }
+}
+
 function formatCreditSummary(summary: CreditSummaryPayload): string[] {
   const ratioLabel =
     typeof summary.ratio === "number" && Number.isFinite(summary.ratio)
@@ -309,6 +447,26 @@ if (importKeypairButton instanceof HTMLButtonElement) {
   });
 }
 
+if (addRelayButton instanceof HTMLButtonElement) {
+  addRelayButton.addEventListener("click", () => {
+    void addRelayFromInput();
+  });
+}
+
+if (relayUrlInput instanceof HTMLInputElement) {
+  relayUrlInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      void addRelayFromInput();
+    }
+  });
+}
+
+if (seedingToggle instanceof HTMLInputElement) {
+  seedingToggle.addEventListener("change", () => {
+    void onSeedingToggleChange();
+  });
+}
+
 const unsubscribeStatusUpdates = subscribeNodeStatusUpdates((status) => {
   if (!(statusElement instanceof HTMLElement)) {
     return;
@@ -338,3 +496,4 @@ window.addEventListener("beforeunload", () => {
 void refresh();
 void refreshPublicKey();
 void refreshInventory();
+void refreshRelaySettings();

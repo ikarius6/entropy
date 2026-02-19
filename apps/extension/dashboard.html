@@ -24,6 +24,25 @@
         <p id="key-status">Public key: loading...</p>
       </section>
 
+      <section class="settings-card">
+        <h2>Relay settings</h2>
+        <div class="settings-row">
+          <input id="relay-url-input" type="text" placeholder="wss://relay.example.com" />
+          <button id="add-relay" type="button">Add</button>
+        </div>
+        <ul id="relay-list" class="inventory-list"></ul>
+        <p id="relay-status"></p>
+      </section>
+
+      <section class="settings-card">
+        <h2>Seeding</h2>
+        <div class="settings-row seeding-row">
+          <label for="seeding-toggle" class="toggle-label">Background seeding active</label>
+          <input id="seeding-toggle" type="checkbox" checked />
+        </div>
+        <p id="seeding-status"></p>
+      </section>
+
       <section class="inventory-card">
         <h2>Chunk inventory</h2>
         <p id="inventory-summary">Loading inventory...</p>

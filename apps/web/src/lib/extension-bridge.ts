@@ -3,6 +3,7 @@ import {
   ENTROPY_WEB_SOURCE,
   isCreditSummaryPayload,
   isEntropyExtensionResponseEvent,
+  isNodeSettingsPayload,
   isPublicKeyPayload,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
@@ -10,8 +11,11 @@ import {
   type DelegateSeedingPayload,
   type ImportKeypairPayload,
   type EntropyRuntimeMessage,
+  type NodeSettingsPayload,
   type NodeStatusPayload,
   type PublicKeyPayload,
+  type RelayUrlPayload,
+  type SetSeedingActivePayload,
   type StoreChunkPayload,
   type ServeChunkPayload
 } from "@entropy/core";
@@ -21,74 +25,127 @@ export type {
   CreditSummaryPayload,
   DelegateSeedingPayload,
   ImportKeypairPayload,
+  NodeSettingsPayload,
   NodeStatusPayload,
   PublicKeyPayload,
+  RelayUrlPayload,
+  SetSeedingActivePayload,
   StoreChunkPayload,
   ServeChunkPayload
 };
 
-function buildMessage(
+function buildNoPayloadMessage(
   requestId: string,
-  type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload | ServeChunkPayload | StoreChunkPayload | ImportKeypairPayload
+  type:
+    | "GET_NODE_STATUS"
+    | "HEARTBEAT"
+    | "GET_CREDIT_SUMMARY"
+    | "GET_PUBLIC_KEY"
+    | "GET_NODE_SETTINGS"
 ): EntropyRuntimeMessage {
-  if (type === "DELEGATE_SEEDING") {
-    if (!payload) {
-      throw new Error("DELEGATE_SEEDING requires a payload.");
+  return { source: ENTROPY_WEB_SOURCE, requestId, type };
+}
+
+function buildDelegateSeedingMessage(
+  requestId: string,
+  payload: DelegateSeedingPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "DELEGATE_SEEDING", payload };
+}
+
+function buildServeChunkMessage(
+  requestId: string,
+  payload: ServeChunkPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "SERVE_CHUNK", payload };
+}
+
+function buildStoreChunkMessage(
+  requestId: string,
+  payload: StoreChunkPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "STORE_CHUNK", payload };
+}
+
+function buildImportKeypairMessage(
+  requestId: string,
+  payload: ImportKeypairPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "IMPORT_KEYPAIR", payload };
+}
+
+function buildAddRelayMessage(
+  requestId: string,
+  payload: RelayUrlPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "ADD_RELAY", payload };
+}
+
+function buildRemoveRelayMessage(
+  requestId: string,
+  payload: RelayUrlPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "REMOVE_RELAY", payload };
+}
+
+function buildSetSeedingActiveMessage(
+  requestId: string,
+  payload: SetSeedingActivePayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "SET_SEEDING_ACTIVE", payload };
+}
+
+function sendBridgeMessage<T>(
+  message: EntropyRuntimeMessage,
+  validate: (payload: unknown) => T | null,
+  timeoutMs: number
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const { requestId, type } = message;
+
+    const timeoutHandle = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Entropy extension bridge timeout. Is the extension installed and enabled?"));
+    }, timeoutMs);
+
+    function cleanup(): void {
+      window.clearTimeout(timeoutHandle);
+      window.removeEventListener("message", handleBridgeResponse);
     }
 
-    return {
-      source: ENTROPY_WEB_SOURCE,
-      requestId,
-      type,
-      payload: payload as DelegateSeedingPayload
-    };
-  }
+    function handleBridgeResponse(event: MessageEvent): void {
+      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") {
+        return;
+      }
 
-  if (type === "SERVE_CHUNK") {
-    if (!payload) {
-      throw new Error("SERVE_CHUNK requires a payload.");
+      if (!isEntropyExtensionResponseEvent(event.data)) {
+        return;
+      }
+
+      if (event.data.requestId !== requestId || event.data.requestType !== type) {
+        return;
+      }
+
+      cleanup();
+
+      if (typeof event.data.error === "string" && event.data.error.length > 0) {
+        reject(new Error(event.data.error));
+        return;
+      }
+
+      const validated = validate(event.data.payload);
+
+      if (validated === null) {
+        reject(new Error(`Entropy extension bridge returned an invalid payload for ${type}.`));
+        return;
+      }
+
+      resolve(validated);
     }
 
-    return {
-      source: ENTROPY_WEB_SOURCE,
-      requestId,
-      type,
-      payload: payload as ServeChunkPayload
-    };
-  }
-
-  if (type === "STORE_CHUNK") {
-    if (!payload) {
-      throw new Error("STORE_CHUNK requires a payload.");
-    }
-
-    return {
-      source: ENTROPY_WEB_SOURCE,
-      requestId,
-      type,
-      payload: payload as StoreChunkPayload
-    };
-  }
-
-  if (type === "IMPORT_KEYPAIR") {
-    if (!payload) {
-      throw new Error("IMPORT_KEYPAIR requires a payload.");
-    }
-
-    return {
-      source: ENTROPY_WEB_SOURCE,
-      requestId,
-      type,
-      payload: payload as ImportKeypairPayload
-    };
-  }
-
-  return {
-    source: ENTROPY_WEB_SOURCE,
-    requestId,
-    type
-  };
+    window.addEventListener("message", handleBridgeResponse);
+    window.postMessage(message, "*");
+  });
 }
 
 export function sendExtensionRequest(
@@ -127,78 +184,118 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<CreditSummaryPayload>;
 export function sendExtensionRequest(
+  type: "GET_NODE_SETTINGS",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<NodeSettingsPayload>;
+export function sendExtensionRequest(
+  type: "ADD_RELAY" | "REMOVE_RELAY",
+  payload: RelayUrlPayload,
+  timeoutMs?: number
+): Promise<NodeSettingsPayload>;
+export function sendExtensionRequest(
+  type: "SET_SEEDING_ACTIVE",
+  payload: SetSeedingActivePayload,
+  timeoutMs?: number
+): Promise<NodeSettingsPayload>;
+export function sendExtensionRequest(
   type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload | ServeChunkPayload | StoreChunkPayload | ImportKeypairPayload,
+  payload?:
+    | DelegateSeedingPayload
+    | ServeChunkPayload
+    | StoreChunkPayload
+    | ImportKeypairPayload
+    | RelayUrlPayload
+    | SetSeedingActivePayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | undefined> {
-  return new Promise((resolve, reject) => {
-    const requestId = createEntropyRequestId("web");
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | NodeSettingsPayload | undefined> {
+  const requestId = createEntropyRequestId("web");
 
-    const timeoutHandle = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("Entropy extension bridge timeout. Is the extension installed and enabled?"));
-    }, timeoutMs);
+  if (type === "DELEGATE_SEEDING") {
+    return sendBridgeMessage(
+      buildDelegateSeedingMessage(requestId, payload as DelegateSeedingPayload),
+      (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
+      timeoutMs
+    );
+  }
 
-    function cleanup(): void {
-      window.clearTimeout(timeoutHandle);
-      window.removeEventListener("message", handleBridgeResponse);
-    }
+  if (type === "SERVE_CHUNK") {
+    return sendBridgeMessage(
+      buildServeChunkMessage(requestId, payload as ServeChunkPayload),
+      (p) => (isCreditSummaryPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-    function handleBridgeResponse(event: MessageEvent): void {
-      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") {
-        return;
-      }
+  if (type === "STORE_CHUNK") {
+    return sendBridgeMessage(
+      buildStoreChunkMessage(requestId, payload as StoreChunkPayload),
+      (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
+      timeoutMs
+    );
+  }
 
-      if (!isEntropyExtensionResponseEvent(event.data)) {
-        return;
-      }
+  if (type === "IMPORT_KEYPAIR") {
+    return sendBridgeMessage(
+      buildImportKeypairMessage(requestId, payload as ImportKeypairPayload),
+      (p) => (isPublicKeyPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      if (event.data.requestId !== requestId) {
-        return;
-      }
+  if (type === "GET_CREDIT_SUMMARY") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isCreditSummaryPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      if (event.data.requestType !== type) {
-        return;
-      }
+  if (type === "GET_PUBLIC_KEY") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isPublicKeyPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      cleanup();
+  if (type === "GET_NODE_SETTINGS") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isNodeSettingsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      if (typeof event.data.error === "string" && event.data.error.length > 0) {
-        reject(new Error(event.data.error));
-        return;
-      }
+  if (type === "ADD_RELAY") {
+    return sendBridgeMessage(
+      buildAddRelayMessage(requestId, payload as RelayUrlPayload),
+      (p) => (isNodeSettingsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      if (type === "GET_CREDIT_SUMMARY" || type === "SERVE_CHUNK") {
-        if (!isCreditSummaryPayload(event.data.payload)) {
-          reject(new Error("Entropy extension bridge returned an invalid credit summary payload."));
-          return;
-        }
+  if (type === "REMOVE_RELAY") {
+    return sendBridgeMessage(
+      buildRemoveRelayMessage(requestId, payload as RelayUrlPayload),
+      (p) => (isNodeSettingsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-        resolve(event.data.payload);
-        return;
-      }
+  if (type === "SET_SEEDING_ACTIVE") {
+    return sendBridgeMessage(
+      buildSetSeedingActiveMessage(requestId, payload as SetSeedingActivePayload),
+      (p) => (isNodeSettingsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
 
-      if (type === "IMPORT_KEYPAIR" || type === "GET_PUBLIC_KEY") {
-        if (!isPublicKeyPayload(event.data.payload)) {
-          reject(new Error("Entropy extension bridge returned an invalid public key payload."));
-          return;
-        }
-
-        resolve(event.data.payload);
-        return;
-      }
-
-      if (event.data.payload !== undefined && !isNodeStatusPayload(event.data.payload)) {
-        reject(new Error("Entropy extension bridge returned an invalid node status payload."));
-        return;
-      }
-
-      resolve(event.data.payload);
-    }
-
-    window.addEventListener("message", handleBridgeResponse);
-    window.postMessage(buildMessage(requestId, type, payload), "*");
-  });
+  return sendBridgeMessage(
+    buildNoPayloadMessage(requestId, type as "GET_NODE_STATUS" | "HEARTBEAT" | "GET_CREDIT_SUMMARY" | "GET_PUBLIC_KEY" | "GET_NODE_SETTINGS"),
+    (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
+    timeoutMs
+  );
 }
 
 export function delegateSeeding(payload: DelegateSeedingPayload): Promise<NodeStatusPayload | undefined> {
