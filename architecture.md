@@ -546,17 +546,17 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 **Objetivo:** El Service Worker mantiene conexiones WebRTC activas y sirve chunks a peers en background.
 
 - [x] Scaffold extensión Manifest V3 con Vite
-- [ ] `@entropy/core`: Identity management (`nostr/identity.ts`) — keypair, firma, verificación con `nostr-tools`
-- [ ] `@entropy/core`: Protocolo de transferencia (`transport/chunk-transfer.ts`) — binario sobre DataChannel
-- [ ] `@entropy/core`: NAT traversal (`transport/nat-traversal.ts`) — configuración STUN
-- [ ] `@entropy/core`: IndexedDB ChunkStore (`storage/indexeddb-chunk-store.ts`) — persistencia real con Dexie.js
-- [ ] `@entropy/extension`: Relay manager (`background/relay-manager.ts`) — conexión a relays desde SW
-- [ ] `@entropy/extension`: Signaling listener (`background/signaling-listener.ts`) — escuchar offers WebRTC
-- [ ] `@entropy/extension`: Chunk server (`background/chunk-server.ts`) — servir chunks vía DataChannel
-- [ ] `@entropy/extension`: Chunk ingest (`background/chunk-ingest.ts`) — persistir chunks binarios
-- [ ] `@entropy/extension`: Identity store (`background/identity-store.ts`) — keypair persistido
-- [ ] `@entropy/extension`: Service Worker bootstrap completo (relays + signaling + chunk server)
-- [ ] `@entropy/extension`: Dashboard mejorado (inventario de chunks real, configuración de nodo)
+- [x] `@entropy/core`: Identity management (`nostr/identity.ts`) — keypair, firma, verificación con `nostr-tools`
+- [x] `@entropy/core`: Protocolo de transferencia (`transport/chunk-transfer.ts`) — binario sobre DataChannel
+- [x] `@entropy/core`: NAT traversal (`transport/nat-traversal.ts`) — configuración STUN
+- [x] `@entropy/core`: IndexedDB ChunkStore (`storage/indexeddb-chunk-store.ts`) — persistencia real con Dexie.js
+- [x] `@entropy/extension`: Relay manager (`background/relay-manager.ts`) — conexión a relays desde SW
+- [x] `@entropy/extension`: Signaling listener (`background/signaling-listener.ts`) — escuchar offers WebRTC
+- [x] `@entropy/extension`: Chunk server (`background/chunk-server.ts`) — servir chunks vía DataChannel
+- [x] `@entropy/extension`: Chunk ingest (`background/chunk-ingest.ts`) — persistir chunks binarios
+- [x] `@entropy/extension`: Identity store (`background/identity-store.ts`) — keypair persistido
+- [x] `@entropy/extension`: Service Worker bootstrap completo (relays + signaling + chunk server)
+- [x] `@entropy/extension`: Dashboard mejorado (inventario de chunks real, configuración de nodo, relay settings, seeding toggle)
 - [x] Content script: puente de comunicación con la web app
 - [x] Popup: mini-dashboard (ratio, peers, estado)
 - [x] Dashboard completo: estadísticas, inventario de chunks, configuración
