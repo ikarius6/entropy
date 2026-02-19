@@ -1,19 +1,45 @@
-import type { NodeStatusPayload } from "../shared/messaging";
-import { requestNodeStatus, subscribeNodeStatusUpdates } from "../shared/status-client";
+import type { CreditSummaryPayload, NodeStatusPayload } from "../shared/messaging";
+import {
+  requestCreditSummary,
+  requestNodeStatus,
+  subscribeCreditUpdates,
+  subscribeNodeStatusUpdates
+} from "../shared/status-client";
 
 const statusElement = document.getElementById("status");
 const refreshButton = document.getElementById("refresh");
 const openDashboardButton = document.getElementById("open-dashboard");
 
-function formatStatus(status: NodeStatusPayload): string {
+let latestStatus: NodeStatusPayload | null = null;
+let latestCredits: CreditSummaryPayload | null = null;
+
+function formatCredits(summary: CreditSummaryPayload): string[] {
   return [
-    `Delegated roots: ${status.delegatedCount}`,
-    `Uptime: ${Math.floor(status.uptimeMs / 1000)}s`,
-    `Last heartbeat: ${new Date(status.lastHeartbeatAt).toLocaleTimeString()}`,
-    `Signaling kinds: ${status.signalingKindRange}`,
-    `Signaling healthy: ${status.signalingRangeHealthy ? "yes" : "no"}`,
-    `Roots: ${status.delegatedRootHashes.join(", ") || "none"}`
-  ].join("\n");
+    `Balance: ${(summary.balance / (1024 * 1024)).toFixed(2)} MB`,
+    `Ratio: ${Number.isFinite(summary.ratio) ? summary.ratio.toFixed(2) : "∞"}`,
+    `Eligible cold storage: ${summary.coldStorageEligible ? "yes" : "no"}`
+  ];
+}
+
+function renderStatus(): string {
+  if (!latestStatus) {
+    return "Loading node status...";
+  }
+
+  const nodeLines = [
+    `Delegated roots: ${latestStatus.delegatedCount}`,
+    `Uptime: ${Math.floor(latestStatus.uptimeMs / 1000)}s`,
+    `Last heartbeat: ${new Date(latestStatus.lastHeartbeatAt).toLocaleTimeString()}`,
+    `Signaling kinds: ${latestStatus.signalingKindRange}`,
+    `Signaling healthy: ${latestStatus.signalingRangeHealthy ? "yes" : "no"}`,
+    `Roots: ${latestStatus.delegatedRootHashes.join(", ") || "none"}`
+  ];
+
+  if (!latestCredits) {
+    return nodeLines.join("\n");
+  }
+
+  return [...nodeLines, "", "Credits", ...formatCredits(latestCredits)].join("\n");
 }
 
 async function refreshStatus(): Promise<void> {
@@ -24,8 +50,10 @@ async function refreshStatus(): Promise<void> {
   statusElement.textContent = "Loading node status...";
 
   try {
-    const status = await requestNodeStatus();
-    statusElement.textContent = formatStatus(status);
+    const [status, credits] = await Promise.all([requestNodeStatus(), requestCreditSummary()]);
+    latestStatus = status;
+    latestCredits = credits;
+    statusElement.textContent = renderStatus();
   } catch (caughtError) {
     const message = caughtError instanceof Error ? caughtError.message : "Unknown extension status error.";
     statusElement.textContent = `Failed to load status: ${message}`;
@@ -62,11 +90,22 @@ const unsubscribeStatusUpdates = subscribeNodeStatusUpdates((status) => {
     return;
   }
 
-  statusElement.textContent = formatStatus(status);
+  latestStatus = status;
+  statusElement.textContent = renderStatus();
+});
+
+const unsubscribeCreditUpdates = subscribeCreditUpdates((summary) => {
+  if (!(statusElement instanceof HTMLElement)) {
+    return;
+  }
+
+  latestCredits = summary;
+  statusElement.textContent = renderStatus();
 });
 
 window.addEventListener("beforeunload", () => {
   unsubscribeStatusUpdates();
+  unsubscribeCreditUpdates();
 });
 
 void refreshStatus();

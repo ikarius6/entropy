@@ -4,6 +4,7 @@ import {
   createEntropyRequestId,
   ENTROPY_EXTENSION_SOURCE,
   ENTROPY_WEB_SOURCE,
+  isCreditSummaryPayload,
   isEntropyExtensionResponseEvent,
   isEntropyRuntimePushMessage,
   isEntropyRuntimeResponse,
@@ -20,6 +21,25 @@ const VALID_NODE_STATUS = {
   signalingRangeHealthy: true
 };
 
+const VALID_CREDIT_SUMMARY = {
+  totalUploaded: 1024,
+  totalDownloaded: 512,
+  ratio: 2,
+  balance: 512,
+  entryCount: 1,
+  coldStorageEligible: true,
+  history: [
+    {
+      id: "credit-1",
+      peerPubkey: "peer-a",
+      direction: "up" as const,
+      bytes: 1024,
+      chunkHash: "chunk-a",
+      timestamp: 1700000000
+    }
+  ]
+};
+
 const REQUEST_ID = "req-1";
 
 describe("extension bridge protocol guards", () => {
@@ -29,6 +49,15 @@ describe("extension bridge protocol guards", () => {
         source: ENTROPY_WEB_SOURCE,
         requestId: REQUEST_ID,
         type: "GET_NODE_STATUS"
+      })
+    ).toBe(true);
+
+    expect(
+      isEntropyRuntimeResponse({
+        ok: true,
+        requestId: REQUEST_ID,
+        type: "GET_CREDIT_SUMMARY",
+        payload: VALID_CREDIT_SUMMARY
       })
     ).toBe(true);
 
@@ -44,6 +73,14 @@ describe("extension bridge protocol guards", () => {
           chunkSize: 5,
           mimeType: "video/mp4"
         }
+      })
+    ).toBe(true);
+
+    expect(
+      isEntropyRuntimeMessage({
+        source: ENTROPY_WEB_SOURCE,
+        requestId: REQUEST_ID,
+        type: "GET_CREDIT_SUMMARY"
       })
     ).toBe(true);
   });
@@ -76,6 +113,17 @@ describe("extension bridge protocol guards", () => {
       isEntropyRuntimeMessage({
         source: ENTROPY_WEB_SOURCE,
         type: "GET_NODE_STATUS"
+      })
+    ).toBe(false);
+  });
+
+  it("validates credit summary payload shape", () => {
+    expect(isCreditSummaryPayload(VALID_CREDIT_SUMMARY)).toBe(true);
+
+    expect(
+      isCreditSummaryPayload({
+        ...VALID_CREDIT_SUMMARY,
+        history: [{ ...VALID_CREDIT_SUMMARY.history[0], direction: "sideways" }]
       })
     ).toBe(false);
   });
@@ -143,6 +191,15 @@ describe("extension bridge protocol guards", () => {
         payload: { delegatedCount: 1 }
       })
     ).toBe(false);
+
+    expect(
+      isEntropyRuntimeResponse({
+        ok: true,
+        requestId: REQUEST_ID,
+        type: "GET_CREDIT_SUMMARY",
+        payload: { totalUploaded: 1 }
+      })
+    ).toBe(false);
   });
 
   it("generates non-empty request ids", () => {
@@ -178,5 +235,13 @@ describe("extension bridge protocol guards", () => {
         payload: { delegatedCount: 1 }
       })
     ).toBe(false);
+
+    expect(
+      isEntropyRuntimePushMessage({
+        source: ENTROPY_EXTENSION_SOURCE,
+        type: "CREDIT_UPDATE",
+        payload: VALID_CREDIT_SUMMARY
+      })
+    ).toBe(true);
   });
 });

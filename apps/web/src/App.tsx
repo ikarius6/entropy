@@ -8,6 +8,7 @@ import {
 } from "@entropy/core";
 
 import { ChunkMapOutput } from "./components/ChunkMapOutput";
+import { CreditPanel } from "./components/CreditPanel";
 import { FilePickerSection } from "./components/FilePickerSection";
 import { NodeStatusPanel } from "./components/NodeStatusPanel";
 import { delegateSeeding } from "./lib/extension-bridge";
@@ -108,6 +109,7 @@ export function App(): JSX.Element {
       {artifacts ? <ChunkMapOutput chunking={artifacts.chunking} eventJson={artifacts.eventJson} /> : null}
 
       <NodeStatusPanel />
+      <CreditPanel />
     </main>
   );
 }

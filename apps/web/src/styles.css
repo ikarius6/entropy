@@ -88,6 +88,41 @@ h2 {
   color: #95ffe5;
 }
 
+.credit-panel ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.credit-history {
+  margin-top: 0.85rem;
+  border-top: 1px solid rgba(150, 180, 255, 0.2);
+  padding-top: 0.6rem;
+}
+
+.credit-history p {
+  margin: 0 0 0.5rem;
+  color: #b8cbff;
+  font-size: 0.9rem;
+}
+
+.credit-history li {
+  line-height: 1.45;
+}
+
+.direction {
+  font-weight: 700;
+}
+
+.direction.up {
+  color: #9affd8;
+}
+
+.direction.down {
+  color: #ff95ab;
+}
+
 button {
   margin-top: 0.75rem;
   border: 0;

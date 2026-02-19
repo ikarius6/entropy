@@ -1,21 +1,24 @@
 import {
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
+  isCreditSummaryPayload,
   isEntropyExtensionResponseEvent,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
+  type CreditSummaryPayload,
   type DelegateSeedingPayload,
   type EntropyRuntimeMessage,
-  type NodeStatusPayload
+  type NodeStatusPayload,
+  type ServeChunkPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
-export type { DelegateSeedingPayload, NodeStatusPayload };
+export type { CreditSummaryPayload, DelegateSeedingPayload, NodeStatusPayload, ServeChunkPayload };
 
 function buildMessage(
   requestId: string,
   type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload
+  payload?: DelegateSeedingPayload | ServeChunkPayload
 ): EntropyRuntimeMessage {
   if (type === "DELEGATE_SEEDING") {
     if (!payload) {
@@ -26,7 +29,20 @@ function buildMessage(
       source: ENTROPY_WEB_SOURCE,
       requestId,
       type,
-      payload
+      payload: payload as DelegateSeedingPayload
+    };
+  }
+
+  if (type === "SERVE_CHUNK") {
+    if (!payload) {
+      throw new Error("SERVE_CHUNK requires a payload.");
+    }
+
+    return {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type,
+      payload: payload as ServeChunkPayload
     };
   }
 
@@ -38,10 +54,30 @@ function buildMessage(
 }
 
 export function sendExtensionRequest(
+  type: "DELEGATE_SEEDING",
+  payload: DelegateSeedingPayload,
+  timeoutMs?: number
+): Promise<NodeStatusPayload | undefined>;
+export function sendExtensionRequest(
+  type: "GET_NODE_STATUS" | "HEARTBEAT",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<NodeStatusPayload | undefined>;
+export function sendExtensionRequest(
+  type: "GET_CREDIT_SUMMARY",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<CreditSummaryPayload>;
+export function sendExtensionRequest(
+  type: "SERVE_CHUNK",
+  payload: ServeChunkPayload,
+  timeoutMs?: number
+): Promise<CreditSummaryPayload>;
+export function sendExtensionRequest(
   type: ExtensionRequestType,
-  payload?: DelegateSeedingPayload,
+  payload?: DelegateSeedingPayload | ServeChunkPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | undefined> {
   return new Promise((resolve, reject) => {
     const requestId = createEntropyRequestId("web");
 
@@ -56,7 +92,11 @@ export function sendExtensionRequest(
     }
 
     function handleBridgeResponse(event: MessageEvent): void {
-      if (event.source !== window || !isEntropyExtensionResponseEvent(event.data)) {
+      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") {
+        return;
+      }
+
+      if (!isEntropyExtensionResponseEvent(event.data)) {
         return;
       }
 
@@ -72,6 +112,16 @@ export function sendExtensionRequest(
 
       if (typeof event.data.error === "string" && event.data.error.length > 0) {
         reject(new Error(event.data.error));
+        return;
+      }
+
+      if (type === "GET_CREDIT_SUMMARY" || type === "SERVE_CHUNK") {
+        if (!isCreditSummaryPayload(event.data.payload)) {
+          reject(new Error("Entropy extension bridge returned an invalid credit summary payload."));
+          return;
+        }
+
+        resolve(event.data.payload);
         return;
       }
 
@@ -100,11 +150,45 @@ export function sendHeartbeat(): Promise<NodeStatusPayload | undefined> {
   return sendExtensionRequest("HEARTBEAT");
 }
 
+export function getCreditSummary(): Promise<CreditSummaryPayload> {
+  return sendExtensionRequest("GET_CREDIT_SUMMARY");
+}
+
+export function serveChunk(payload: ServeChunkPayload): Promise<CreditSummaryPayload> {
+  return sendExtensionRequest("SERVE_CHUNK", payload);
+}
+
 export function subscribeToNodeStatusUpdates(
   onUpdate: (status: NodeStatusPayload) => void
 ): () => void {
   function handleRuntimePush(event: MessageEvent): void {
     if (event.source !== window || !isEntropyRuntimePushMessage(event.data)) {
+      return;
+    }
+
+    if (event.data.type !== "NODE_STATUS_UPDATE") {
+      return;
+    }
+
+    onUpdate(event.data.payload);
+  }
+
+  window.addEventListener("message", handleRuntimePush);
+
+  return () => {
+    window.removeEventListener("message", handleRuntimePush);
+  };
+}
+
+export function subscribeToCreditUpdates(
+  onUpdate: (summary: CreditSummaryPayload) => void
+): () => void {
+  function handleRuntimePush(event: MessageEvent): void {
+    if (event.source !== window || !isEntropyRuntimePushMessage(event.data)) {
+      return;
+    }
+
+    if (event.data.type !== "CREDIT_UPDATE") {
       return;
     }
 

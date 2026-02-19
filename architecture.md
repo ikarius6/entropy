@@ -102,11 +102,14 @@ entropy/
 │   │   │   │   ├── player/             # Reproductor de video/audio (MediaSource API)
 │   │   │   │   ├── uploader/           # UI de carga + progreso de chunking
 │   │   │   │   ├── profile/            # Perfil Nostr del usuario
+│   │   │   │   ├── NodeStatusPanel.tsx # Estado de nodo delegado (implementado)
+│   │   │   │   ├── CreditPanel.tsx     # Panel de créditos (Phase 2 implementado)
 │   │   │   │   └── ui/                 # Componentes base (shadcn/ui)
 │   │   │   ├── hooks/
 │   │   │   │   ├── useNostr.ts         # Suscripción a eventos Nostr
 │   │   │   │   ├── usePeerSwarm.ts     # Estado del swarm WebRTC activo
 │   │   │   │   ├── useChunkDownload.ts # Orquestación de descarga de chunks
+│   │   │   │   ├── useExtensionNodeStatus.ts # Estado live del nodo delegado
 │   │   │   │   └── useCredits.ts       # Estado de créditos del usuario
 │   │   │   ├── stores/
 │   │   │   │   └── entropy-store.ts    # Estado global (Zustand)
@@ -131,6 +134,7 @@ entropy/
 │       │   ├── background/
 │       │   │   ├── service-worker.ts   # Service Worker principal (Manifest V3)
 │       │   │   ├── seeder.ts           # Lógica de seeding persistente en background
+│       │   │   ├── credit-ledger.ts    # Ledger de créditos persistido en chrome.storage
 │       │   │   └── scheduler.ts        # Planificador de tareas (cold storage, limpieza)
 │       │   ├── popup/
 │       │   │   ├── Popup.tsx           # Dashboard compacto de nodo
@@ -143,7 +147,8 @@ entropy/
 │       │   ├── content/
 │       │   │   └── content-script.ts   # Puente de comunicación con @entropy/web
 │       │   └── shared/
-│       │       └── messaging.ts        # Tipos y helpers para chrome.runtime messaging
+│       │       ├── messaging.ts         # Tipos y helpers para chrome.runtime messaging
+│       │       └── status-client.ts     # Cliente para status + créditos en popup/dashboard
 │       ├── manifest.json               # Manifest V3
 │       ├── vite.config.ts              # Build multi-entry (background, popup, dashboard, content)
 │       ├── package.json
@@ -287,9 +292,13 @@ Mensajes clave:
 ─────────────────
 WEB → EXT:  "DELEGATE_SEEDING"   → Pasar chunks activos al background
 WEB → EXT:  "GET_NODE_STATUS"    → Solicitar estadísticas del nodo
-EXT → WEB:  "PEER_REQUEST"       → Notificar solicitud entrante de chunk
-EXT → WEB:  "CREDIT_UPDATE"      → Actualizar UI de créditos
-EXT ← →:   "HEARTBEAT"          → Mantener viva la conexión
+EXT → WEB:  "PEER_REQUEST"       → Notificar solicitud entrante de chunk (a revisar si es necesario)
+WEB → EXT:  "GET_CREDIT_SUMMARY" → Solicitar resumen de créditos
+WEB → EXT:  "HEARTBEAT"          → Mantener viva la conexión
+EXT → WEB:  "NODE_STATUS_UPDATE" → Push de estado de nodo en tiempo real
+EXT → WEB:  "CREDIT_UPDATE"      → Push de resumen de créditos en tiempo real
+
+Todas las solicitudes y respuestas usan `requestId` para correlación robusta.
 ```
 
 ---
@@ -520,11 +529,15 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 
 **Objetivo:** Sistema funcional de Proof of Upstream y ratio de ancho de banda.
 
-- [ ] Implementar `proof-of-upstream.ts`: firma y verificación de recibos
-- [ ] Implementar `ledger.ts`: registro local en IndexedDB
-- [ ] Lógica de gate: verificar crédito antes de servir chunks
-- [ ] Onboarding Seeder: asignar chunks fríos a nuevos usuarios
-- [ ] Tests de integración del flujo de créditos
+- [x] Implementar `proof-of-upstream.ts` (draft/parse/validación de recibos con verificador de firma configurable)
+- [x] Implementar `ledger.ts` (registro local, ratio, balance, historial)
+- [x] Implementar base de `cold-storage.ts` (elegibilidad, asignación y pruning)
+- [x] Extender bridge web↔ext con `GET_CREDIT_SUMMARY` y push `CREDIT_UPDATE`
+- [x] Integrar resumen de créditos en web (`CreditPanel`) y extensión (popup/dashboard)
+- [x] Agregar tests unitarios para créditos + storage base (`proof-of-upstream`, `ledger`, `cold-storage`, `chunk-store`, `quota-manager`)
+- [x] Lógica de gate activa: verificar crédito antes de servir chunks
+- [x] Onboarding Seeder: asignar chunks fríos a nuevos usuarios en red real
+- [x] Tests de integración del flujo de créditos end-to-end
 
 ### Fase 3 — Extensión de Navegador (parcial)
 
