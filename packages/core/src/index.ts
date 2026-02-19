@@ -5,4 +5,7 @@ export * from "./crypto/hash";
 export * from "./nostr/nip-entropy";
 export * from "./nostr/events";
 export * from "./nostr/signaling";
+export * from "./nostr/client";
+export * from "./transport/peer-manager";
+export * from "./transport/signaling-channel";
 export * from "./types/extension-bridge";

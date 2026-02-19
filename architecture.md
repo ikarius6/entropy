@@ -504,17 +504,17 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 
 ## 11. Roadmap de Implementación por Fases
 
-### Fase 1 — Prototipo P2P (PoC)
+### Fase 1 — Prototipo P2P (PoC) ✅
 
 **Objetivo:** Dos navegadores intercambian un archivo de 5MB usando identidad Nostr.
 
-- [ ] Configurar monorepo (pnpm + Turborepo + TypeScript)
-- [ ] Implementar `@entropy/core`: chunker, hasher, Merkle tree
-- [ ] Implementar cliente Nostr básico (conectar a relay, publicar/suscribir)
-- [ ] Definir evento `kind:7001` y parser
-- [ ] Implementar señalización WebRTC vía eventos efímeros Nostr
-- [ ] Crear página web mínima: subir archivo → generar chunk map → seed → descargar desde otro navegador
-- [ ] Tests unitarios para chunking y hashing
+- [x] Configurar monorepo (pnpm + Turborepo + TypeScript)
+- [x] Implementar `@entropy/core`: chunker, hasher, Merkle tree
+- [x] Implementar cliente Nostr básico (conectar a relay, publicar/suscribir)
+- [x] Definir evento `kind:7001` y parser
+- [x] Implementar señalización WebRTC vía eventos efímeros Nostr
+- [x] Crear página web mínima: subir archivo → generar chunk map → seed → descargar desde otro navegador
+- [x] Tests unitarios para chunking y hashing
 
 ### Fase 2 — Motor de Créditos
 
@@ -526,16 +526,16 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [ ] Onboarding Seeder: asignar chunks fríos a nuevos usuarios
 - [ ] Tests de integración del flujo de créditos
 
-### Fase 3 — Extensión de Navegador
+### Fase 3 — Extensión de Navegador (parcial)
 
 **Objetivo:** Seeding persistente en background con dashboard de nodo.
 
-- [ ] Scaffold extensión Manifest V3 con Vite
+- [x] Scaffold extensión Manifest V3 con Vite
 - [ ] Service Worker: mantener conexiones WebRTC activas
-- [ ] Content script: puente de comunicación con la web app
-- [ ] Popup: mini-dashboard (ratio, peers, estado)
-- [ ] Dashboard completo: estadísticas, inventario de chunks, configuración
-- [ ] Mensaje `DELEGATE_SEEDING` desde web app a extensión
+- [x] Content script: puente de comunicación con la web app
+- [x] Popup: mini-dashboard (ratio, peers, estado)
+- [x] Dashboard completo: estadísticas, inventario de chunks, configuración
+- [x] Mensaje `DELEGATE_SEEDING` desde web app a extensión
 
 ### Fase 4 — Web App Completa
 
