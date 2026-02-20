@@ -18,12 +18,14 @@ import {
   type EntropyRuntimeResponse,
   type NodeSettingsPayload,
   type NodeStatusPayload,
-  type PublicKeyPayload
+  type PublicKeyPayload,
+  type SignedEventPayload,
+  type ChunkDataPayload
 } from "../shared/messaging";
 import { handleDataChannel } from "./chunk-server";
 import { hasDelegatedChunks, storeChunkPayload } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
-import { getOrCreateKeypair, getPublicKey, importKeypair } from "./identity-store";
+import { getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
 import {
   addRelay,
   ensureRelayConnections,
@@ -67,6 +69,20 @@ async function buildNodeStatus(): Promise<NodeStatusPayload> {
       isEntropySignalingKind(ENTROPY_SIGNALING_KIND_MIN) &&
       isEntropySignalingKind(ENTROPY_SIGNALING_KIND_MAX)
   };
+}
+
+function signedEventResponse(
+  requestId: string,
+  payload: SignedEventPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type: "SIGN_EVENT", payload };
+}
+
+function chunkDataResponse(
+  requestId: string,
+  payload: ChunkDataPayload | null
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type: "GET_CHUNK", payload };
 }
 
 function successResponse(
@@ -262,6 +278,27 @@ chrome.runtime.onMessage.addListener(
             sendResponse(successResponse(message.requestId, message.type, status));
             emitNodeStatusUpdate(status);
             emitCreditUpdate(creditSummary);
+            break;
+          }
+
+          case "GET_CHUNK": {
+            const stored = await chunkStore.getChunk(message.payload.hash);
+            if (!stored) {
+              sendResponse(chunkDataResponse(message.requestId, null));
+            } else {
+              sendResponse(chunkDataResponse(message.requestId, {
+                hash: stored.hash,
+                rootHash: stored.rootHash,
+                index: stored.index,
+                data: Array.from(new Uint8Array(stored.data))
+              }));
+            }
+            break;
+          }
+
+          case "SIGN_EVENT": {
+            const signed = await signNostrEvent(message.payload);
+            sendResponse(signedEventResponse(message.requestId, signed));
             break;
           }
 

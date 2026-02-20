@@ -23,5 +23,9 @@ export {
   type PublicKeyPayload,
   type RelayStatusPayload,
   type StoreChunkPayload,
-  type ServeChunkPayload
+  type ServeChunkPayload,
+  type SignEventPayload,
+  type SignedEventPayload,
+  type GetChunkPayload,
+  type ChunkDataPayload
 } from "@entropy/core";

@@ -20,12 +20,40 @@ export interface StoreChunkPayload {
   hash: string;
   rootHash: string;
   index: number;
-  data: ArrayBuffer;
+  data: number[];
   pinned?: boolean;
 }
 
 export interface ImportKeypairPayload {
   privkey: string;
+}
+
+export interface GetChunkPayload {
+  hash: string;
+}
+
+export interface ChunkDataPayload {
+  hash: string;
+  rootHash: string;
+  index: number;
+  data: number[];
+}
+
+export interface SignEventPayload {
+  kind: number;
+  created_at: number;
+  content: string;
+  tags: string[][];
+}
+
+export interface SignedEventPayload {
+  id: string;
+  pubkey: string;
+  sig: string;
+  kind: number;
+  created_at: number;
+  content: string;
+  tags: string[][];
 }
 
 export interface PublicKeyPayload {
@@ -90,7 +118,9 @@ export type EntropyRuntimePayload =
   | NodeStatusPayload
   | CreditSummaryPayload
   | PublicKeyPayload
-  | NodeSettingsPayload;
+  | NodeSettingsPayload
+  | SignedEventPayload
+  | ChunkDataPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -159,6 +189,18 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "SET_SEEDING_ACTIVE";
       payload: SetSeedingActivePayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "SIGN_EVENT";
+      payload: SignEventPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_CHUNK";
+      payload: GetChunkPayload;
     };
 
 export type EntropyRuntimeResponse =
@@ -185,6 +227,18 @@ export type EntropyRuntimeResponse =
       requestId: string;
       type: "IMPORT_KEYPAIR" | "GET_PUBLIC_KEY";
       payload: PublicKeyPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "SIGN_EVENT";
+      payload: SignedEventPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "GET_CHUNK";
+      payload: ChunkDataPayload | null;
     }
   | {
       ok: true;
@@ -241,7 +295,9 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "GET_NODE_SETTINGS" ||
     value === "ADD_RELAY" ||
     value === "REMOVE_RELAY" ||
-    value === "SET_SEEDING_ACTIVE"
+    value === "SET_SEEDING_ACTIVE" ||
+    value === "SIGN_EVENT" ||
+    value === "GET_CHUNK"
   );
 }
 
@@ -370,7 +426,7 @@ function isStoreChunkPayload(value: unknown): value is StoreChunkPayload {
     typeof value.hash === "string" &&
     typeof value.rootHash === "string" &&
     typeof value.index === "number" &&
-    isArrayBuffer(value.data) &&
+    Array.isArray(value.data) &&
     (value.pinned === undefined || typeof value.pinned === "boolean")
   );
 }
@@ -460,6 +516,15 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
 
   if (requestType === "IMPORT_KEYPAIR" || requestType === "GET_PUBLIC_KEY") {
     return isPublicKeyPayload(payload);
+  }
+
+  if (requestType === "GET_CHUNK") {
+    // null means chunk not found — valid response
+    return payload === null || payload === undefined || isRecord(payload);
+  }
+
+  if (requestType === "SIGN_EVENT") {
+    return isRecord(payload) && typeof payload.id === "string" && typeof payload.sig === "string";
   }
 
   return isNodeStatusPayload(payload);

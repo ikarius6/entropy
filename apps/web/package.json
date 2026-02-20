@@ -7,18 +7,29 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node -e \"process.exit(0)\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@entropy/core": "workspace:*",
+    "@tailwindcss/vite": "^4.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.575.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.13.0",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.0",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.16",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^28.1.0",
     "typescript": "^5.8.2",
-    "vite": "^5.4.14"
+    "vite": "^5.4.14",
+    "vitest": "^2.1.8"
   }
 }

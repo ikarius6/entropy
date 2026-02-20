@@ -17,46 +17,61 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * Some dependencies (e.g. nostr-tools) embed Unicode sentinel values like
  * U+FFFF as string literals which Chrome rejects in content scripts.
  */
+async function buildIife(entry: string, outDir: string, outFile: string, name: string): Promise<void> {
+  const fullOutFile = resolve(__dirname, outDir, outFile);
+
+  await build({
+    configFile: false,
+    resolve: {
+      alias: {
+        "@entropy/core": resolve(__dirname, "../../packages/core/src/index.ts")
+      }
+    },
+    build: {
+      write: true,
+      outDir: resolve(__dirname, outDir),
+      emptyOutDir: false,
+      lib: {
+        entry: resolve(__dirname, entry),
+        formats: ["iife"],
+        name,
+        fileName: () => outFile
+      },
+      rollupOptions: {
+        output: {
+          extend: true,
+          sanitizeFileName: (n) => n
+        }
+      }
+    }
+  });
+
+  const raw = readFileSync(fullOutFile, "utf8");
+  const escaped = raw.replace(/[^\x00-\x7F]/gu, (char) => {
+    const cp = char.codePointAt(0) ?? 0;
+    return cp > 0xffff
+      ? `\\u{${cp.toString(16)}}`
+      : `\\u${cp.toString(16).padStart(4, "0")}`;
+  });
+  writeFileSync(fullOutFile, escaped, "utf8");
+}
+
 function buildContentScriptIife() {
   return {
     name: "build-content-script-iife",
     async closeBundle() {
-      const outFile = resolve(__dirname, "dist/content/content-script.js");
-
-      await build({
-        configFile: false,
-        resolve: {
-          alias: {
-            "@entropy/core": resolve(__dirname, "../../packages/core/src/index.ts")
-          }
-        },
-        build: {
-          write: true,
-          outDir: resolve(__dirname, "dist/content"),
-          emptyOutDir: false,
-          lib: {
-            entry: resolve(__dirname, "src/content/content-script.ts"),
-            formats: ["iife"],
-            name: "EntropyContentScript",
-            fileName: () => "content-script.js"
-          },
-          rollupOptions: {
-            output: {
-              extend: true,
-              sanitizeFileName: (name) => name
-            }
-          }
-        }
-      });
-
-      const raw = readFileSync(outFile, "utf8");
-      const escaped = raw.replace(/[^\x00-\x7F]/gu, (char) => {
-        const cp = char.codePointAt(0) ?? 0;
-        return cp > 0xffff
-          ? `\\u{${cp.toString(16)}}`
-          : `\\u${cp.toString(16).padStart(4, "0")}`;
-      });
-      writeFileSync(outFile, escaped, "utf8");
+      await buildIife(
+        "src/content/content-script.ts",
+        "dist/content",
+        "content-script.js",
+        "EntropyContentScript"
+      );
+      await buildIife(
+        "src/inpage/nostr-provider.ts",
+        "dist/inpage",
+        "nostr-provider.js",
+        "EntropyNostrProvider"
+      );
     }
   };
 }

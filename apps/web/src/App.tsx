@@ -82,7 +82,7 @@ export function App(): JSX.Element {
               hash: chunk.hash,
               rootHash: delegationPayload.rootHash,
               index: chunk.index,
-              data: payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength)
+              data: Array.from(payload)
             });
           }
 

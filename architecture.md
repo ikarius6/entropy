@@ -564,6 +564,8 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 
 ### Fase 4 — Web App Completa
 
+> Plan detallado en [`phase4.md`](./phase4.md)
+
 **Objetivo:** Red social funcional con feed, perfiles y reproducción multimedia.
 
 - [ ] Feed de publicaciones (consulta de eventos kind:7001 + kind:1)

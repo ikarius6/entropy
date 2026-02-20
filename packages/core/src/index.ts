@@ -11,6 +11,7 @@ export * from "./transport/peer-manager";
 export * from "./transport/signaling-channel";
 export * from "./transport/nat-traversal";
 export * from "./transport/chunk-transfer";
+export * from "./transport/chunk-downloader";
 export * from "./credits/proof-of-upstream";
 export * from "./credits/verify-receipt";
 export * from "./credits/ledger";

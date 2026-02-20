@@ -17,7 +17,9 @@ import {
   type RelayUrlPayload,
   type SetSeedingActivePayload,
   type StoreChunkPayload,
-  type ServeChunkPayload
+  type ServeChunkPayload,
+  type GetChunkPayload,
+  type ChunkDataPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
@@ -31,7 +33,9 @@ export type {
   RelayUrlPayload,
   SetSeedingActivePayload,
   StoreChunkPayload,
-  ServeChunkPayload
+  ServeChunkPayload,
+  GetChunkPayload,
+  ChunkDataPayload
 };
 
 function buildNoPayloadMessage(
@@ -328,6 +332,41 @@ export function getExtensionPublicKey(): Promise<PublicKeyPayload> {
 
 export function serveChunk(payload: ServeChunkPayload): Promise<CreditSummaryPayload> {
   return sendExtensionRequest("SERVE_CHUNK", payload);
+}
+
+export function getChunk(payload: GetChunkPayload, timeoutMs = 5000): Promise<ChunkDataPayload | null> {
+  const requestId = createEntropyRequestId("web");
+  const message: EntropyRuntimeMessage = { source: ENTROPY_WEB_SOURCE, requestId, type: "GET_CHUNK", payload };
+
+  return new Promise((resolve, reject) => {
+    const timeoutHandle = window.setTimeout(() => {
+      window.removeEventListener("message", handleResponse);
+      reject(new Error("GET_CHUNK bridge timeout"));
+    }, timeoutMs);
+
+    function handleResponse(event: MessageEvent): void {
+      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") return;
+      if (!isEntropyExtensionResponseEvent(event.data)) return;
+      if (event.data.requestId !== requestId || event.data.requestType !== "GET_CHUNK") return;
+
+      window.clearTimeout(timeoutHandle);
+      window.removeEventListener("message", handleResponse);
+
+      console.log("[getChunk] bridge response payload:", event.data.payload, "error:", event.data.error);
+
+      if (typeof event.data.error === "string" && event.data.error.length > 0) {
+        reject(new Error(event.data.error));
+        return;
+      }
+
+      // null payload means chunk not found — that is a valid resolved value
+      resolve((event.data.payload as ChunkDataPayload) ?? null);
+    }
+
+    window.addEventListener("message", handleResponse);
+    console.log("[getChunk] sending GET_CHUNK for hash:", payload.hash.slice(0, 12) + "…");
+    window.postMessage(message, "*");
+  });
 }
 
 export function subscribeToNodeStatusUpdates(

@@ -1,7 +1,7 @@
 import type { ChunkStore, StoreChunkPayload, StoredChunk } from "@entropy/core";
 
-function copyBuffer(data: ArrayBuffer): ArrayBuffer {
-  return data.slice(0);
+function numberArrayToBuffer(data: number[]): ArrayBuffer {
+  return new Uint8Array(data).buffer;
 }
 
 function toStoredChunk(payload: StoreChunkPayload): StoredChunk {
@@ -13,7 +13,7 @@ function toStoredChunk(payload: StoreChunkPayload): StoredChunk {
     hash: payload.hash,
     rootHash: payload.rootHash,
     index: payload.index,
-    data: copyBuffer(payload.data),
+    data: numberArrayToBuffer(payload.data),
     createdAt: Date.now(),
     lastAccessed: Date.now(),
     pinned: payload.pinned ?? false
