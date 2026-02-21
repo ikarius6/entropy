@@ -87,6 +87,7 @@ export default {
       input: {
         popup: resolve(__dirname, "popup.html"),
         dashboard: resolve(__dirname, "dashboard.html"),
+        offscreen: resolve(__dirname, "offscreen.html"),
         "background/service-worker": "src/background/service-worker.ts"
       },
       output: {

@@ -23,3 +23,4 @@ export * from "./storage/quota-manager";
 export * from "./storage/quota-manager-idb";
 export * from "./storage/quota-aware-store";
 export * from "./types/extension-bridge";
+export { logger } from "./logger";

@@ -61,10 +61,12 @@ const nostr = {
   }
 };
 
-Object.defineProperty(window, "nostr", {
-  value: nostr,
-  writable: false,
-  configurable: false
-});
+if (!("nostr" in window)) {
+  Object.defineProperty(window, "nostr", {
+    value: nostr,
+    writable: false,
+    configurable: false
+  });
 
-console.log("[Entropy] window.nostr NIP-07 provider injected");
+  console.log("[Entropy] window.nostr NIP-07 provider injected");
+}

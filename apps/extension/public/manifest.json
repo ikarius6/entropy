@@ -3,21 +3,36 @@
   "name": "Entropy Extension",
   "version": "0.1.0",
   "description": "Background seeding bridge for Entropy PoC.",
-  "permissions": ["storage", "alarms", "idle"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "alarms",
+    "idle",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content/content-script.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/content-script.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["inpage/nostr-provider.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "inpage/nostr-provider.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }
@@ -29,8 +44,14 @@
   "options_page": "dashboard.html",
   "web_accessible_resources": [
     {
-      "resources": ["assets/*", "chunks/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "assets/*",
+        "chunks/*",
+        "inpage/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

@@ -287,8 +287,8 @@ Two paths exist for loading media content:
  │       chunkHash, rootHash, requesterPubkey            │
  │     }))                                              │
  │                                                      │
- │  4. dc.onmessage:                                    │
- │     decodeChunkTransferMessage(data)                  │
+ │  4. dc.onmessage (via createChunkReceiver):           │
+ │     Reassembles fragmented chunks (64KB fragments)    │
  │     → CHUNK_DATA: verify sha256 → store              │
  │     → CHUNK_ERROR: re-queue chunk                    │
  │                                                      │
@@ -420,7 +420,7 @@ WebRTC connections are established using **Nostr ephemeral events** (kind:20001)
          │  encodeChunkRequest(hash)        │                              │
          │ ════════════════════════════════════════════════════════════════►│
          │                                  │                              │ Lookup in IndexedDB
-         │  encodeChunkResponse(hash, data) │                              │ sendChunkOverDataChannel
+         │  CHUNK_DATA_HEADER + N×64KB      │                              │ sendChunkOverDataChannel
          │◄════════════════════════════════════════════════════════════════ │
          │                                  │                              │
          │  sha256Hex(data) === expected?   │                              │
@@ -443,24 +443,35 @@ WebRTC connections are established using **Nostr ephemeral events** (kind:20001)
 
 ## 7. Chunk Transfer Protocol
 
-Chunks are exchanged over WebRTC DataChannels using a **compact binary protocol** defined in `chunk-transfer.ts`.
+Chunks are exchanged over WebRTC DataChannels using a **compact binary protocol** defined in `chunk-transfer.ts`. Because SCTP (the underlying transport for DataChannels) has a practical message size limit of ~256KB, chunks larger than 64KB are **fragmented** before sending and reassembled on the receiver side.
 
 ### Message Format
 
 ```
- CHUNK_REQUEST (type=1)
+ CHUNK_REQUEST (type=0x01)
  ┌──────┬──────────────┬──────────────┬──────────┬────────────────┐
  │ 0x01 │ chunk_hash   │ root_hash    │ pk_len   │ requester_pk   │
  │ 1B   │ 32B (SHA256) │ 32B (SHA256) │ 2B (u16) │ variable       │
  └──────┴──────────────┴──────────────┴──────────┴────────────────┘
 
- CHUNK_DATA (type=2)
+ CHUNK_DATA (type=0x02) — used for small chunks (≤64KB)
  ┌──────┬──────────────┬───────────┬─────────────────┐
  │ 0x02 │ chunk_hash   │ data_len  │ chunk_data       │
- │ 1B   │ 32B (SHA256) │ 4B (u32)  │ ≤5MB             │
+ │ 1B   │ 32B (SHA256) │ 4B (u32)  │ ≤64KB            │
  └──────┴──────────────┴───────────┴─────────────────┘
 
- CHUNK_ERROR (type=3)
+ CHUNK_DATA_HEADER (type=0x04) — used for large chunks (>64KB), followed by N fragments
+ ┌──────┬──────────────┬────────────┐
+ │ 0x04 │ chunk_hash   │ total_len  │
+ │ 1B   │ 32B (SHA256) │ 4B (u32)   │
+ └──────┴──────────────┴────────────┘
+   Followed by ceil(total_len / 64KB) raw binary fragments:
+   ┌────────────────────┐
+   │ fragment_data      │  Each ≤64KB, sent as separate dc.send() calls
+   │ (raw bytes)        │
+   └────────────────────┘
+
+ CHUNK_ERROR (type=0x03)
  ┌──────┬──────────────┬─────────┐
  │ 0x03 │ chunk_hash   │ reason  │
  │ 1B   │ 32B (SHA256) │ 1B      │
@@ -468,10 +479,23 @@ Chunks are exchanged over WebRTC DataChannels using a **compact binary protocol*
    reason: 0=NOT_FOUND, 1=INSUFFICIENT_CREDIT, 2=BUSY
 ```
 
+### Fragmentation & Reassembly
+
+```
+ Sender (sendChunkOverDataChannel):
+   chunk ≤ 64KB → send as single CHUNK_DATA message
+   chunk > 64KB → send CHUNK_DATA_HEADER + N raw 64KB fragments
+
+ Receiver (createChunkReceiver):
+   On CHUNK_DATA        → return complete chunk immediately
+   On CHUNK_DATA_HEADER → buffer, then accumulate N fragment messages
+                          until totalLen bytes received → return complete chunk
+```
+
 ### Flow Control
 
 ```
- Sender checks channel.bufferedAmount before sending:
+ Sender checks channel.bufferedAmount before each fragment:
    bufferedAmount ≤ 4MB → send immediately
    bufferedAmount > 4MB → wait for 'bufferedamountlow' event (threshold: 256KB)
 ```

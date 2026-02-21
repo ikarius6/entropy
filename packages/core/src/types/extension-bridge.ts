@@ -30,6 +30,8 @@ export interface ImportKeypairPayload {
 
 export interface GetChunkPayload {
   hash: string;
+  rootHash?: string;
+  gatekeepers?: string[];
 }
 
 export interface ChunkDataPayload {

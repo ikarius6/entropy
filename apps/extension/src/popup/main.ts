@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import type { CreditSummaryPayload, NodeStatusPayload } from "../shared/messaging";
 import {
   requestCreditSummary,
@@ -71,7 +72,7 @@ async function openDashboard(): Promise<void> {
   }
 
   try {
-    await chrome.runtime.openOptionsPage();
+    await browser.runtime.openOptionsPage();
   } catch (caughtError) {
     const message = caughtError instanceof Error ? caughtError.message : "Failed to open Entropy dashboard.";
     statusElement.textContent = `Failed to open dashboard: ${message}`;

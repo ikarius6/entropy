@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const storage = new Map<string, unknown>();
-
-const storageGet = vi.fn(async (key: string) => ({ [key]: storage.get(key) }));
-const storageSet = vi.fn(async (value: Record<string, unknown>) => {
-  for (const [entryKey, entryValue] of Object.entries(value)) {
-    storage.set(entryKey, entryValue);
-  }
-});
+import browser, { __resetMockStorage, __setMockStorageValue } from "./__mocks__/webextension-polyfill";
 
 const generateKeypairMock = vi.fn(() => ({
   pubkey: "generated-pub",
@@ -36,16 +28,7 @@ describe("identity-store", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    storage.clear();
-
-    vi.stubGlobal("chrome", {
-      storage: {
-        local: {
-          get: storageGet,
-          set: storageSet
-        }
-      }
-    });
+    __resetMockStorage();
   });
 
   it("generates and persists a keypair when storage is empty", async () => {
@@ -58,11 +41,11 @@ describe("identity-store", () => {
       privkey: "generated-priv"
     });
     expect(generateKeypairMock).toHaveBeenCalledOnce();
-    expect(storageSet).toHaveBeenCalledOnce();
+    expect(browser.storage.local.set).toHaveBeenCalledOnce();
   });
 
   it("reuses a valid keypair already stored", async () => {
-    storage.set("entropyIdentity", {
+    __setMockStorageValue("entropyIdentity", {
       pubkey: "pub-seeded-priv",
       privkey: "seeded-priv"
     });

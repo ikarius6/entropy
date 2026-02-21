@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import {
   createCreditLedger,
   isEligibleForColdStorage,
@@ -32,12 +33,12 @@ function toCreditSummaryPayload(entries: CreditEntry[]): CreditSummaryPayload {
 }
 
 async function readCreditEntries(): Promise<CreditEntry[]> {
-  const stored = (await chrome.storage.local.get(STORAGE_KEY)) as Partial<CreditStorageSchema>;
+  const stored = (await browser.storage.local.get(STORAGE_KEY)) as Partial<CreditStorageSchema>;
   return Array.isArray(stored[STORAGE_KEY]) ? stored[STORAGE_KEY] : [];
 }
 
 async function writeCreditEntries(entries: CreditEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: entries });
+  await browser.storage.local.set({ [STORAGE_KEY]: entries });
 }
 
 export async function recordUploadCredit(entry: CreditEntryInput): Promise<CreditSummaryPayload> {

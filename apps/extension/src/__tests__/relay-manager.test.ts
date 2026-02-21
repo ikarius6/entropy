@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const storage = new Map<string, unknown>();
-
-const storageGet = vi.fn(async (key: string) => ({ [key]: storage.get(key) }));
-const storageSet = vi.fn(async (value: Record<string, unknown>) => {
-  for (const [entryKey, entryValue] of Object.entries(value)) {
-    storage.set(entryKey, entryValue);
-  }
-});
+import { __resetMockStorage } from "./__mocks__/webextension-polyfill";
 
 const relayPoolInstances: Array<{
   statuses: Array<{ url: string; status: string }>;
@@ -44,17 +36,8 @@ describe("relay-manager", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    storage.clear();
+    __resetMockStorage();
     relayPoolInstances.length = 0;
-
-    vi.stubGlobal("chrome", {
-      storage: {
-        local: {
-          get: storageGet,
-          set: storageSet
-        }
-      }
-    });
   });
 
   it("initializes with default relays when storage is empty", async () => {

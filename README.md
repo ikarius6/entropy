@@ -23,6 +23,8 @@ pnpm dev:web
 
 ```bash
 pnpm --filter @entropy/extension build
+
+pnpm --filter @entropy/extension build:firefox
 ```
 
 After loading, open the extension popup and use **Open dashboard** (or extension options) to inspect live node status updates.

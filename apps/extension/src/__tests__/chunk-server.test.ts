@@ -7,7 +7,8 @@ const sendChunkOverDataChannelMock = vi.fn();
 vi.mock("@entropy/core", () => ({
   decodeChunkTransferMessage: decodeChunkTransferMessageMock,
   encodeChunkError: encodeChunkErrorMock,
-  sendChunkOverDataChannel: sendChunkOverDataChannelMock
+  sendChunkOverDataChannel: sendChunkOverDataChannelMock,
+  logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
 }));
 
 class MockDataChannel {

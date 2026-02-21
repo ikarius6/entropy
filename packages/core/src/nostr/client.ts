@@ -1,4 +1,5 @@
 import type { NostrEventDraft } from "./events";
+import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,14 +73,17 @@ export class Relay {
 
   connect(): void {
     if (this.ws) {
+      logger.log(`[Relay] already connected/connecting to ${this.url}`);
       return;
     }
 
     this.status = "connecting";
+    logger.log(`[Relay] connecting to ${this.url}`);
     this.ws = new WebSocket(this.url);
 
     this.ws.addEventListener("open", () => {
       this.status = "connected";
+      logger.log(`[Relay] connected to ${this.url}, flushing ${this.pendingMessages.length} pending messages`);
 
       for (const message of this.pendingMessages) {
         this.ws?.send(message);
@@ -92,12 +96,14 @@ export class Relay {
       this.handleRelayMessage(event.data as string);
     });
 
-    this.ws.addEventListener("close", () => {
+    this.ws.addEventListener("close", (event) => {
+      logger.log(`[Relay] disconnected from ${this.url}, code=${(event as CloseEvent).code}`);
       this.status = "disconnected";
       this.ws = null;
     });
 
-    this.ws.addEventListener("error", () => {
+    this.ws.addEventListener("error", (event) => {
+      logger.error(`[Relay] error on ${this.url}:`, event);
       this.status = "error";
     });
   }
@@ -150,6 +156,7 @@ export class Relay {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data);
     } else {
+      logger.log(`[Relay] ${this.url} not open (readyState=${this.ws?.readyState}), queuing message (${this.pendingMessages.length + 1} pending)`);
       this.pendingMessages.push(data);
     }
   }
@@ -172,17 +179,32 @@ export class Relay {
     switch (type) {
       case "EVENT": {
         const [subId, event] = rest as [string, NostrEvent];
+        const hasListener = this.eventListeners.has(subId);
+        logger.log(`[Relay] ${this.url} EVENT for sub=${subId}, hasListener=${hasListener}, kind=${event?.kind}, from=${event?.pubkey?.slice(0, 8)}…`);
         this.eventListeners.get(subId)?.(event);
         break;
       }
 
       case "EOSE": {
         const [subId] = rest as [string];
+        logger.log(`[Relay] ${this.url} EOSE for sub=${subId}`);
         this.eoseListeners.get(subId)?.();
         break;
       }
 
+      case "OK": {
+        const [eventId, success, message] = rest as [string, boolean, string];
+        logger.log(`[Relay] ${this.url} OK event=${eventId?.slice(0, 12)}… success=${success} msg=${message}`);
+        break;
+      }
+
+      case "NOTICE": {
+        logger.log(`[Relay] ${this.url} NOTICE:`, rest[0]);
+        break;
+      }
+
       default:
+        logger.log(`[Relay] ${this.url} unknown message type: ${type}`);
         break;
     }
   }

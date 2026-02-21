@@ -38,12 +38,14 @@ export function useChunkBlob(chunkMap: EntropyChunkMap | null): UseChunkBlobResu
         const total = chunkMap.chunks.length;
         const buffers: ArrayBuffer[] = new Array(total);
         console.log(`[useChunkBlob] loading ${total} chunk(s) for rootHash=${chunkMap.rootHash.slice(0,12)}… mime=${chunkMap.mimeType}`);
+        console.log(`[useChunkBlob] gatekeepers:`, chunkMap.gatekeepers);
 
         for (let i = 0; i < total; i++) {
           if (cancelled) return;
           const hash = chunkMap.chunks[i];
-          console.log(`[useChunkBlob] GET_CHUNK ${i + 1}/${total} hash=${hash.slice(0, 12)}…`);
-          const result = await getChunk({ hash });
+          const payload = { hash, rootHash: chunkMap.rootHash, gatekeepers: chunkMap.gatekeepers };
+          console.log(`[useChunkBlob] GET_CHUNK ${i + 1}/${total} payload:`, JSON.stringify(payload).slice(0, 200));
+          const result = await getChunk(payload, 30_000);
           console.log(`[useChunkBlob] result for chunk ${i}:`, result ? `ok, ${result.data.length} bytes` : 'null (not in store)');
 
           if (!result) {

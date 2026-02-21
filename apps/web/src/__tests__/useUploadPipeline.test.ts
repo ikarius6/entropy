@@ -2,6 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useUploadPipeline } from "../hooks/useUploadPipeline";
 
+vi.mock("../lib/extension-bridge", () => ({
+  storeChunk: vi.fn(async () => undefined),
+  delegateSeeding: vi.fn(async () => undefined)
+}));
+
+vi.mock("../stores/entropy-store", () => ({
+  useEntropyStore: () => ({ pubkey: "test-pub", relayPool: null })
+}));
+
+// Mock the NIP-07 signer on window.nostr
+vi.stubGlobal("nostr", {
+  getPublicKey: vi.fn(async () => "test-pub"),
+  signEvent: vi.fn(async (event: unknown) => ({ ...(event as object), id: "signed-id", sig: "signed-sig", pubkey: "test-pub" }))
+});
+
 describe("useUploadPipeline", () => {
   it("should initialize with idle state", () => {
     const { result } = renderHook(() => useUploadPipeline());

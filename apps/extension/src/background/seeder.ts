@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import type { DelegateSeedingPayload } from "../shared/messaging";
 
 // ---------------------------------------------------------------------------
@@ -23,12 +24,12 @@ const STORAGE_KEY = "delegatedContent";
 // ---------------------------------------------------------------------------
 
 async function readStore(): Promise<Record<string, DelegatedContentRecord>> {
-  const result = (await chrome.storage.local.get(STORAGE_KEY)) as Partial<StorageSchema>;
+  const result = (await browser.storage.local.get(STORAGE_KEY)) as Partial<StorageSchema>;
   return result[STORAGE_KEY] ?? {};
 }
 
 async function writeStore(store: Record<string, DelegatedContentRecord>): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+  await browser.storage.local.set({ [STORAGE_KEY]: store });
 }
 
 // ---------------------------------------------------------------------------

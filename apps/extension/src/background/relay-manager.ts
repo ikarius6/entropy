@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import { RelayPool, type RelayInfo } from "@entropy/core";
 
 interface RelayStorageSchema {
@@ -8,7 +9,12 @@ interface RelayStorageSchema {
 const RELAY_STORAGE_KEY = "entropyRelayUrls";
 const SEEDING_ACTIVE_KEY = "entropySeedingActive";
 
-export const DEFAULT_RELAY_URLS = ["wss://relay.damus.io", "wss://nos.lol"];
+export const DEFAULT_RELAY_URLS = [
+  "wss://relay.damus.io", 
+  "wss://nos.lol",
+  "wss://relay.primal.net",
+  "wss://purplepag.es",
+];
 
 let relayPool: RelayPool | null = null;
 let currentRelayUrls: string[] = [];
@@ -34,7 +40,7 @@ function normalizeRelayUrls(urls: string[]): string[] {
 }
 
 async function readStoredRelayUrls(): Promise<string[]> {
-  const result = (await chrome.storage.local.get(RELAY_STORAGE_KEY)) as RelayStorageSchema;
+  const result = (await browser.storage.local.get(RELAY_STORAGE_KEY)) as RelayStorageSchema;
   const stored = result[RELAY_STORAGE_KEY];
 
   if (!Array.isArray(stored)) {
@@ -45,7 +51,7 @@ async function readStoredRelayUrls(): Promise<string[]> {
 }
 
 async function writeStoredRelayUrls(urls: string[]): Promise<void> {
-  await chrome.storage.local.set({
+  await browser.storage.local.set({
     [RELAY_STORAGE_KEY]: urls
   });
 }
@@ -124,12 +130,12 @@ export function getRelayStatuses(): RelayInfo[] {
 }
 
 export async function getSeedingActive(): Promise<boolean> {
-  const result = (await chrome.storage.local.get(SEEDING_ACTIVE_KEY)) as RelayStorageSchema;
+  const result = (await browser.storage.local.get(SEEDING_ACTIVE_KEY)) as RelayStorageSchema;
   return result[SEEDING_ACTIVE_KEY] !== false;
 }
 
 export async function setSeedingActive(active: boolean): Promise<void> {
-  await chrome.storage.local.set({ [SEEDING_ACTIVE_KEY]: active });
+  await browser.storage.local.set({ [SEEDING_ACTIVE_KEY]: active });
 }
 
 export async function ensureRelayConnections(): Promise<void> {

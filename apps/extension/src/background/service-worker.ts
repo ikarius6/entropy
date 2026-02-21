@@ -1,10 +1,12 @@
+import browser from "webextension-polyfill";
 import {
   ENTROPY_SIGNALING_KIND_MAX,
   ENTROPY_SIGNALING_KIND_MIN,
   createIndexedDbChunkStore,
   isEntropySignalingKind,
   verifyEventSignature,
-  wireReceiptVerifier
+  wireReceiptVerifier,
+  logger
 } from "@entropy/core";
 
 import {
@@ -22,10 +24,13 @@ import {
   type SignedEventPayload,
   type ChunkDataPayload
 } from "../shared/messaging";
-import { handleDataChannel } from "./chunk-server";
 import { hasDelegatedChunks, storeChunkPayload } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
+import { startP2PSeeding, fetchChunkP2P } from "./p2p-bridge";
+import type { PeerChunkResult } from "./p2p-bridge";
+
+const inflightP2PFetches = new Map<string, Promise<PeerChunkResult | null>>();
 import {
   addRelay,
   ensureRelayConnections,
@@ -39,7 +44,6 @@ import {
 } from "./relay-manager";
 import { enqueueDelegation, getDelegationCount, getDelegatedRootHashes, pruneDelegations } from "./seeder";
 import { scheduleMaintenance } from "./scheduler";
-import { startSignalingListener } from "./signaling-listener";
 
 const KEEP_ALIVE_ALARM_NAME = "entropy-keepalive";
 const KEEP_ALIVE_ALARM_PERIOD_MINUTES = 1;
@@ -49,7 +53,6 @@ const startedAt = Date.now();
 
 let lastHeartbeatAt = startedAt;
 let bootstrapPromise: Promise<void> | null = null;
-let stopSignaling: (() => void) | null = null;
 
 wireReceiptVerifier((event) => verifyEventSignature(event));
 
@@ -137,7 +140,7 @@ function emitNodeStatusUpdate(status: NodeStatusPayload): void {
     payload: status
   };
 
-  void chrome.runtime.sendMessage(update).catch(() => {
+  void browser.runtime.sendMessage(update).catch(() => {
     // Ignore when there are no listeners yet.
   });
 }
@@ -149,14 +152,9 @@ function emitCreditUpdate(summary: CreditSummaryPayload): void {
     payload: summary
   };
 
-  void chrome.runtime.sendMessage(update).catch(() => {
+  void browser.runtime.sendMessage(update).catch(() => {
     // Ignore when there are no listeners yet.
   });
-}
-
-async function canServeRoot(rootHash: string): Promise<boolean> {
-  const delegatedRootHashes = await getDelegatedRootHashes();
-  return delegatedRootHashes.includes(rootHash);
 }
 
 async function bootstrapBackground(): Promise<void> {
@@ -164,38 +162,29 @@ async function bootstrapBackground(): Promise<void> {
 
   await initRelayManager();
 
-  stopSignaling?.();
-  stopSignaling = startSignalingListener(
-    getRelayPool(),
-    identity.pubkey,
-    (peerPubkey, channel) => {
-      handleDataChannel(
-        channel,
+  const relayUrls = await getRelayUrls();
+
+  await startP2PSeeding({
+    relayPool: getRelayPool(),
+    relayUrls,
+    myPubkey: identity.pubkey,
+    privkeyHex: identity.privkey,
+    chunkStore,
+    signEvent: signNostrEvent,
+    onChunkServed: async (chunkHash, peerPubkey, bytes) => {
+      const updatedSummary = await recordUploadCredit({
         peerPubkey,
-        chunkStore,
-        async (chunkHash, bytes) => {
-          const updatedSummary = await recordUploadCredit({
-            peerPubkey,
-            bytes,
-            chunkHash,
-            receiptSignature: `rtc-upload:${chunkHash}:${Date.now()}`,
-            timestamp: Math.floor(Date.now() / 1000)
-          });
+        bytes,
+        chunkHash,
+        receiptSignature: `rtc-upload:${chunkHash}:${Date.now()}`,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
 
-          emitCreditUpdate(updatedSummary);
-        },
-        {
-          authorizeRequest: async ({ requestedBytes }) => {
-            const summary = await getCreditSummary();
-            return summary.balance >= requestedBytes;
-          }
-        }
-      );
-    },
-    { canServeRoot }
-  );
+      emitCreditUpdate(updatedSummary);
+    }
+  });
 
-  chrome.alarms.create(KEEP_ALIVE_ALARM_NAME, {
+  browser.alarms.create(KEEP_ALIVE_ALARM_NAME, {
     periodInMinutes: KEEP_ALIVE_ALARM_PERIOD_MINUTES
   });
 }
@@ -217,16 +206,16 @@ function scheduleBootstrap(): void {
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener(() => {
   scheduleMaintenance();
   scheduleBootstrap();
 });
 
-chrome.runtime.onStartup.addListener(() => {
+browser.runtime.onStartup.addListener(() => {
   scheduleBootstrap();
 });
 
-chrome.alarms.onAlarm.addListener((alarm: { name: string }) => {
+browser.alarms.onAlarm.addListener((alarm: { name: string }) => {
   if (alarm.name !== KEEP_ALIVE_ALARM_NAME) {
     return;
   }
@@ -237,20 +226,50 @@ chrome.alarms.onAlarm.addListener((alarm: { name: string }) => {
   })();
 });
 
-chrome.runtime.onMessage.addListener(
-  (message: unknown, _sender: unknown, sendResponse: (response: EntropyRuntimeResponse) => void) => {
+browser.runtime.onMessage.addListener(
+  (message: unknown): undefined | Promise<EntropyRuntimeResponse> => {
+    // Handle canServeRoot check from offscreen document
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type: string }).type === "CHECK_CAN_SERVE_ROOT"
+    ) {
+      const rootHash = (message as unknown as { rootHash: string }).rootHash;
+      return getDelegatedRootHashes().then((hashes) => ({
+        canServe: hashes.includes(rootHash)
+      })) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
+    }
+
+    // Handle P2P messages from offscreen document (credit tracking)
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type: string }).type === "P2P_CHUNK_SERVED"
+    ) {
+      const msg = message as unknown as { chunkHash: string; peerPubkey: string; bytes: number };
+      void recordUploadCredit({
+        peerPubkey: msg.peerPubkey,
+        bytes: msg.bytes,
+        chunkHash: msg.chunkHash,
+        receiptSignature: `rtc-upload:${msg.chunkHash}:${Date.now()}`,
+        timestamp: Math.floor(Date.now() / 1000)
+      }).then(emitCreditUpdate);
+      return;
+    }
+
     if (isEntropyRuntimePushMessage(message)) {
-      return false;
+      return;
     }
 
     if (!isEntropyRuntimeMessage(message)) {
-      sendResponse(
+      return Promise.resolve(
         errorResponse(createEntropyRequestId("invalid"), "HEARTBEAT", "Invalid Entropy runtime message.")
       );
-      return false;
     }
 
-    void (async () => {
+    return (async (): Promise<EntropyRuntimeResponse> => {
       try {
         await ensureBootstrap();
 
@@ -275,67 +294,128 @@ chrome.runtime.onMessage.addListener(
             });
 
             const status = await buildNodeStatus();
-            sendResponse(successResponse(message.requestId, message.type, status));
             emitNodeStatusUpdate(status);
             emitCreditUpdate(creditSummary);
-            break;
+            return successResponse(message.requestId, message.type, status);
           }
 
           case "GET_CHUNK": {
+            logger.log("[GET_CHUNK] received payload:", JSON.stringify(message.payload).slice(0, 300));
             const stored = await chunkStore.getChunk(message.payload.hash);
-            if (!stored) {
-              sendResponse(chunkDataResponse(message.requestId, null));
-            } else {
-              sendResponse(chunkDataResponse(message.requestId, {
+            logger.log("[GET_CHUNK] local store result:", stored ? `found (${stored.data.byteLength} bytes)` : "NOT FOUND");
+            if (stored) {
+              return chunkDataResponse(message.requestId, {
                 hash: stored.hash,
                 rootHash: stored.rootHash,
                 index: stored.index,
                 data: Array.from(new Uint8Array(stored.data))
-              }));
+              });
             }
-            break;
+
+            // Fallback: try to fetch from a gatekeeper peer via WebRTC
+            const { rootHash: reqRootHash, gatekeepers } = message.payload;
+            logger.log("[GET_CHUNK] P2P fallback check — rootHash:", reqRootHash?.slice(0, 12), "gatekeepers:", gatekeepers);
+            if (!reqRootHash || !gatekeepers || gatekeepers.length === 0) {
+              logger.log("[GET_CHUNK] no gatekeepers, returning null");
+              return chunkDataResponse(message.requestId, null);
+            }
+
+            const identity = await getOrCreateKeypair();
+            const pool = getRelayPool();
+            logger.log("[GET_CHUNK] my pubkey:", identity.pubkey.slice(0, 8) + "…", "gatekeepers to try:", gatekeepers.length);
+
+            const dedupeKey = message.payload.hash;
+            let p2pPromise = inflightP2PFetches.get(dedupeKey);
+            if (p2pPromise) {
+              logger.log("[GET_CHUNK] reusing in-flight P2P fetch for", dedupeKey.slice(0, 12) + "…");
+            } else {
+              p2pPromise = (async (): Promise<PeerChunkResult | null> => {
+                for (const gk of gatekeepers) {
+                  if (gk === identity.pubkey) {
+                    logger.log("[GET_CHUNK] skipping self as gatekeeper");
+                    continue;
+                  }
+                  try {
+                    logger.log(`[GET_CHUNK] fetching ${message.payload.hash.slice(0, 12)}… from peer ${gk.slice(0, 8)}…`);
+                    const peerResult = await fetchChunkP2P({
+                      chunkHash: message.payload.hash,
+                      rootHash: reqRootHash,
+                      gatekeeperPubkey: gk,
+                      myPubkey: identity.pubkey,
+                      relayPool: pool,
+                      signEvent: signNostrEvent
+                    });
+                    if (peerResult) return peerResult;
+                  } catch (err) {
+                    logger.warn(`[GET_CHUNK] peer fetch from ${gk.slice(0, 8)}… failed:`, err);
+                  }
+                }
+                return null;
+              })();
+              inflightP2PFetches.set(dedupeKey, p2pPromise);
+            }
+
+            try {
+              const peerResult = await p2pPromise;
+              if (peerResult) {
+                await chunkStore.storeChunk({
+                  hash: peerResult.hash,
+                  rootHash: peerResult.rootHash,
+                  index: 0,
+                  data: peerResult.data,
+                  createdAt: Date.now(),
+                  lastAccessed: Date.now(),
+                  pinned: false
+                });
+
+                return chunkDataResponse(message.requestId, {
+                  hash: peerResult.hash,
+                  rootHash: peerResult.rootHash,
+                  index: 0,
+                  data: Array.from(new Uint8Array(peerResult.data))
+                });
+              }
+            } finally {
+              inflightP2PFetches.delete(dedupeKey);
+            }
+
+            return chunkDataResponse(message.requestId, null);
           }
 
           case "SIGN_EVENT": {
             const signed = await signNostrEvent(message.payload);
-            sendResponse(signedEventResponse(message.requestId, signed));
-            break;
+            return signedEventResponse(message.requestId, signed);
           }
 
           case "STORE_CHUNK": {
             await storeChunkPayload(chunkStore, message.payload);
             const status = await buildNodeStatus();
-            sendResponse(successResponse(message.requestId, message.type, status));
             emitNodeStatusUpdate(status);
-            break;
+            return successResponse(message.requestId, message.type, status);
           }
 
           case "IMPORT_KEYPAIR": {
             const payload = await importKeypair(message.payload.privkey);
             bootstrapPromise = null;
             await ensureBootstrap();
-            sendResponse(pubkeyResponse(message.requestId, message.type, payload));
-            break;
+            return pubkeyResponse(message.requestId, message.type, payload);
           }
 
           case "GET_PUBLIC_KEY": {
             const pubkey = await getPublicKey();
-            sendResponse(pubkeyResponse(message.requestId, message.type, { pubkey }));
-            break;
+            return pubkeyResponse(message.requestId, message.type, { pubkey });
           }
 
           case "GET_CREDIT_SUMMARY": {
             const summary = await getCreditSummary();
-            sendResponse(creditResponse(message.requestId, message.type, summary));
             emitCreditUpdate(summary);
-            break;
+            return creditResponse(message.requestId, message.type, summary);
           }
 
           case "GET_NODE_STATUS": {
             const status = await buildNodeStatus();
-            sendResponse(successResponse(message.requestId, message.type, status));
             emitNodeStatusUpdate(status);
-            break;
+            return successResponse(message.requestId, message.type, status);
           }
 
           case "HEARTBEAT": {
@@ -344,9 +424,8 @@ chrome.runtime.onMessage.addListener(
             await ensureRelayConnections();
 
             const status = await buildNodeStatus();
-            sendResponse(successResponse(message.requestId, message.type, status));
             emitNodeStatusUpdate(status);
-            break;
+            return successResponse(message.requestId, message.type, status);
           }
 
           case "SERVE_CHUNK": {
@@ -354,8 +433,7 @@ chrome.runtime.onMessage.addListener(
             const currentBalance = summary.balance;
 
             if (currentBalance < message.payload.requestedBytes) {
-              sendResponse(errorResponse(message.requestId, message.type, "INSUFFICIENT_CREDIT"));
-              break;
+              return errorResponse(message.requestId, message.type, "INSUFFICIENT_CREDIT");
             }
 
             const updatedSummary = await recordDownloadCredit({
@@ -366,9 +444,8 @@ chrome.runtime.onMessage.addListener(
               timestamp: Math.floor(Date.now() / 1000)
             });
 
-            sendResponse(creditResponse(message.requestId, message.type, updatedSummary));
             emitCreditUpdate(updatedSummary);
-            break;
+            return creditResponse(message.requestId, message.type, updatedSummary);
           }
 
           case "GET_NODE_SETTINGS": {
@@ -380,14 +457,11 @@ chrome.runtime.onMessage.addListener(
               url: info.url,
               status: info.status
             }));
-            sendResponse(
-              nodeSettingsResponse(message.requestId, message.type, {
-                relayUrls,
-                relayStatuses,
-                seedingActive
-              })
-            );
-            break;
+            return nodeSettingsResponse(message.requestId, message.type, {
+              relayUrls,
+              relayStatuses,
+              seedingActive
+            });
           }
 
           case "ADD_RELAY": {
@@ -400,14 +474,11 @@ chrome.runtime.onMessage.addListener(
               url: info.url,
               status: info.status
             }));
-            sendResponse(
-              nodeSettingsResponse(message.requestId, message.type, {
-                relayUrls,
-                relayStatuses,
-                seedingActive
-              })
-            );
-            break;
+            return nodeSettingsResponse(message.requestId, message.type, {
+              relayUrls,
+              relayStatuses,
+              seedingActive
+            });
           }
 
           case "REMOVE_RELAY": {
@@ -420,14 +491,11 @@ chrome.runtime.onMessage.addListener(
               url: info.url,
               status: info.status
             }));
-            sendResponse(
-              nodeSettingsResponse(message.requestId, message.type, {
-                relayUrls,
-                relayStatuses,
-                seedingActive
-              })
-            );
-            break;
+            return nodeSettingsResponse(message.requestId, message.type, {
+              relayUrls,
+              relayStatuses,
+              seedingActive
+            });
           }
 
           case "SET_SEEDING_ACTIVE": {
@@ -440,24 +508,20 @@ chrome.runtime.onMessage.addListener(
               url: info.url,
               status: info.status
             }));
-            sendResponse(
-              nodeSettingsResponse(message.requestId, message.type, {
-                relayUrls,
-                relayStatuses,
-                seedingActive: seedingActiveNow
-              })
-            );
-            break;
+            return nodeSettingsResponse(message.requestId, message.type, {
+              relayUrls,
+              relayStatuses,
+              seedingActive: seedingActiveNow
+            });
           }
+
         }
       } catch (caughtError) {
         const messageText =
           caughtError instanceof Error ? caughtError.message : "Unknown extension runtime failure.";
-        sendResponse(errorResponse(message.requestId, message.type, messageText));
+        return errorResponse(message.requestId, message.type, messageText);
       }
     })();
-
-    return true;
   }
 );
 

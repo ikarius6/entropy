@@ -4,10 +4,12 @@ import type { StoredChunk } from "../storage/chunk-store";
 import {
   DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES,
   MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES,
+  FRAGMENT_SIZE,
   decodeChunkTransferMessage,
   encodeChunkError,
   encodeChunkRequest,
   encodeChunkResponse,
+  createChunkReceiver,
   sendChunkOverDataChannel
 } from "../transport/chunk-transfer";
 
@@ -183,5 +185,92 @@ describe("chunk transfer", () => {
     expect(() =>
       sendChunkOverDataChannel(channel as unknown as RTCDataChannel, makeChunk())
     ).toThrowError("Data channel must be open to send chunks.");
+  });
+
+  it("sends small chunks as a single message", () => {
+    const channel = new MockDataChannel();
+    const chunk = makeChunk({ data: new Uint8Array(100).buffer });
+
+    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+
+    expect(channel.sentPayloads).toHaveLength(1);
+    const decoded = decodeChunkTransferMessage(channel.sentPayloads[0]);
+    expect(decoded.type).toBe("CHUNK_DATA");
+  });
+
+  it("fragments large chunks into header + data fragments", () => {
+    const channel = new MockDataChannel();
+    const largeData = new Uint8Array(FRAGMENT_SIZE * 3 + 1000);
+    for (let i = 0; i < largeData.byteLength; i++) {
+      largeData[i] = i % 256;
+    }
+    const chunk = makeChunk({ data: largeData.buffer });
+
+    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+
+    expect(channel.sentPayloads.length).toBe(5);
+    expect(new Uint8Array(channel.sentPayloads[0])[0]).toBe(4);
+
+    let totalDataBytes = 0;
+    for (let i = 1; i < channel.sentPayloads.length; i++) {
+      totalDataBytes += channel.sentPayloads[i].byteLength;
+    }
+    expect(totalDataBytes).toBe(largeData.byteLength);
+  });
+
+  it("createChunkReceiver reassembles fragmented messages", () => {
+    const channel = new MockDataChannel();
+    const largeData = new Uint8Array(FRAGMENT_SIZE * 2 + 500);
+    for (let i = 0; i < largeData.byteLength; i++) {
+      largeData[i] = i % 256;
+    }
+    const chunk = makeChunk({ data: largeData.buffer });
+
+    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+
+    const receiver = createChunkReceiver();
+    let result = null;
+    for (const payload of channel.sentPayloads) {
+      result = receiver.receive(payload);
+    }
+
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("CHUNK_DATA");
+    if (result!.type === "CHUNK_DATA") {
+      expect(result!.chunkHash).toBe(CHUNK_HASH);
+      expect(new Uint8Array(result!.data)).toEqual(largeData);
+    }
+  });
+
+  it("createChunkReceiver passes through small messages directly", () => {
+    const receiver = createChunkReceiver();
+    const encoded = encodeChunkResponse({
+      type: "CHUNK_DATA",
+      chunkHash: CHUNK_HASH,
+      data: bytes([1, 2, 3])
+    });
+
+    const result = receiver.receive(encoded);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("CHUNK_DATA");
+    if (result!.type === "CHUNK_DATA") {
+      expect(Array.from(new Uint8Array(result!.data))).toEqual([1, 2, 3]);
+    }
+  });
+
+  it("createChunkReceiver handles error messages", () => {
+    const receiver = createChunkReceiver();
+    const encoded = encodeChunkError({
+      type: "CHUNK_ERROR",
+      chunkHash: CHUNK_HASH,
+      reason: "NOT_FOUND"
+    });
+
+    const result = receiver.receive(encoded);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("CHUNK_ERROR");
+    if (result!.type === "CHUNK_ERROR") {
+      expect(result!.reason).toBe("NOT_FOUND");
+    }
   });
 });

@@ -2,6 +2,7 @@ import {
   decodeChunkTransferMessage,
   encodeChunkError,
   sendChunkOverDataChannel,
+  logger,
   type ChunkRequestMessage,
   type ChunkStore
 } from "@entropy/core";
@@ -62,32 +63,49 @@ export function handleDataChannel(
   context: ChunkServerContext = {}
 ): void {
   channel.binaryType = "arraybuffer";
+  logger.log("[chunk-server] handleDataChannel called, peer:", peerPubkey.slice(0, 8) + "…",
+    "| label:", channel.label, "readyState:", channel.readyState,
+    "| id:", channel.id, "negotiated:", channel.negotiated);
 
   const onMessage = (event: MessageEvent): void => {
+    logger.log("[chunk-server] onmessage received, dataType:", typeof event.data,
+      "isArrayBuffer:", event.data instanceof ArrayBuffer,
+      "byteLength:", event.data?.byteLength ?? event.data?.length ?? "N/A");
     void (async () => {
       let message: ChunkRequestMessage;
 
       try {
         const buffer = await toArrayBuffer(event.data);
         const decoded = decodeChunkTransferMessage(buffer);
+        logger.log("[chunk-server] decoded message type:", decoded.type);
 
         if (decoded.type !== "CHUNK_REQUEST") {
+          logger.log("[chunk-server] ignoring non-CHUNK_REQUEST message");
           return;
         }
 
         message = decoded;
-      } catch {
+      } catch (decErr) {
+        logger.warn("[chunk-server] failed to decode message:", decErr);
         return;
       }
 
+      logger.log("[chunk-server] CHUNK_REQUEST from:", message.requesterPubkey.slice(0, 8) + "…",
+        "chunkHash:", message.chunkHash.slice(0, 12) + "…",
+        "rootHash:", message.rootHash.slice(0, 12) + "…");
+
       if (message.requesterPubkey !== peerPubkey) {
+        logger.warn("[chunk-server] requester mismatch, expected:", peerPubkey.slice(0, 8) + "…",
+          "got:", message.requesterPubkey.slice(0, 8) + "…");
         await sendChunkError(channel, message.chunkHash, "BUSY");
         return;
       }
 
       const chunk = await chunkStore.getChunk(message.chunkHash);
+      logger.log("[chunk-server] chunk lookup result:", chunk ? "FOUND (" + chunk.data.byteLength + " bytes)" : "NOT FOUND");
 
       if (!chunk || chunk.rootHash !== message.rootHash) {
+        logger.warn("[chunk-server] chunk not found or rootHash mismatch");
         await sendChunkError(channel, message.chunkHash, "NOT_FOUND");
         return;
       }
@@ -102,18 +120,24 @@ export function handleDataChannel(
       );
 
       if (!isAuthorized) {
+        logger.warn("[chunk-server] request not authorized");
         await sendChunkError(channel, message.chunkHash, "INSUFFICIENT_CREDIT");
         return;
       }
 
       try {
+        logger.log("[chunk-server] sending chunk", chunk.hash.slice(0, 12) + "…",
+          chunk.data.byteLength, "bytes via data channel");
         sendChunkOverDataChannel(channel, chunk);
         await onChunkServed(chunk.hash, chunk.data.byteLength);
-      } catch {
+        logger.log("[chunk-server] ✅ chunk served successfully");
+      } catch (sendErr) {
+        logger.error("[chunk-server] error sending chunk:", sendErr);
         await sendChunkError(channel, message.chunkHash, "BUSY");
       }
     })();
   };
 
   channel.addEventListener("message", onMessage);
+  logger.log("[chunk-server] message listener attached");
 }

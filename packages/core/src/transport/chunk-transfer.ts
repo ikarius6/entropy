@@ -4,11 +4,13 @@ import type { StoredChunk } from "../storage/chunk-store";
 const MESSAGE_TYPE_CHUNK_REQUEST = 1;
 const MESSAGE_TYPE_CHUNK_DATA = 2;
 const MESSAGE_TYPE_CHUNK_ERROR = 3;
+const MESSAGE_TYPE_CHUNK_DATA_HEADER = 4;
 
 const HASH_BYTES = 32;
 const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES + 2;
 const RESPONSE_BASE_BYTES = 1 + HASH_BYTES + 4;
 const ERROR_BYTES = 1 + HASH_BYTES + 1;
+const CHUNK_DATA_HEADER_BYTES = 1 + HASH_BYTES + 4;
 
 const ERROR_REASON_CODES = {
   NOT_FOUND: 0,
@@ -24,6 +26,7 @@ const ERROR_CODE_REASONS: Record<number, ChunkErrorReason> = {
 
 export const MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES = 4 * 1024 * 1024;
 export const DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES = 256 * 1024;
+export const FRAGMENT_SIZE = 64 * 1024;
 
 export type ChunkErrorReason = "NOT_FOUND" | "INSUFFICIENT_CREDIT" | "BUSY";
 
@@ -240,41 +243,135 @@ export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMe
   throw new Error(`Unknown chunk transfer message type: ${type}.`);
 }
 
+export interface ChunkReceiver {
+  receive(buffer: ArrayBuffer): ChunkTransferMessage | null;
+}
+
+export function createChunkReceiver(): ChunkReceiver {
+  let accumulating = false;
+  let targetChunkHash = "";
+  let totalLength = 0;
+  let receivedLength = 0;
+  let fragments: Uint8Array[] = [];
+
+  return {
+    receive(buffer: ArrayBuffer): ChunkTransferMessage | null {
+      if (accumulating) {
+        const frag = new Uint8Array(buffer);
+        fragments.push(frag);
+        receivedLength += frag.byteLength;
+
+        if (receivedLength >= totalLength) {
+          const assembled = new Uint8Array(totalLength);
+          let offset = 0;
+          for (const f of fragments) {
+            const toCopy = Math.min(f.byteLength, totalLength - offset);
+            assembled.set(f.subarray(0, toCopy), offset);
+            offset += toCopy;
+          }
+
+          const result: ChunkResponseMessage = {
+            type: "CHUNK_DATA",
+            chunkHash: targetChunkHash,
+            data: assembled.buffer
+          };
+
+          accumulating = false;
+          targetChunkHash = "";
+          totalLength = 0;
+          receivedLength = 0;
+          fragments = [];
+
+          return result;
+        }
+
+        return null;
+      }
+
+      const input = new Uint8Array(buffer);
+
+      if (input.byteLength < 1) {
+        throw new Error("Chunk transfer message cannot be empty.");
+      }
+
+      if (input[0] === MESSAGE_TYPE_CHUNK_DATA_HEADER) {
+        if (input.byteLength < CHUNK_DATA_HEADER_BYTES) {
+          throw new Error("Chunk data header message is truncated.");
+        }
+
+        const hashResult = readHash(input, 1);
+        const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
+        totalLength = view.getUint32(1 + HASH_BYTES, false);
+        targetChunkHash = hashResult.hash;
+        receivedLength = 0;
+        fragments = [];
+        accumulating = true;
+
+        return null;
+      }
+
+      return decodeChunkTransferMessage(buffer);
+    }
+  };
+}
+
+function encodeChunkDataHeader(chunkHash: string, totalDataLength: number): ArrayBuffer {
+  const output = new Uint8Array(CHUNK_DATA_HEADER_BYTES);
+  const view = new DataView(output.buffer);
+
+  output[0] = MESSAGE_TYPE_CHUNK_DATA_HEADER;
+  writeHash(output, 1, chunkHash, "chunkHash");
+  view.setUint32(1 + HASH_BYTES, totalDataLength, false);
+
+  return output.buffer;
+}
+
 export function sendChunkOverDataChannel(channel: RTCDataChannel, chunk: StoredChunk): void {
   if (channel.readyState !== "open") {
     throw new Error("Data channel must be open to send chunks.");
   }
 
-  const payload = encodeChunkResponse({
-    type: "CHUNK_DATA",
-    chunkHash: chunk.hash,
-    data: chunk.data
-  });
+  const data = new Uint8Array(chunk.data);
+  const messages: ArrayBuffer[] = [];
 
-  const trySend = (): void => {
-    if (channel.readyState !== "open") {
-      return;
+  if (data.byteLength <= FRAGMENT_SIZE) {
+    messages.push(encodeChunkResponse({
+      type: "CHUNK_DATA",
+      chunkHash: chunk.hash,
+      data: chunk.data
+    }));
+  } else {
+    messages.push(encodeChunkDataHeader(chunk.hash, data.byteLength));
+
+    let offset = 0;
+    while (offset < data.byteLength) {
+      const end = Math.min(offset + FRAGMENT_SIZE, data.byteLength);
+      messages.push(data.slice(offset, end).buffer);
+      offset = end;
     }
+  }
 
-    if (channel.bufferedAmount <= MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES) {
-      channel.send(payload);
-      return;
+  let index = 0;
+
+  const sendNext = (): void => {
+    while (index < messages.length) {
+      if (channel.readyState !== "open") {
+        return;
+      }
+
+      if (channel.bufferedAmount > MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES) {
+        channel.bufferedAmountLowThreshold = Math.max(
+          channel.bufferedAmountLowThreshold,
+          DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES
+        );
+        channel.addEventListener("bufferedamountlow", () => sendNext(), { once: true });
+        return;
+      }
+
+      channel.send(messages[index]);
+      index++;
     }
-
-    const threshold = Math.max(
-      channel.bufferedAmountLowThreshold,
-      DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES
-    );
-
-    channel.bufferedAmountLowThreshold = threshold;
-
-    const onBufferedAmountLow = (): void => {
-      channel.removeEventListener("bufferedamountlow", onBufferedAmountLow);
-      trySend();
-    };
-
-    channel.addEventListener("bufferedamountlow", onBufferedAmountLow, { once: true });
   };
 
-  trySend();
+  sendNext();
 }

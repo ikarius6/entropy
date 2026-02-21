@@ -14,8 +14,11 @@ export interface EntropyChunkMap {
 
 const FALLBACK_CHUNK_SIZE = 5 * 1024 * 1024;
 
+export const ENTROPY_TAG = "entropy";
+
 export function buildEntropyChunkMapTags(chunkMap: EntropyChunkMap): NostrTag[] {
   const tags: NostrTag[] = [
+    ["t", ENTROPY_TAG],
     ["x-hash", chunkMap.rootHash],
     ["size", String(chunkMap.size)],
     ["chunk-size", String(chunkMap.chunkSize)]

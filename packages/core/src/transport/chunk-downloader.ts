@@ -5,7 +5,7 @@ import type { SignalingChannel, SignalingMessage } from "./signaling-channel";
 import { createRtcConfiguration } from "./nat-traversal";
 import {
   encodeChunkRequest,
-  decodeChunkTransferMessage,
+  createChunkReceiver,
   type ChunkRequestMessage,
 } from "./chunk-transfer";
 import { sha256Hex } from "../crypto/hash";
@@ -67,6 +67,10 @@ export class ChunkDownloader {
 
   private cleanupSignaling: (() => void) | null = null;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  /** Track whether remote description has been set per peer, and buffer early ICE candidates */
+  private remoteDescSet = new Set<string>();
+  private pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
 
   constructor(options: ChunkDownloadOptions) {
     this.chunkMap = options.chunkMap;
@@ -241,14 +245,33 @@ export class ChunkDownloader {
     if (!peer) return;
 
     const pc = peer.connection;
+    const pk = signal.senderPubkey;
 
     try {
       if (signal.type === "answer") {
+        if (this.remoteDescSet.has(pk)) {
+          return; // ignore duplicate answers from multiple relays
+        }
         const sdp = signal.payload as RTCSessionDescriptionInit;
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        this.remoteDescSet.add(pk);
+
+        // Flush buffered ICE candidates
+        const buffered = this.pendingCandidates.get(pk) ?? [];
+        for (const c of buffered) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { /* skip stale */ }
+        }
+        this.pendingCandidates.delete(pk);
       } else if (signal.type === "ice-candidate") {
         const candidate = signal.payload as RTCIceCandidateInit;
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (!this.remoteDescSet.has(pk)) {
+          // Buffer until remote description is set
+          let buf = this.pendingCandidates.get(pk);
+          if (!buf) { buf = []; this.pendingCandidates.set(pk, buf); }
+          buf.push(candidate);
+        } else {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
       }
     } catch (err) {
       console.warn(`[ChunkDownloader] signaling error from ${signal.senderPubkey.slice(0, 8)}…:`, err);
@@ -261,12 +284,14 @@ export class ChunkDownloader {
 
   private setupDataChannel(dc: RTCDataChannel, peerId: string): void {
     dc.binaryType = "arraybuffer";
+    const receiver = createChunkReceiver();
 
     dc.onmessage = (event: MessageEvent) => {
       if (!(event.data instanceof ArrayBuffer)) return;
 
       try {
-        const message = decodeChunkTransferMessage(event.data);
+        const message = receiver.receive(event.data);
+        if (!message) return;
 
         if (message.type === "CHUNK_DATA") {
           const index = this.hashToIndex.get(message.chunkHash);

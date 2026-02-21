@@ -26,7 +26,8 @@ vi.mock("@entropy/core", () => {
 
   return {
     SignalingChannel: MockSignalingChannel,
-    createRtcConfiguration: vi.fn(() => ({ iceServers: [] }))
+    createRtcConfiguration: vi.fn(() => ({ iceServers: [] })),
+    logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
   };
 });
 

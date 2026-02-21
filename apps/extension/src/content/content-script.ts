@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import {
   ENTROPY_EXTENSION_SOURCE,
   ENTROPY_WEB_SOURCE,
@@ -7,6 +8,26 @@ import {
   type EntropyExtensionResponseEvent,
   type EntropyRuntimeResponse
 } from "../shared/messaging";
+
+// ---------------------------------------------------------------------------
+// Inject the NIP-07 inpage provider into the MAIN world.
+// Chrome uses "world": "MAIN" in the manifest; Firefox does not support that,
+// so we inject it manually via a <script> tag pointing to the web-accessible
+// resource.  On Chrome this is a no-op because nostr-provider.js is already
+// loaded by the manifest entry — the provider guards against double-init.
+// ---------------------------------------------------------------------------
+(function injectInpageProvider() {
+  try {
+    const url = browser.runtime.getURL("inpage/nostr-provider.js");
+    const script = document.createElement("script");
+    script.src = url;
+    script.type = "module";
+    (document.head || document.documentElement).appendChild(script);
+    script.onload = () => script.remove();
+  } catch {
+    // Silently ignore — may fail in restricted contexts
+  }
+})();
 
 function postResponseToPage(payload: EntropyExtensionResponseEvent): void {
   window.postMessage(payload, "*");
@@ -47,7 +68,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
     if (method === "getPublicKey") {
       const requestId = createEntropyRequestId("nip07");
       const msg = { source: ENTROPY_WEB_SOURCE, requestId, type: "GET_PUBLIC_KEY" as const };
-      const response = (await chrome.runtime.sendMessage(msg)) as EntropyRuntimeResponse;
+      const response = (await browser.runtime.sendMessage(msg)) as EntropyRuntimeResponse;
       if (!response.ok) throw new Error(response.error ?? "GET_PUBLIC_KEY failed");
       result = (response.payload as { pubkey: string }).pubkey;
 
@@ -59,7 +80,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
         type: "SIGN_EVENT" as const,
         payload: params
       };
-      const response = (await chrome.runtime.sendMessage(msg)) as EntropyRuntimeResponse;
+      const response = (await browser.runtime.sendMessage(msg)) as EntropyRuntimeResponse;
       if (!response.ok) throw new Error(response.error ?? "SIGN_EVENT failed");
       result = response.payload;
 
@@ -88,9 +109,12 @@ window.addEventListener("message", async (event: MessageEvent) => {
   }
 
   try {
-    const response = (await chrome.runtime.sendMessage(event.data)) as EntropyRuntimeResponse;
+    console.log("[content-script] forwarding to SW:", event.data.type, event.data.type === "GET_CHUNK" ? JSON.stringify(event.data.payload).slice(0, 200) : "");
+    const response = (await browser.runtime.sendMessage(event.data)) as EntropyRuntimeResponse;
+    console.log("[content-script] SW response for", event.data.type, ":", JSON.stringify(response).slice(0, 300));
     postResponseToPage(buildResponseEvent(response));
   } catch (caughtError) {
+    console.error("[content-script] SW error for", event.data.type, ":", caughtError);
     const message = caughtError instanceof Error ? caughtError.message : "Failed to reach extension runtime.";
 
     postResponseToPage({
@@ -103,7 +127,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message: unknown) => {
+browser.runtime.onMessage.addListener((message: unknown) => {
   if (isEntropyRuntimePushMessage(message)) {
     window.postMessage(message, "*");
     return;

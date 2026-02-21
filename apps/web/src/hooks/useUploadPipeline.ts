@@ -90,6 +90,7 @@ export function useUploadPipeline() {
         chunkSize: result.chunkSize,
         mimeType: result.mimeType,
         title: title || file.name,
+        gatekeepers: pubkey ? [pubkey] : [],
       };
       console.log("[upload] delegating seeding for rootHash:", result.rootHash);
       await delegateSeeding({

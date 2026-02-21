@@ -79,7 +79,7 @@ entropy/
 │       │   ├── transport/
 │       │   │   ├── peer-manager.ts     # Pool de conexiones WebRTC activas
 │       │   │   ├── signaling.ts        # Señalización vía Nostr ephemeral events
-│       │   │   ├── chunk-transfer.ts   # Protocolo de envío/recepción de chunks
+│       │   │   ├── chunk-transfer.ts   # Protocolo de envío/recepción de chunks (con fragmentación 64KB)
 │       │   │   └── nat-traversal.ts    # Configuración STUN/TURN
 │       │   ├── credits/
 │       │   │   ├── ledger.ts           # Registro local de créditos (ratio upload/download)
@@ -310,7 +310,7 @@ Todas las solicitudes y respuestas usan `requestId` para correlación robusta.
 
 interface ChunkRecord {
   hash: string;           // SHA-256 del chunk (PK)
-  data: ArrayBuffer;      // Contenido binario (≤5MB)
+  data: ArrayBuffer;      // Contenido binario (≤5MB, fragmentado en 64KB para transporte WebRTC)
   rootHash: string;       // Hash raíz del archivo al que pertenece
   index: number;          // Posición en la secuencia
   createdAt: number;      // Timestamp
@@ -611,7 +611,12 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 **Decisión:** IndexedDB vía Dexie.js, con cuota configurable y evicción LRU.  
 **Consecuencia:** Funciona sin extensión; la extensión extiende la persistencia con Service Worker. Limitado por la cuota del navegador (~10-50% del disco disponible).
 
-### ADR-005: MediaSource Extensions para streaming progresivo
+### ADR-005: Fragmentación de chunks sobre WebRTC DataChannel (64KB)
+**Contexto:** Los DataChannels de WebRTC usan SCTP como transporte, que tiene un límite de mensaje máximo (~256KB en la práctica). Enviar chunks de 5MB como un solo `dc.send()` causa `OperationError: Failure to send data`.  
+**Decisión:** Fragmentar los chunks en bloques de 64KB para el envío sobre DataChannel. Se envía primero un mensaje `CHUNK_DATA_HEADER` (type 0x04) con el hash y tamaño total, seguido de N fragmentos binarios puros. El receptor usa `createChunkReceiver()` para reensamblar.  
+**Consecuencia:** Chunks de cualquier tamaño se transfieren de forma confiable sobre WebRTC. El overhead es mínimo (1 header por chunk). Compatible con backpressure via `bufferedAmount`.
+
+### ADR-006: MediaSource Extensions para streaming progresivo
 **Contexto:** No podemos esperar a tener todos los chunks para reproducir un video.  
 **Decisión:** Usar MSE para alimentar el `<video>` tag chunk por chunk conforme se descargan.  
 **Consecuencia:** Experiencia de streaming fluida; requiere que los chunks estén alineados con los keyframes del video (pre-procesamiento en upload).

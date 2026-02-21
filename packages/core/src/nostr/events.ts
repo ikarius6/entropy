@@ -1,12 +1,13 @@
 import {
   ENTROPY_CHUNK_MAP_KIND,
+  ENTROPY_TAG,
   buildEntropyChunkMapTags,
   parseEntropyChunkMapTags,
   type EntropyChunkMap,
   type NostrTag
 } from "./nip-entropy";
 
-export { ENTROPY_CHUNK_MAP_KIND };
+export { ENTROPY_CHUNK_MAP_KIND, ENTROPY_TAG };
 
 export interface NostrEventDraft {
   kind: number;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useContactList } from "./useContactList";
 import { KINDS } from "../lib/constants";
-import { parseEntropyChunkMapTags } from "@entropy/core";
+import { ENTROPY_TAG, parseEntropyChunkMapTags } from "@entropy/core";
 import type { NostrEvent } from "@entropy/core";
 import type { FeedItem } from "../types/nostr";
 
@@ -24,11 +24,11 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   // When not provided: if we have a pubkey, include self + follows.
   // If no follows yet, still include self so we always have at least one author.
   // Pass null to mean "no author filter" (global discovery mode).
-  const authors: string[] | null | undefined = options.authors !== undefined
+  const authors: string[] | null = options.authors !== undefined
     ? (options.authors.length > 0 ? options.authors : null)
     : pubkey
-      ? (myFollows.length > 0 ? [...myFollows, pubkey] : [pubkey])
-      : undefined;
+      ? (myFollows.length > 0 ? [...myFollows, pubkey] : null)
+      : null;
 
   const authorsKey = authors?.join(",") ?? "";
   const kindsKey = kinds.join(",");
@@ -50,10 +50,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       return;
     }
 
-    if (authors === undefined) {
-      console.log("[feed] no pubkey yet, skipping subscription");
-      return;
-    }
+    // authors is now always string[] | null; null means global discovery
 
     console.log("[feed] subscribing to relays:", relayUrls, "kinds:", kinds, "authors:", authors ?? "all");
     setIsLoading(true);
@@ -63,6 +60,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     const filter = {
       kinds,
       limit,
+      "#t": [ENTROPY_TAG],
       ...(authors !== null && authors.length > 0 ? { authors } : {}),
     };
 
@@ -83,6 +81,13 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
         if (event.kind === KINDS.ENTROPY_CHUNK_MAP) {
           try {
             item.chunkMap = parseEntropyChunkMapTags(event.tags);
+            console.log("[feed] parsed chunkMap:", {
+              rootHash: item.chunkMap.rootHash.slice(0, 12) + "…",
+              chunks: item.chunkMap.chunks.length,
+              gatekeepers: item.chunkMap.gatekeepers,
+              mimeType: item.chunkMap.mimeType,
+              size: item.chunkMap.size
+            });
             cacheChunkMap(item.chunkMap);
           } catch (e) {
             console.warn("[feed] failed to parse chunk map for", event.id, e);

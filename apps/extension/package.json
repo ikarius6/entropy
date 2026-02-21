@@ -6,16 +6,21 @@
   "scripts": {
     "prepare:manifest": "node ./scripts/prepare-manifest.mjs",
     "dev": "pnpm run prepare:manifest && vite build --watch --mode development",
+    "dev:firefox": "cross-env BROWSER_TARGET=firefox pnpm run prepare:manifest && vite build --watch --mode development",
     "build": "pnpm run prepare:manifest && vite build",
+    "build:firefox": "cross-env BROWSER_TARGET=firefox pnpm run prepare:manifest && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.mjs"
   },
   "dependencies": {
-    "@entropy/core": "workspace:*"
+    "@entropy/core": "workspace:*",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
+    "@types/webextension-polyfill": "^0.12.5",
+    "cross-env": "^10.1.0",
     "typescript": "^5.8.2",
-    "vitest": "^2.1.8",
-    "vite": "^5.4.14"
+    "vite": "^5.4.14",
+    "vitest": "^2.1.8"
   }
 }

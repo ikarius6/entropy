@@ -1,3 +1,5 @@
+import browser from "webextension-polyfill";
+
 import {
   isCreditSummaryPayload,
   createEntropyRequestId,
@@ -19,7 +21,7 @@ import {
 } from "./messaging";
 
 async function sendRuntimeMessage(message: EntropyRuntimeMessage): Promise<EntropyRuntimeResponse> {
-  return (await chrome.runtime.sendMessage(message)) as EntropyRuntimeResponse;
+  return (await browser.runtime.sendMessage(message)) as EntropyRuntimeResponse;
 }
 
 export async function requestNodeStatus(): Promise<NodeStatusPayload> {
@@ -219,10 +221,10 @@ export function subscribeNodeStatusUpdates(
     onUpdate(message.payload);
   };
 
-  chrome.runtime.onMessage.addListener(listener);
+  browser.runtime.onMessage.addListener(listener);
 
   return () => {
-    chrome.runtime.onMessage.removeListener(listener);
+    browser.runtime.onMessage.removeListener(listener);
   };
 }
 
@@ -241,9 +243,9 @@ export function subscribeCreditUpdates(
     onUpdate(message.payload);
   };
 
-  chrome.runtime.onMessage.addListener(listener);
+  browser.runtime.onMessage.addListener(listener);
 
   return () => {
-    chrome.runtime.onMessage.removeListener(listener);
+    browser.runtime.onMessage.removeListener(listener);
   };
 }

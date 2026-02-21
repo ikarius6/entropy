@@ -27,6 +27,7 @@ Se utiliza Nostr para el descubrimiento y la integridad. No se sube el video al 
 El intercambio real de datos ocurre entre navegadores de forma encriptada.
 
 * **Fragmentación Ciega:** Los archivos se dividen en trozos de 5MB sin formato. Un nodo que hace *seeding* solo posee "ruido binario", lo que otorga **negación plausible** ante contenido sensible o con copyright.
+* **Fragmentación de Transporte:** Los chunks de 5MB se fragmentan en bloques de 64KB para el envío sobre WebRTC DataChannels (límite SCTP). El receptor reensambla los fragmentos automáticamente.
 * **Reensamblaje en Cliente:** El navegador del receptor es el único que une los trozos y les da formato (`.mp4`, `.jpg`) usando el Mapa de Chunks de Nostr.
 
 ### C. Sistema de Incentivos: Ratio 1:1

@@ -5,3 +5,7 @@ coverage/
 .DS_Store
 *.log
 pnpm-lock.yaml
+apps/extension/firefox/*
+apps/extension/chrome/*
+firefox.txt
+chrome.txt

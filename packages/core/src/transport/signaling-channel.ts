@@ -5,6 +5,8 @@ import {
   type EntropySignalingEnvelope
 } from "../nostr/signaling";
 import type { NostrEvent, NostrFilter, EventCallback, Subscription } from "../nostr/client";
+import type { NostrEventDraft } from "../nostr/events";
+import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +23,7 @@ export interface SignalingMessage {
 }
 
 export type SignalCallback = (signal: SignalingMessage) => void;
+export type SignEventFn = (draft: NostrEventDraft) => NostrEvent | Promise<NostrEvent>;
 
 // ---------------------------------------------------------------------------
 // Signaling Channel — sends/receives WebRTC signaling via Nostr
@@ -31,10 +34,12 @@ const SIGNALING_KIND = ENTROPY_SIGNALING_KIND_MIN + 1; // 20001
 
 export class SignalingChannel {
   private pool: RelayPool;
+  private signEvent: SignEventFn | null;
   private subscription: Subscription | null = null;
 
-  constructor(pool: RelayPool) {
+  constructor(pool: RelayPool, signEvent?: SignEventFn) {
     this.pool = pool;
+    this.signEvent = signEvent ?? null;
   }
 
   /** Send an SDP offer to a target peer. */
@@ -58,12 +63,16 @@ export class SignalingChannel {
       {
         kinds: [SIGNALING_KIND],
         "#p": [myPubkey],
-        since: Math.floor(Date.now() / 1000) - 60
+        since: Math.floor(Date.now() / 1000) - 5
       }
     ];
 
+    logger.log("[SignalingChannel] subscribing for signals to", myPubkey.slice(0, 8) + "…", "filter:", JSON.stringify(filters));
+
     const onEvent: EventCallback = (event: NostrEvent) => {
+      logger.log("[SignalingChannel] raw event received, kind:", event.kind, "from:", event.pubkey?.slice(0, 8) + "…");
       if (!isEntropySignalingKind(event.kind)) {
+        logger.log("[SignalingChannel] not a signaling kind, ignoring");
         return;
       }
 
@@ -71,6 +80,7 @@ export class SignalingChannel {
       const rootHashTag = event.tags.find((tag) => tag[0] === "x");
 
       if (!typeTag || !rootHashTag) {
+        logger.log("[SignalingChannel] missing type or x tag, ignoring");
         return;
       }
 
@@ -79,9 +89,11 @@ export class SignalingChannel {
       try {
         payload = JSON.parse(event.content);
       } catch {
+        logger.log("[SignalingChannel] failed to parse content JSON");
         return;
       }
 
+      logger.log("[SignalingChannel] dispatching signal:", typeTag[1], "from:", event.pubkey?.slice(0, 8) + "…", "rootHash:", rootHashTag[1]?.slice(0, 12) + "…");
       callback({
         type: typeTag[1] as SignalingType,
         senderPubkey: event.pubkey,
@@ -92,6 +104,7 @@ export class SignalingChannel {
     };
 
     this.subscription = this.pool.subscribe(filters, onEvent);
+    logger.log("[SignalingChannel] subscription active");
 
     return () => {
       this.subscription?.unsubscribe();
@@ -109,7 +122,7 @@ export class SignalingChannel {
     payload: unknown,
     rootHash: string
   ): void {
-    const event = {
+    const draft: NostrEventDraft = {
       kind: SIGNALING_KIND,
       created_at: Math.floor(Date.now() / 1000),
       content: JSON.stringify(payload),
@@ -117,13 +130,20 @@ export class SignalingChannel {
         ["p", targetPubkey],
         ["x", rootHash],
         ["type", type]
-      ],
-      // These will need to be filled by the signing layer before publishing
-      id: "",
-      pubkey: "",
-      sig: ""
+      ]
     };
 
-    this.pool.publish(event);
+    if (this.signEvent) {
+      logger.log("[SignalingChannel] signing + publishing", type, "to", targetPubkey.slice(0, 8) + "…", "rootHash:", rootHash.slice(0, 12) + "…");
+      void Promise.resolve(this.signEvent(draft)).then((signed) => {
+        logger.log("[SignalingChannel] event signed, publishing id:", signed.id?.slice(0, 12) + "…");
+        this.pool.publish(signed);
+      }).catch((err) => {
+        logger.error("[SignalingChannel] sign/publish error:", err);
+      });
+    } else {
+      logger.warn("[SignalingChannel] no signEvent fn, publishing unsigned (will likely fail)");
+      this.pool.publish({ ...draft, id: "", pubkey: "", sig: "" });
+    }
   }
 }

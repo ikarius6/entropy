@@ -52,7 +52,11 @@ function ensureSubtleCrypto(): SubtleCrypto {
 
 export async function sha256(data: HashInput): Promise<Uint8Array> {
   const subtle = ensureSubtleCrypto();
-  const digest = await subtle.digest("SHA-256", toArrayBuffer(data));
+  const bytes =
+    data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : new Uint8Array(data.buffer instanceof ArrayBuffer ? data.buffer : new ArrayBuffer(0), data.byteOffset, data.byteLength);
+  const digest = await subtle.digest("SHA-256", bytes);
   return new Uint8Array(digest);
 }
 

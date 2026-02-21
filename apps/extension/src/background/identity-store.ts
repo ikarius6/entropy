@@ -1,3 +1,4 @@
+import browser from "webextension-polyfill";
 import {
   generateKeypair,
   pubkeyFromPrivkey,
@@ -54,7 +55,7 @@ async function readStoredIdentity(): Promise<NostrKeypair | null> {
     return cloneIdentity(cachedIdentity);
   }
 
-  const result = (await chrome.storage.local.get(STORAGE_KEY)) as IdentityStorageSchema;
+  const result = (await browser.storage.local.get(STORAGE_KEY)) as IdentityStorageSchema;
   const parsed = parseStoredIdentity(result[STORAGE_KEY]);
 
   if (!parsed) {
@@ -67,7 +68,7 @@ async function readStoredIdentity(): Promise<NostrKeypair | null> {
 
 async function persistIdentity(identity: NostrKeypair): Promise<void> {
   cachedIdentity = cloneIdentity(identity);
-  await chrome.storage.local.set({
+  await browser.storage.local.set({
     [STORAGE_KEY]: cloneIdentity(identity)
   });
 }
