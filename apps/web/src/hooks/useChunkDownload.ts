@@ -1,22 +1,28 @@
 import { useState, useEffect, useRef } from "react";
-import { type EntropyChunkMap, ChunkDownloader } from "@entropy/core";
+import {
+  type EntropyChunkMap,
+  ChunkDownloader,
+  PeerManager,
+  SignalingChannel,
+} from "@entropy/core";
 import { useEntropyStore } from "../stores/entropy-store";
 
 export function useChunkDownload(chunkMap: EntropyChunkMap | null) {
   const { pubkey, relayPool } = useEntropyStore();
-  
+
   const [status, setStatus] = useState<"idle" | "connecting" | "downloading" | "complete" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [downloadedChunks, setDownloadedChunks] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  
+
   const downloaderRef = useRef<ChunkDownloader | null>(null);
+  const peerManagerRef = useRef<PeerManager | null>(null);
+  const signalingChannelRef = useRef<SignalingChannel | null>(null);
 
   useEffect(() => {
     return () => {
-      if (downloaderRef.current) {
-        downloaderRef.current.cancel();
-      }
+      downloaderRef.current?.cancel();
+      peerManagerRef.current?.disconnectAll();
     };
   }, []);
 
@@ -32,41 +38,27 @@ export function useChunkDownload(chunkMap: EntropyChunkMap | null) {
     setProgress(0);
     setDownloadedChunks(0);
 
-    // Mocking PeerManager and SignalingChannel for now
-    const mockPeerManager = {
-      addPeer: () => {},
-      removePeer: () => {},
-      getPeer: () => ({ connection: new RTCPeerConnection() }),
-      listPeers: () => [],
-      size: 0,
-      on: () => {},
-      off: () => {},
-      disconnectAll: () => {}
-    } as any;
+    // Create real instances of PeerManager and SignalingChannel from @entropy/core
+    const peerManager = new PeerManager();
+    const signalingChannel = new SignalingChannel(relayPool);
 
-    const mockSignalingChannel = {
-      start: () => {},
-      stop: () => {},
-      sendOffer: async () => {},
-      sendAnswer: async () => {},
-      sendIceCandidate: async () => {},
-      onMessage: () => {}
-    } as any;
+    peerManagerRef.current = peerManager;
+    signalingChannelRef.current = signalingChannel;
 
     try {
       downloaderRef.current = new ChunkDownloader({
         chunkMap,
-        peerManager: mockPeerManager,
-        signalingChannel: mockSignalingChannel,
+        peerManager,
+        signalingChannel,
         myPubkey: pubkey,
         relayPool,
         maxConcurrent: 3,
-        onChunkReceived: (index, data) => {
-          // This would be triggered by actual downloads
+        onChunkReceived: (_index, _data) => {
+          // Chunk received and verified — could store in local IndexedDB for re-seeding
         },
         onProgress: (downloaded, total) => {
           setDownloadedChunks(downloaded);
-          setProgress(downloaded / total);
+          setProgress(total > 0 ? downloaded / total : 0);
           setStatus("downloading");
         },
         onComplete: () => {
@@ -77,27 +69,10 @@ export function useChunkDownload(chunkMap: EntropyChunkMap | null) {
         onError: (err) => {
           setStatus("error");
           setError(err.message);
-        }
+        },
       });
 
       downloaderRef.current.start();
-      
-      // MOCK: Simulate downloading for Phase 4 UI implementation
-      let count = 0;
-      const total = chunkMap.chunks.length;
-      
-      const interval = setInterval(() => {
-        count++;
-        setDownloadedChunks(count);
-        setProgress(count / total);
-        setStatus("downloading");
-        
-        if (count >= total) {
-          clearInterval(interval);
-          setStatus("complete");
-        }
-      }, 500);
-
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : String(err));
@@ -138,6 +113,6 @@ export function useChunkDownload(chunkMap: EntropyChunkMap | null) {
     hasChunk,
     start,
     pause,
-    cancel
+    cancel,
   };
 }

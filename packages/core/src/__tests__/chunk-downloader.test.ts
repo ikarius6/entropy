@@ -23,12 +23,10 @@ describe("chunk-downloader", () => {
   } as unknown as PeerManager;
 
   const mockSignalingChannel = {
-    start: vi.fn(),
-    stop: vi.fn(),
     sendOffer: vi.fn(),
     sendAnswer: vi.fn(),
     sendIceCandidate: vi.fn(),
-    onMessage: vi.fn()
+    onSignal: vi.fn(() => vi.fn()),
   } as unknown as SignalingChannel;
 
   const mockRelayPool = {} as unknown as RelayPool;

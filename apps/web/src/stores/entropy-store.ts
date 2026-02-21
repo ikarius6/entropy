@@ -100,14 +100,6 @@ export const useEntropyStore = create<EntropyState>((set, get) => ({
     }));
   },
   
-  loadFeed: async () => {
-    set({ feedLoading: true });
-    // Placeholder for actual feed loading logic
-    setTimeout(() => {
-      set({ feedLoading: false });
-    }, 1000);
-  },
-  
   startPlayback: (rootHash: string, chunkMap: EntropyChunkMap) => {
     set({
       activePlayback: {

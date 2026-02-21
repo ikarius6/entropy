@@ -1,7 +1,6 @@
 import {
   SignalingChannel,
   createRtcConfiguration,
-  type NostrEvent,
   type RelayPool,
   type SignalingMessage
 } from "@entropy/core";
@@ -32,26 +31,6 @@ function isIceCandidatePayload(payload: unknown): payload is RTCIceCandidateInit
   return typeof candidate.candidate === "string";
 }
 
-function buildSignalingEnvelope(
-  senderPubkey: string,
-  targetPubkey: string,
-  rootHash: string,
-  payload: unknown,
-  type: "answer" | "ice-candidate"
-): NostrEvent & { targetPubkey: string; rootHash: string; sdp?: unknown; candidate?: unknown } {
-  return {
-    id: "",
-    pubkey: senderPubkey,
-    sig: "",
-    kind: 20_001,
-    created_at: Math.floor(Date.now() / 1000),
-    content: "",
-    tags: [],
-    targetPubkey,
-    rootHash,
-    ...(type === "answer" ? { sdp: payload } : { candidate: payload })
-  };
-}
 
 export function startSignalingListener(
   pool: RelayPool,
@@ -86,15 +65,11 @@ export function startSignalingListener(
             return;
           }
 
-          channel.sendIceCandidate(
-            buildSignalingEnvelope(
-              myPubkey,
-              signal.senderPubkey,
-              signal.rootHash,
-              event.candidate.toJSON(),
-              "ice-candidate"
-            ) as NostrEvent & { targetPubkey: string; candidate: unknown; rootHash: string }
-          );
+          channel.sendIceCandidate({
+            targetPubkey: signal.senderPubkey,
+            candidate: event.candidate.toJSON(),
+            rootHash: signal.rootHash,
+          });
         };
 
         peer.ondatachannel = (event) => {
@@ -106,15 +81,11 @@ export function startSignalingListener(
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
 
-        channel.sendAnswer(
-          buildSignalingEnvelope(
-            myPubkey,
-            signal.senderPubkey,
-            signal.rootHash,
-            answer,
-            "answer"
-          ) as NostrEvent & { targetPubkey: string; sdp: unknown; rootHash: string }
-        );
+        channel.sendAnswer({
+          targetPubkey: signal.senderPubkey,
+          sdp: answer,
+          rootHash: signal.rootHash,
+        });
 
         return;
       }

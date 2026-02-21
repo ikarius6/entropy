@@ -38,20 +38,18 @@ export class SignalingChannel {
   }
 
   /** Send an SDP offer to a target peer. */
-  sendOffer(event: NostrEvent & { targetPubkey: string; sdp: unknown; rootHash: string }): void {
-    this.publishSignalingEvent(event.targetPubkey, "offer", event.sdp, event.rootHash);
+  sendOffer(params: { targetPubkey: string; sdp: unknown; rootHash: string }): void {
+    this.publishSignalingEvent(params.targetPubkey, "offer", params.sdp, params.rootHash);
   }
 
   /** Send an SDP answer to a target peer. */
-  sendAnswer(event: NostrEvent & { targetPubkey: string; sdp: unknown; rootHash: string }): void {
-    this.publishSignalingEvent(event.targetPubkey, "answer", event.sdp, event.rootHash);
+  sendAnswer(params: { targetPubkey: string; sdp: unknown; rootHash: string }): void {
+    this.publishSignalingEvent(params.targetPubkey, "answer", params.sdp, params.rootHash);
   }
 
   /** Send an ICE candidate to a target peer. */
-  sendIceCandidate(
-    event: NostrEvent & { targetPubkey: string; candidate: unknown; rootHash: string }
-  ): void {
-    this.publishSignalingEvent(event.targetPubkey, "ice-candidate", event.candidate, event.rootHash);
+  sendIceCandidate(params: { targetPubkey: string; candidate: unknown; rootHash: string }): void {
+    this.publishSignalingEvent(params.targetPubkey, "ice-candidate", params.candidate, params.rootHash);
   }
 
   /** Listen for incoming signaling events targeting our pubkey. */

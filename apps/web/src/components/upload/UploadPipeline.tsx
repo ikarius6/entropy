@@ -7,11 +7,11 @@ interface UploadPipelineProps {
 
 export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
   const stages = [
-    { key: "chunking", label: "Fragmentación" },
+    { key: "chunking", label: "Chunking" },
     { key: "hashing", label: "Hashing" },
-    { key: "storing", label: "Almacenando" },
-    { key: "delegating", label: "Delegando seed" },
-    { key: "publishing", label: "Publicando" },
+    { key: "storing", label: "Storing" },
+    { key: "delegating", label: "Delegating seed" },
+    { key: "publishing", label: "Publishing" },
   ];
 
   const getStageStatus = (stageIndex: number) => {
@@ -76,7 +76,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
       <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/10">
         {progress.stage === 'done' ? (
           <div className="text-green-400 font-medium flex items-center gap-2">
-            <span>🎉 Publicación completada</span>
+            <span>🎉 Publication complete</span>
           </div>
         ) : progress.stage === 'error' ? (
           <div className="text-red-400 font-medium">
@@ -84,7 +84,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
           </div>
         ) : (
           <div className="text-primary animate-pulse text-sm font-medium">
-            Procesando... no cierres esta ventana
+            Processing... do not close this window
           </div>
         )}
         
@@ -92,7 +92,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
           onClick={onCancel}
           className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-md transition-colors text-sm font-medium"
         >
-          {progress.stage === 'done' || progress.stage === 'error' ? 'Volver' : 'Cancelar'}
+          {progress.stage === 'done' || progress.stage === 'error' ? 'Back' : 'Cancel'}
         </button>
       </div>
     </div>

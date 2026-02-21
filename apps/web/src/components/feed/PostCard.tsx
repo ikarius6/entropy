@@ -1,6 +1,8 @@
+import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Server, Loader2 } from "lucide-react";
+import { Play, Download, Share2, Server, Loader2, Maximize, X } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
+import type { EntropyChunkMap } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
 import { useNostrProfile } from "../../hooks/useNostrProfile";
 import { useChunkBlob } from "../../hooks/useChunkBlob";
@@ -39,9 +41,11 @@ export function PostCard({ item }: { item: FeedItem }) {
       </div>
 
       {/* Content */}
-      <div className="text-white/90 whitespace-pre-wrap leading-relaxed mt-1">
-        {item.content}
-      </div>
+      {item.content && (
+        <div className="text-white/90 whitespace-pre-wrap leading-relaxed mt-1">
+          {item.content}
+        </div>
+      )}
 
       {/* Media specific rendering */}
       {item.kind === KINDS.ENTROPY_CHUNK_MAP && item.chunkMap && (
@@ -60,12 +64,30 @@ interface BlobProps {
   blobProgress: number;
 }
 
-function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: any } & BlobProps) {
+function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: EntropyChunkMap } & BlobProps) {
+  const [expanded, setExpanded] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const sizeMB = (chunkMap.size / (1024 * 1024)).toFixed(1);
   const numChunks = chunkMap.chunks?.length || 0;
   const mime: string = chunkMap.mimeType || "";
   const isImage = mime.startsWith("image/");
   const isAudio = mime.startsWith("audio/");
+  const isVideo = mime.startsWith("video/") || (!isImage && !isAudio);
+
+  const handlePlay = useCallback(() => {
+    if (blobStatus !== "ready" || !videoRef.current) return;
+    setExpanded(true);
+    videoRef.current.play().catch(() => {});
+  }, [blobStatus]);
+
+  const handleCollapse = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+    setExpanded(false);
+  }, []);
 
   const metaBadges = (
     <div className="flex gap-2">
@@ -114,18 +136,66 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
           {blobStatus === "loading" && <Loader2 className="animate-spin text-primary" size={20} />}
           <div>{metaBadges}</div>
         </div>
-      ) : (
-        <div className="aspect-video bg-gradient-to-br from-panel to-background flex flex-col items-center justify-center relative group cursor-pointer">
-          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
-          <Link
-            to={`/watch/${chunkMap.rootHash}`}
-            className="w-16 h-16 rounded-full bg-primary/90 text-background flex items-center justify-center relative z-10 transform group-hover:scale-110 transition-transform shadow-lg shadow-primary/20"
-          >
-            <Play fill="currentColor" size={24} className="ml-1" />
-          </Link>
-          <div className="absolute bottom-3 left-3 z-10">{metaBadges}</div>
+      ) : isVideo ? (
+        <div className="relative group cursor-pointer" onClick={!expanded ? handlePlay : undefined}>
+          {/* Loading / error states (no blob yet) */}
+          {blobStatus === "loading" && (
+            <div className="aspect-video bg-gradient-to-br from-panel to-background flex flex-col items-center justify-center">
+              <Loader2 className="animate-spin text-primary" size={40} />
+              <span className="text-muted text-xs mt-2">{Math.round(blobProgress * 100)}% loaded</span>
+            </div>
+          )}
+          {blobStatus === "error" && (
+            <div className="aspect-video bg-gradient-to-br from-panel to-background flex items-center justify-center">
+              <span className="text-red-400 text-sm">Failed to load video</span>
+            </div>
+          )}
+
+          {/* Video element — always mounted when blob is ready; browser shows first frame as preview */}
+          {blobUrl && (
+            <video
+              ref={videoRef}
+              src={blobUrl}
+              preload="metadata"
+              controls={expanded}
+              muted={!expanded}
+              className="w-full max-h-[480px] bg-black"
+            />
+          )}
+
+          {/* Play button overlay (collapsed state) */}
+          {blobUrl && !expanded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+              <button className="w-16 h-16 rounded-full bg-primary/90 text-background flex items-center justify-center transform group-hover:scale-110 transition-transform shadow-lg shadow-primary/20">
+                <Play fill="currentColor" size={24} className="ml-1" />
+              </button>
+            </div>
+          )}
+
+          {/* Controls overlay (expanded state) */}
+          {expanded && (
+            <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Link
+                to={`/watch/${chunkMap.rootHash}`}
+                className="p-1.5 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-white/80 hover:text-white hover:bg-black/80 transition-colors"
+                title="Open full page"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Maximize size={14} />
+              </Link>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCollapse(); }}
+                className="p-1.5 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-white/80 hover:text-white hover:bg-black/80 transition-colors"
+                title="Collapse"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          <div className="absolute bottom-3 left-3 z-10 pointer-events-none">{metaBadges}</div>
         </div>
-      )}
+      ) : null}
 
       {/* Footer Info */}
       <div className="p-3 bg-white/5 border-t border-border flex items-center justify-between">
@@ -168,10 +238,10 @@ function PostActions({ item, blobUrl, blobStatus, blobProgress }: { item: FeedIt
         <>
           <Link
             to={`/watch/${item.chunkMap.rootHash}`}
-            className="flex items-center gap-2 text-sm text-primary hover:text-accent transition-colors font-medium"
+            className="flex items-center gap-2 text-sm text-muted hover:text-white transition-colors"
           >
-            <Play size={16} />
-            Watch
+            <Maximize size={16} />
+            Full Page
           </Link>
           <button
             onClick={handleDownload}

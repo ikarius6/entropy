@@ -1,73 +1,72 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { type QuotaManager, createIndexedDbQuotaManager, createIndexedDbChunkStore } from "@entropy/core";
 
 export function useQuotaManager() {
   const [usedBytes, setUsedBytes] = useState(0);
   const [quotaBytes, setQuotaBytes] = useState(2 * 1024 * 1024 * 1024); // Default 2GB
   const [isOverQuota, setIsOverQuota] = useState(false);
-  const [quotaManager, setQuotaManager] = useState<QuotaManager | null>(null);
+  const qmRef = useRef<QuotaManager | null>(null);
+
+  const refreshUsage = async (qm: QuotaManager | null = qmRef.current) => {
+    if (!qm) return;
+    try {
+      const info = await qm.getQuotaInfo();
+      setUsedBytes(info.used);
+      setQuotaBytes(info.limit);
+      setIsOverQuota(info.used > info.limit);
+    } catch (err) {
+      console.error("[useQuotaManager] failed to get quota info:", err);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
-    
-    // Initialize QuotaManager
+
     const init = async () => {
       try {
         const store = createIndexedDbChunkStore({ dbName: "entropy-web-store" });
         const qm = createIndexedDbQuotaManager(store, { limitBytes: quotaBytes });
         if (isMounted) {
-          setQuotaManager(qm);
+          qmRef.current = qm;
           await refreshUsage(qm);
         }
       } catch (err) {
-        console.error("Failed to initialize quota manager:", err);
+        console.error("[useQuotaManager] failed to initialize:", err);
       }
     };
-    
+
     init();
-    
+
     return () => {
       isMounted = false;
     };
   }, [quotaBytes]);
 
-  const refreshUsage = async (qm = quotaManager) => {
-    if (!qm) return;
-    try {
-      // In a real implementation we would get this from the quota manager
-      // For now we'll mock it based on navigator.storage if available
-      if (navigator.storage && navigator.storage.estimate) {
-        const estimate = await navigator.storage.estimate();
-        setUsedBytes(estimate.usage || 0);
-        setIsOverQuota((estimate.usage || 0) > quotaBytes);
-      }
-    } catch (err) {
-      console.error("Failed to estimate storage:", err);
-    }
-  };
-
   const setQuota = async (bytes: number) => {
-    setQuotaBytes(bytes);
     try {
       const store = createIndexedDbChunkStore({ dbName: "entropy-web-store" });
       const qm = createIndexedDbQuotaManager(store, { limitBytes: bytes });
-      setQuotaManager(qm);
+      qmRef.current = qm;
+      setQuotaBytes(bytes);
       await refreshUsage(qm);
     } catch (err) {
-      console.error("Failed to update quota manager:", err);
+      console.error("[useQuotaManager] failed to update quota:", err);
     }
   };
 
   const evictLRU = async (): Promise<number> => {
-    if (!quotaManager) return 0;
+    const qm = qmRef.current;
+    if (!qm) return 0;
     try {
-      // Mock evicting for now since the real method might need actual DB access
-      // Let's evict 100MB as a test
-      const freed = await quotaManager.evictLRU(100 * 1024 * 1024);
-      await refreshUsage();
+      const info = await qm.getQuotaInfo();
+      // Evict enough to free 10% of the limit, or whatever is over quota
+      const overQuota = Math.max(0, info.used - info.limit);
+      const targetFree = Math.max(overQuota, info.limit * 0.1);
+      const freed = await qm.evictLRU(targetFree);
+      await refreshUsage(qm);
       return freed;
     } catch (err) {
-      console.error("Failed to evict LRU:", err);
+      console.error("[useQuotaManager] failed to evict LRU:", err);
       return 0;
     }
   };
@@ -81,6 +80,6 @@ export function useQuotaManager() {
     isOverQuota,
     evictLRU,
     setQuota,
-    refreshUsage
+    refreshUsage,
   };
 }

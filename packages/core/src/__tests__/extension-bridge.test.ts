@@ -108,7 +108,7 @@ describe("extension bridge protocol guards", () => {
           hash: "chunk-1",
           rootHash: "root-1",
           index: 0,
-          data: new ArrayBuffer(4)
+          data: [0, 0, 0, 0]
         }
       })
     ).toBe(true);

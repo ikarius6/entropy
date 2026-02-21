@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
+import { KINDS } from "../lib/constants";
+import type { NostrEvent } from "@entropy/core";
 import type { NostrProfile } from "../types/nostr";
 
 export function useNostrProfile(pubkey: string | null) {
   const [profile, setProfile] = useState<NostrProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { relayPool, relayUrls } = useEntropyStore();
+  const { relayPool, relayUrls, profiles, cacheProfile, setProfile: setStoreProfile } = useEntropyStore();
 
   useEffect(() => {
     if (!pubkey) {
@@ -14,57 +16,77 @@ export function useNostrProfile(pubkey: string | null) {
       return;
     }
 
-    // Check if we already have it in store for the current user
+    // Check the store's profile cache first
+    const cached = profiles[pubkey];
+    if (cached) {
+      setProfile(cached);
+      return;
+    }
+
+    // Also check the current user's profile in the store
     const storeProfile = useEntropyStore.getState().profile;
     if (storeProfile && storeProfile.pubkey === pubkey) {
       setProfile(storeProfile);
       return;
     }
 
+    if (!relayPool || relayUrls.length === 0) {
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     setIsLoading(true);
 
-    const loadProfile = async () => {
-      if (!relayPool || relayUrls.length === 0) {
-        setIsLoading(false);
-        return;
-      }
+    let latestCreatedAt = 0;
 
-      try {
-        // Here we would use relayPool.subscribe to fetch kind:0
-        // For now, return a mock profile
-        await new Promise(r => setTimeout(r, 500));
-        
-        if (isMounted) {
-          const mockProfile: NostrProfile = {
+    // Subscribe to kind:0 (NIP-01 metadata) for this pubkey
+    const sub = relayPool.subscribe(
+      [{ kinds: [KINDS.METADATA], authors: [pubkey], limit: 1 }],
+      (event: NostrEvent) => {
+        if (!isMounted) return;
+        // Keep only the newest metadata event
+        if (event.created_at <= latestCreatedAt) return;
+        latestCreatedAt = event.created_at;
+
+        try {
+          const meta = JSON.parse(event.content);
+          const parsed: NostrProfile = {
             pubkey,
-            name: "Entropy User",
-            displayName: "Entropy P2P Node",
-            about: "Testing Phase 4 of Entropy Network",
+            name: meta.name,
+            displayName: meta.display_name || meta.displayName,
+            about: meta.about,
+            picture: meta.picture,
+            banner: meta.banner,
+            nip05: meta.nip05,
+            lud16: meta.lud16,
           };
-          
-          setProfile(mockProfile);
-          
-          // If this is the logged in user, update the store
+
+          setProfile(parsed);
+          cacheProfile(pubkey, parsed);
+
+          // If this is the logged-in user, also update the store's primary profile
           if (pubkey === useEntropyStore.getState().pubkey) {
-            useEntropyStore.getState().setProfile(mockProfile);
+            setStoreProfile(parsed);
           }
+        } catch (err) {
+          console.warn("[useNostrProfile] failed to parse kind:0 content:", err);
         }
-      } catch (err) {
-        console.error("Failed to load Nostr profile:", err);
-      } finally {
+      },
+      () => {
+        // EOSE — done loading
         if (isMounted) {
           setIsLoading(false);
         }
+        sub.unsubscribe();
       }
-    };
-
-    loadProfile();
+    );
 
     return () => {
       isMounted = false;
+      sub.unsubscribe();
     };
-  }, [pubkey, relayPool, relayUrls]);
+  }, [pubkey, relayPool, relayUrls.join(",")]);
 
   return { profile, isLoading };
 }
