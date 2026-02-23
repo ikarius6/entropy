@@ -1,7 +1,9 @@
 import browser from "webextension-polyfill";
 
 import {
+  isColdStorageStatusPayload,
   isCreditSummaryPayload,
+  isNodeMetricsPayload,
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
   isNodeSettingsPayload,
@@ -10,7 +12,10 @@ import {
   isEntropyRuntimePushMessage,
   isNodeStatusPayload,
   type CreditSummaryPayload,
+  type ColdStorageStatusPayload,
   type ImportKeypairPayload,
+  type NodeMetricsPayload,
+  type ReleaseColdAssignmentPayload,
   type RelayUrlPayload,
   type SetSeedingActivePayload,
   type EntropyRuntimeMessage,
@@ -47,6 +52,30 @@ export async function requestNodeStatus(): Promise<NodeStatusPayload> {
 
   if (!response.ok || !isNodeStatusPayload(response.payload)) {
     throw new Error(response.ok ? "Missing node status payload." : response.error);
+  }
+
+  return response.payload;
+}
+
+async function validateColdStorageResponse(
+  requestId: string,
+  requestType: "GET_COLD_STORAGE_ASSIGNMENTS" | "RELEASE_COLD_ASSIGNMENT",
+  response: unknown
+): Promise<ColdStorageStatusPayload> {
+  if (!isEntropyRuntimeResponse(response)) {
+    throw new Error("Invalid runtime response payload received.");
+  }
+
+  if (response.requestId !== requestId) {
+    throw new Error("Mismatched extension cold-storage response correlation id.");
+  }
+
+  if (response.type !== requestType) {
+    throw new Error("Unexpected runtime response type for cold-storage request.");
+  }
+
+  if (!response.ok || !isColdStorageStatusPayload(response.payload)) {
+    throw new Error(response.ok ? "Missing cold-storage payload." : response.error);
   }
 
   return response.payload;
@@ -176,6 +205,61 @@ export async function setRuntimeSeedingActive(
     payload
   });
   return validateNodeSettingsResponse(requestId, "SET_SEEDING_ACTIVE", response);
+}
+
+export async function requestColdStorageAssignments(): Promise<ColdStorageStatusPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "GET_COLD_STORAGE_ASSIGNMENTS"
+  });
+
+  return validateColdStorageResponse(requestId, "GET_COLD_STORAGE_ASSIGNMENTS", response);
+}
+
+export async function releaseColdStorageAssignment(
+  payload: ReleaseColdAssignmentPayload
+): Promise<ColdStorageStatusPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "RELEASE_COLD_ASSIGNMENT",
+    payload
+  });
+
+  return validateColdStorageResponse(requestId, "RELEASE_COLD_ASSIGNMENT", response);
+}
+
+export async function requestNodeMetrics(): Promise<NodeMetricsPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "GET_NODE_METRICS"
+  });
+
+  if (!isEntropyRuntimeResponse(response)) {
+    throw new Error("Invalid runtime response payload received.");
+  }
+
+  if (response.requestId !== requestId) {
+    throw new Error("Mismatched extension metrics response correlation id.");
+  }
+
+  if (response.type !== "GET_NODE_METRICS") {
+    throw new Error("Unexpected runtime response type for node metrics request.");
+  }
+
+  if (!response.ok || !isNodeMetricsPayload(response.payload)) {
+    throw new Error(response.ok ? "Missing node metrics payload." : response.error);
+  }
+
+  return response.payload;
 }
 
 export async function requestCreditSummary(): Promise<CreditSummaryPayload> {

@@ -9,8 +9,65 @@
   <body>
     <main class="dashboard">
       <h1>Entropy Node Dashboard</h1>
-      <button id="refresh" type="button">Refresh</button>
+
+      <div class="toolbar">
+        <button id="refresh" type="button">Refresh</button>
+        <button id="load-pubkey" type="button">Load Public Key</button>
+      </div>
+
       <pre id="status">Loading...</pre>
+
+      <div class="settings-card">
+        <h2>Identity</h2>
+        <p id="key-status">Public key: loading...</p>
+        <div class="settings-row">
+          <input id="import-privkey" type="password" placeholder="Paste nsec or hex private key" />
+          <button id="import-keypair" type="button">Import</button>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h2>Relay Settings</h2>
+        <p id="relay-status">Loading...</p>
+        <ul id="relay-list" class="inventory-list"></ul>
+        <div class="settings-row">
+          <input id="relay-url-input" type="url" placeholder="wss://relay.example.com" />
+          <button id="add-relay" type="button">Add Relay</button>
+        </div>
+        <div class="settings-row seeding-row">
+          <label class="toggle-label" for="seeding-toggle">Seeding active</label>
+          <input id="seeding-toggle" type="checkbox" />
+        </div>
+        <p id="seeding-status"></p>
+      </div>
+
+      <div class="inventory-card">
+        <h2>Chunk Inventory</h2>
+        <p id="inventory-summary">Loading...</p>
+        <div class="quota-track"><div id="quota-fill" class="quota-fill"></div></div>
+        <ul id="root-inventory" class="inventory-list"></ul>
+        <details class="inventory-details">
+          <summary>All chunks</summary>
+          <ul id="chunk-inventory" class="inventory-list compact"></ul>
+        </details>
+      </div>
+
+      <div class="cold-storage-card" id="cold-storage-card">
+        <div class="cold-storage-header">
+          <h2>Cold Storage</h2>
+          <button id="refresh-cold-storage" type="button" class="btn-small">Refresh</button>
+        </div>
+        <p id="cold-storage-status">Loading...</p>
+        <ul id="cold-storage-list" class="inventory-list"></ul>
+      </div>
+
+      <div class="metrics-card" id="metrics-card">
+        <div class="metrics-card-header">
+          <h2>Node Metrics</h2>
+          <button id="refresh-metrics" type="button" class="btn-small">Refresh</button>
+        </div>
+        <div id="metrics-content">Loading...</div>
+      </div>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

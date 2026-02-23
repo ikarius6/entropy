@@ -72,6 +72,12 @@ export interface P2PBridgeOptions {
   chunkStore: ChunkStore;
   signEvent: SignEventFn;
   onChunkServed?: (chunkHash: string, peerPubkey: string, bytes: number) => void;
+  authorizeChunkRequest?: (request: {
+    peerPubkey: string;
+    chunkHash: string;
+    rootHash: string;
+    requestedBytes: number;
+  }) => boolean | Promise<boolean>;
 }
 
 let stopDirectSignaling: (() => void) | null = null;
@@ -97,6 +103,9 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
           options.chunkStore,
           async (chunkHash, bytes) => {
             options.onChunkServed?.(chunkHash, peerPubkey, bytes);
+          },
+          {
+            authorizeRequest: options.authorizeChunkRequest
           }
         );
       },
@@ -135,8 +144,18 @@ export async function fetchChunkP2P(params: {
   myPubkey: string;
   relayPool: RelayPool;
   signEvent: SignEventFn;
+  isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
+  onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
+  onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
 }): Promise<PeerChunkResult | null> {
   logger.log("[p2p-bridge] fetchChunkP2P called, hasWebRTC:", hasWebRTC, "chunk:", params.chunkHash.slice(0, 12) + "…", "gatekeeper:", params.gatekeeperPubkey.slice(0, 8) + "…");
+
+  const banned = await Promise.resolve(params.isPeerBanned?.(params.gatekeeperPubkey) ?? false);
+  if (banned) {
+    logger.log("[p2p-bridge] skipping banned gatekeeper", params.gatekeeperPubkey.slice(0, 8) + "…");
+    return null;
+  }
+
   if (hasWebRTC) {
     // Firefox: run directly
     logger.log("[p2p-bridge] calling fetchChunkFromPeer directly (Firefox path)");
@@ -167,6 +186,12 @@ export async function fetchChunkP2P(params: {
   }
 
   const buffer = new Uint8Array(response.data).buffer;
+  await Promise.resolve(params.onPeerTransferSuccess?.(params.gatekeeperPubkey, buffer.byteLength)).catch(
+    (err) => {
+      logger.warn("[p2p-bridge] failed to record peer success:", err);
+    }
+  );
+
   return {
     hash: params.chunkHash,
     rootHash: params.rootHash,

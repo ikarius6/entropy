@@ -9,6 +9,7 @@ import {
   type ChunkRequestMessage,
 } from "./chunk-transfer";
 import { sha256Hex } from "../crypto/hash";
+import { discoverSeeders } from "./seeder-discovery";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,7 +29,11 @@ export interface ChunkDownloadOptions {
   signalingChannel: SignalingChannel;
   myPubkey: string;
   relayPool: RelayPool;
+  discoverPeers?: (rootHash: string) => Promise<string[]>;
   maxConcurrent?: number;
+  isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
+  onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
+  onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
   onChunkReceived?: (index: number, data: ArrayBuffer) => void;
   onProgress?: (downloaded: number, total: number) => void;
   onComplete?: () => void;
@@ -44,7 +49,12 @@ export class ChunkDownloader {
   private readonly peerManager: PeerManager;
   private readonly signalingChannel: SignalingChannel;
   private readonly myPubkey: string;
+  private readonly relayPool: RelayPool;
+  private readonly discoverPeers: (rootHash: string) => Promise<string[]>;
   private readonly maxConcurrent: number;
+  private readonly isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
+  private readonly onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
+  private readonly onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
 
   private readonly onChunkReceived?: (index: number, data: ArrayBuffer) => void;
   private readonly onProgress?: (downloaded: number, total: number) => void;
@@ -77,7 +87,14 @@ export class ChunkDownloader {
     this.peerManager = options.peerManager;
     this.signalingChannel = options.signalingChannel;
     this.myPubkey = options.myPubkey;
+    this.relayPool = options.relayPool;
+    this.discoverPeers =
+      options.discoverPeers ??
+      ((rootHash: string) => discoverSeeders(this.relayPool, rootHash));
     this.maxConcurrent = options.maxConcurrent || 3;
+    this.isPeerBanned = options.isPeerBanned;
+    this.onPeerTransferSuccess = options.onPeerTransferSuccess;
+    this.onPeerFailedVerification = options.onPeerFailedVerification;
 
     this.onChunkReceived = options.onChunkReceived;
     this.onProgress = options.onProgress;
@@ -106,7 +123,16 @@ export class ChunkDownloader {
     }
 
     try {
-      const gatekeepers = this.chunkMap.gatekeepers || [];
+      const staticGatekeepers = this.chunkMap.gatekeepers || [];
+
+      let dynamicGatekeepers: string[] = [];
+      try {
+        dynamicGatekeepers = await this.discoverPeers(this.chunkMap.rootHash);
+      } catch (discoveryErr) {
+        console.warn("[ChunkDownloader] dynamic seeder discovery failed:", discoveryErr);
+      }
+
+      const gatekeepers = [...new Set([...staticGatekeepers, ...dynamicGatekeepers])];
       if (gatekeepers.length === 0) {
         throw new Error("No gatekeepers found in chunk map");
       }
@@ -117,10 +143,27 @@ export class ChunkDownloader {
         (signal) => this.handleSignalingMessage(signal)
       );
 
-      // Initiate WebRTC connections to each gatekeeper via signaling
-      const connectPromises = gatekeepers
-        .filter((pk) => pk !== this.myPubkey)
-        .map((pk) => this.connectToPeer(pk));
+      // Initiate WebRTC connections to each eligible gatekeeper via signaling
+      const candidatePeers: string[] = [];
+      for (const pk of gatekeepers) {
+        if (pk === this.myPubkey) {
+          continue;
+        }
+
+        const banned = await Promise.resolve(this.isPeerBanned?.(pk) ?? false);
+        if (banned) {
+          console.warn(`[ChunkDownloader] skipping banned peer ${pk.slice(0, 8)}…`);
+          continue;
+        }
+
+        candidatePeers.push(pk);
+      }
+
+      if (candidatePeers.length === 0) {
+        throw new Error("No eligible gatekeeper peers available");
+      }
+
+      const connectPromises = candidatePeers.map((pk) => this.connectToPeer(pk));
 
       // Wait for at least one peer connection (or all to fail)
       await Promise.allSettled(connectPromises);
@@ -412,12 +455,27 @@ export class ChunkDownloader {
           this.inFlightChunks.delete(index);
           this.downloadedChunks.set(index, data);
 
+          void Promise.resolve(this.onPeerTransferSuccess?.(peerId, data.byteLength)).catch((err) => {
+            console.warn(
+              `[ChunkDownloader] failed to record peer success for ${peerId.slice(0, 8)}…:`,
+              err
+            );
+          });
+
           this.onChunkReceived?.(index, data);
           this.onProgress?.(this.downloadedChunks.size, this.chunkMap.chunks.length);
 
           this.scheduleNextRequests();
         } else {
           console.error(`[ChunkDownloader] invalid hash for chunk ${index} from ${peerId.slice(0, 8)}…`);
+
+          void Promise.resolve(this.onPeerFailedVerification?.(peerId)).catch((err) => {
+            console.warn(
+              `[ChunkDownloader] failed to record peer verification failure for ${peerId.slice(0, 8)}…:`,
+              err
+            );
+          });
+
           this.handleChunkError(index);
         }
       })

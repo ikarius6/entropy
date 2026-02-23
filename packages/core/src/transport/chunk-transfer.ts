@@ -6,11 +6,16 @@ const MESSAGE_TYPE_CHUNK_DATA = 2;
 const MESSAGE_TYPE_CHUNK_ERROR = 3;
 const MESSAGE_TYPE_CHUNK_DATA_HEADER = 4;
 
+export const MESSAGE_TYPE_CUSTODY_CHALLENGE = 0x05;
+export const MESSAGE_TYPE_CUSTODY_PROOF = 0x06;
+
 const HASH_BYTES = 32;
 const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES + 2;
 const RESPONSE_BASE_BYTES = 1 + HASH_BYTES + 4;
 const ERROR_BYTES = 1 + HASH_BYTES + 1;
 const CHUNK_DATA_HEADER_BYTES = 1 + HASH_BYTES + 4;
+const CUSTODY_CHALLENGE_BYTES = 1 + HASH_BYTES + 4 + 4;
+const CUSTODY_PROOF_BYTES = 1 + HASH_BYTES + HASH_BYTES;
 
 const ERROR_REASON_CODES = {
   NOT_FOUND: 0,
@@ -49,7 +54,25 @@ export type ChunkErrorMessage = {
   reason: ChunkErrorReason;
 };
 
-export type ChunkTransferMessage = ChunkRequestMessage | ChunkResponseMessage | ChunkErrorMessage;
+export type CustodyChallengeMessage = {
+  type: "CUSTODY_CHALLENGE";
+  chunkHash: string;
+  offset: number;
+  length: number;
+};
+
+export type CustodyProofMessage = {
+  type: "CUSTODY_PROOF";
+  chunkHash: string;
+  sliceHash: string;
+};
+
+export type ChunkTransferMessage =
+  | ChunkRequestMessage
+  | ChunkResponseMessage
+  | ChunkErrorMessage
+  | CustodyChallengeMessage
+  | CustodyProofMessage;
 
 function normalizeHash(hash: string, label: string): string {
   const normalized = hash.trim().toLowerCase();
@@ -59,6 +82,12 @@ function normalizeHash(hash: string, label: string): string {
   }
 
   return normalized;
+}
+
+function assertUint32(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+    throw new Error(`${label} must be a uint32 value.`);
+  }
 }
 
 function copyBuffer(buffer: ArrayBuffer): ArrayBuffer {
@@ -145,6 +174,86 @@ export function encodeChunkError(message: ChunkErrorMessage): ArrayBuffer {
   output[offset] = reasonCode;
 
   return output.buffer;
+}
+
+export function encodeCustodyChallenge(message: CustodyChallengeMessage): ArrayBuffer {
+  assertUint32(message.offset, "offset");
+  assertUint32(message.length, "length");
+
+  const output = new Uint8Array(CUSTODY_CHALLENGE_BYTES);
+  const view = new DataView(output.buffer);
+
+  output[0] = MESSAGE_TYPE_CUSTODY_CHALLENGE;
+
+  let offset = 1;
+  offset = writeHash(output, offset, message.chunkHash, "chunkHash");
+  view.setUint32(offset, message.offset, false);
+  offset += 4;
+  view.setUint32(offset, message.length, false);
+
+  return output.buffer;
+}
+
+export function decodeCustodyChallenge(buffer: ArrayBuffer): CustodyChallengeMessage {
+  const input = new Uint8Array(buffer);
+
+  if (input.byteLength < CUSTODY_CHALLENGE_BYTES) {
+    throw new Error("Custody challenge message is truncated.");
+  }
+
+  if (input[0] !== MESSAGE_TYPE_CUSTODY_CHALLENGE) {
+    throw new Error(`Expected custody challenge message type ${MESSAGE_TYPE_CUSTODY_CHALLENGE}.`);
+  }
+
+  let offset = 1;
+  const chunkHashResult = readHash(input, offset);
+  offset = chunkHashResult.nextOffset;
+
+  const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
+  const challengeOffset = view.getUint32(offset, false);
+  offset += 4;
+  const challengeLength = view.getUint32(offset, false);
+
+  return {
+    type: "CUSTODY_CHALLENGE",
+    chunkHash: chunkHashResult.hash,
+    offset: challengeOffset,
+    length: challengeLength
+  };
+}
+
+export function encodeCustodyProof(message: CustodyProofMessage): ArrayBuffer {
+  const output = new Uint8Array(CUSTODY_PROOF_BYTES);
+  output[0] = MESSAGE_TYPE_CUSTODY_PROOF;
+
+  let offset = 1;
+  offset = writeHash(output, offset, message.chunkHash, "chunkHash");
+  writeHash(output, offset, message.sliceHash, "sliceHash");
+
+  return output.buffer;
+}
+
+export function decodeCustodyProof(buffer: ArrayBuffer): CustodyProofMessage {
+  const input = new Uint8Array(buffer);
+
+  if (input.byteLength < CUSTODY_PROOF_BYTES) {
+    throw new Error("Custody proof message is truncated.");
+  }
+
+  if (input[0] !== MESSAGE_TYPE_CUSTODY_PROOF) {
+    throw new Error(`Expected custody proof message type ${MESSAGE_TYPE_CUSTODY_PROOF}.`);
+  }
+
+  let offset = 1;
+  const chunkHashResult = readHash(input, offset);
+  offset = chunkHashResult.nextOffset;
+  const sliceHashResult = readHash(input, offset);
+
+  return {
+    type: "CUSTODY_PROOF",
+    chunkHash: chunkHashResult.hash,
+    sliceHash: sliceHashResult.hash
+  };
 }
 
 export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMessage {
@@ -238,6 +347,14 @@ export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMe
       chunkHash: chunkHashResult.hash,
       reason
     };
+  }
+
+  if (type === MESSAGE_TYPE_CUSTODY_CHALLENGE) {
+    return decodeCustodyChallenge(buffer);
+  }
+
+  if (type === MESSAGE_TYPE_CUSTODY_PROOF) {
+    return decodeCustodyProof(buffer);
   }
 
   throw new Error(`Unknown chunk transfer message type: ${type}.`);

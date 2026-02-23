@@ -2,11 +2,14 @@ import {
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
   isCreditSummaryPayload,
+  isColdStorageStatusPayload,
+  isNodeMetricsPayload,
   isEntropyExtensionResponseEvent,
   isNodeSettingsPayload,
   isPublicKeyPayload,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
+  type ColdStorageStatusPayload,
   type CreditSummaryPayload,
   type DelegateSeedingPayload,
   type ImportKeypairPayload,
@@ -15,6 +18,8 @@ import {
   type NodeStatusPayload,
   type PublicKeyPayload,
   type RelayUrlPayload,
+  type NodeMetricsPayload,
+  type ReleaseColdAssignmentPayload,
   type SetSeedingActivePayload,
   type StoreChunkPayload,
   type ServeChunkPayload,
@@ -24,6 +29,7 @@ import {
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
 export type {
+  ColdStorageStatusPayload,
   CreditSummaryPayload,
   DelegateSeedingPayload,
   ImportKeypairPayload,
@@ -31,12 +37,15 @@ export type {
   NodeStatusPayload,
   PublicKeyPayload,
   RelayUrlPayload,
+  ReleaseColdAssignmentPayload,
   SetSeedingActivePayload,
   StoreChunkPayload,
   ServeChunkPayload,
   GetChunkPayload,
   ChunkDataPayload
 };
+
+export type { ColdStorageAssignmentPayload, NodeMetricsPayload } from "@entropy/core";
 
 function buildNoPayloadMessage(
   requestId: string,
@@ -46,8 +55,17 @@ function buildNoPayloadMessage(
     | "GET_CREDIT_SUMMARY"
     | "GET_PUBLIC_KEY"
     | "GET_NODE_SETTINGS"
+    | "GET_COLD_STORAGE_ASSIGNMENTS"
+    | "GET_NODE_METRICS"
 ): EntropyRuntimeMessage {
   return { source: ENTROPY_WEB_SOURCE, requestId, type };
+}
+
+function buildReleaseColdAssignmentMessage(
+  requestId: string,
+  payload: ReleaseColdAssignmentPayload
+): EntropyRuntimeMessage {
+  return { source: ENTROPY_WEB_SOURCE, requestId, type: "RELEASE_COLD_ASSIGNMENT", payload };
 }
 
 function buildDelegateSeedingMessage(
@@ -203,6 +221,21 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<NodeSettingsPayload>;
 export function sendExtensionRequest(
+  type: "GET_COLD_STORAGE_ASSIGNMENTS",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<ColdStorageStatusPayload>;
+export function sendExtensionRequest(
+  type: "GET_NODE_METRICS",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<NodeMetricsPayload>;
+export function sendExtensionRequest(
+  type: "RELEASE_COLD_ASSIGNMENT",
+  payload: ReleaseColdAssignmentPayload,
+  timeoutMs?: number
+): Promise<ColdStorageStatusPayload>;
+export function sendExtensionRequest(
   type: ExtensionRequestType,
   payload?:
     | DelegateSeedingPayload
@@ -210,9 +243,10 @@ export function sendExtensionRequest(
     | StoreChunkPayload
     | ImportKeypairPayload
     | RelayUrlPayload
-    | SetSeedingActivePayload,
+    | SetSeedingActivePayload
+    | ReleaseColdAssignmentPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | NodeSettingsPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -295,6 +329,30 @@ export function sendExtensionRequest(
     );
   }
 
+  if (type === "GET_COLD_STORAGE_ASSIGNMENTS") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isColdStorageStatusPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "GET_NODE_METRICS") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isNodeMetricsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "RELEASE_COLD_ASSIGNMENT") {
+    return sendBridgeMessage(
+      buildReleaseColdAssignmentMessage(requestId, payload as ReleaseColdAssignmentPayload),
+      (p) => (isColdStorageStatusPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
   return sendBridgeMessage(
     buildNoPayloadMessage(requestId, type as "GET_NODE_STATUS" | "HEARTBEAT" | "GET_CREDIT_SUMMARY" | "GET_PUBLIC_KEY" | "GET_NODE_SETTINGS"),
     (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
@@ -332,6 +390,18 @@ export function getExtensionPublicKey(): Promise<PublicKeyPayload> {
 
 export function serveChunk(payload: ServeChunkPayload): Promise<CreditSummaryPayload> {
   return sendExtensionRequest("SERVE_CHUNK", payload);
+}
+
+export function getColdStorageAssignments(): Promise<ColdStorageStatusPayload> {
+  return sendExtensionRequest("GET_COLD_STORAGE_ASSIGNMENTS");
+}
+
+export function releaseColdAssignment(payload: ReleaseColdAssignmentPayload): Promise<ColdStorageStatusPayload> {
+  return sendExtensionRequest("RELEASE_COLD_ASSIGNMENT", payload);
+}
+
+export function getNodeMetrics(): Promise<NodeMetricsPayload> {
+  return sendExtensionRequest("GET_NODE_METRICS");
 }
 
 export function getChunk(payload: GetChunkPayload, timeoutMs = 5000): Promise<ChunkDataPayload | null> {

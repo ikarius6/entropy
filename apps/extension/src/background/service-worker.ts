@@ -1,8 +1,11 @@
 import browser from "webextension-polyfill";
 import {
+  buildSeederAnnouncementEvent,
+  discoverSeeders,
   ENTROPY_SIGNALING_KIND_MAX,
   ENTROPY_SIGNALING_KIND_MIN,
   createIndexedDbChunkStore,
+  createIndexedDbPeerReputationStore,
   isEntropySignalingKind,
   verifyEventSignature,
   wireReceiptVerifier,
@@ -10,6 +13,7 @@ import {
 } from "@entropy/core";
 
 import {
+  type ColdStorageStatusPayload,
   createEntropyRequestId,
   type CreditSummaryPayload,
   ENTROPY_EXTENSION_SOURCE,
@@ -18,6 +22,7 @@ import {
   type EntropyRuntimePushMessage,
   type EntropyRuntimeMessage,
   type EntropyRuntimeResponse,
+  type NodeMetricsPayload,
   type NodeSettingsPayload,
   type NodeStatusPayload,
   type PublicKeyPayload,
@@ -42,17 +47,35 @@ import {
   removeRelay,
   setSeedingActive
 } from "./relay-manager";
-import { enqueueDelegation, getDelegationCount, getDelegatedRootHashes, pruneDelegations } from "./seeder";
+import {
+  enqueueDelegation,
+  getDelegationCount,
+  getDelegatedRootHashes,
+  listDelegations,
+  pruneDelegations
+} from "./seeder";
+import { createColdStorageManager } from "./cold-storage-manager";
+import { createMetricsCollector } from "./metrics";
 import { scheduleMaintenance } from "./scheduler";
 
 const KEEP_ALIVE_ALARM_NAME = "entropy-keepalive";
 const KEEP_ALIVE_ALARM_PERIOD_MINUTES = 1;
+const SEEDER_ANNOUNCEMENT_INTERVAL_MS = 15 * 60 * 1000;
 
 const chunkStore = createIndexedDbChunkStore();
+const peerReputationStore = createIndexedDbPeerReputationStore();
 const startedAt = Date.now();
+const coldStorageManager = createColdStorageManager({
+  chunkStore,
+  getCreditSummary,
+  listDelegations
+});
+const metricsCollector = createMetricsCollector({ startedAt });
 
 let lastHeartbeatAt = startedAt;
 let bootstrapPromise: Promise<void> | null = null;
+let seederAnnouncementInterval: ReturnType<typeof setInterval> | null = null;
+let maintenanceScheduled = false;
 
 wireReceiptVerifier((event) => verifyEventSignature(event));
 
@@ -71,6 +94,19 @@ async function buildNodeStatus(): Promise<NodeStatusPayload> {
     signalingRangeHealthy:
       isEntropySignalingKind(ENTROPY_SIGNALING_KIND_MIN) &&
       isEntropySignalingKind(ENTROPY_SIGNALING_KIND_MAX)
+  };
+}
+
+async function buildColdStorageStatusPayload(): Promise<ColdStorageStatusPayload> {
+  const assignments = await coldStorageManager.getAssignments();
+  const totalPremiumCredits = assignments.reduce(
+    (total, assignment) => total + assignment.premiumCredits,
+    0
+  );
+
+  return {
+    assignments,
+    totalPremiumCredits
   };
 }
 
@@ -120,6 +156,14 @@ function nodeSettingsResponse(
   return { ok: true, requestId, type, payload };
 }
 
+function coldStorageStatusResponse(
+  requestId: string,
+  type: "GET_COLD_STORAGE_ASSIGNMENTS" | "RELEASE_COLD_ASSIGNMENT",
+  payload: ColdStorageStatusPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type, payload };
+}
+
 function errorResponse(
   requestId: string,
   type: EntropyRuntimeMessage["type"],
@@ -157,6 +201,58 @@ function emitCreditUpdate(summary: CreditSummaryPayload): void {
   });
 }
 
+async function publishSeederAnnouncement(
+  rootHash: string,
+  chunkCount: number
+): Promise<void> {
+  try {
+    const signed = await signNostrEvent(
+      buildSeederAnnouncementEvent({
+        rootHash,
+        chunkCount
+      })
+    );
+
+    getRelayPool().publish(signed);
+  } catch (err) {
+    logger.warn(
+      "[seeder-announcement] failed to publish announcement for",
+      rootHash.slice(0, 12) + "…",
+      err
+    );
+  }
+}
+
+async function publishDelegationSeederAnnouncements(): Promise<void> {
+  const delegations = await listDelegations();
+
+  for (const delegation of delegations) {
+    await publishSeederAnnouncement(
+      delegation.rootHash,
+      delegation.chunkHashes.length
+    );
+  }
+}
+
+function scheduleSeederAnnouncements(): void {
+  if (seederAnnouncementInterval) {
+    clearInterval(seederAnnouncementInterval);
+  }
+
+  seederAnnouncementInterval = setInterval(() => {
+    void publishDelegationSeederAnnouncements();
+  }, SEEDER_ANNOUNCEMENT_INTERVAL_MS);
+}
+
+function ensureMaintenanceScheduled(): void {
+  if (maintenanceScheduled) {
+    return;
+  }
+
+  maintenanceScheduled = true;
+  scheduleMaintenance(coldStorageManager, metricsCollector);
+}
+
 async function bootstrapBackground(): Promise<void> {
   const identity = await getOrCreateKeypair();
 
@@ -172,6 +268,12 @@ async function bootstrapBackground(): Promise<void> {
     chunkStore,
     signEvent: signNostrEvent,
     onChunkServed: async (chunkHash, peerPubkey, bytes) => {
+      try {
+        await peerReputationStore.recordSuccess(peerPubkey, bytes);
+      } catch (err) {
+        logger.warn("[peer-reputation] failed to record upload peer success:", err);
+      }
+
       const updatedSummary = await recordUploadCredit({
         peerPubkey,
         bytes,
@@ -181,8 +283,20 @@ async function bootstrapBackground(): Promise<void> {
       });
 
       emitCreditUpdate(updatedSummary);
+    },
+    authorizeChunkRequest: async ({ peerPubkey }) => {
+      const banned = await peerReputationStore.isBanned(peerPubkey);
+      if (banned) {
+        logger.warn("[chunk-server] blocking banned peer", peerPubkey.slice(0, 8) + "…");
+        return false;
+      }
+
+      return true;
     }
   });
+
+  await publishDelegationSeederAnnouncements();
+  scheduleSeederAnnouncements();
 
   browser.alarms.create(KEEP_ALIVE_ALARM_NAME, {
     periodInMinutes: KEEP_ALIVE_ALARM_PERIOD_MINUTES
@@ -207,11 +321,12 @@ function scheduleBootstrap(): void {
 }
 
 browser.runtime.onInstalled.addListener(() => {
-  scheduleMaintenance();
+  ensureMaintenanceScheduled();
   scheduleBootstrap();
 });
 
 browser.runtime.onStartup.addListener(() => {
+  ensureMaintenanceScheduled();
   scheduleBootstrap();
 });
 
@@ -241,6 +356,21 @@ browser.runtime.onMessage.addListener(
       })) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
     }
 
+    // Handle authorization checks from offscreen document before serving chunk requests
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type: string }).type === "CHECK_CHUNK_AUTH"
+    ) {
+      const peerPubkey = (message as unknown as { peerPubkey: string }).peerPubkey;
+      return Promise.resolve()
+        .then(async () => {
+          const banned = await peerReputationStore.isBanned(peerPubkey);
+          return { authorized: !banned };
+        }) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
+    }
+
     // Handle P2P messages from offscreen document (credit tracking)
     if (
       message &&
@@ -249,6 +379,11 @@ browser.runtime.onMessage.addListener(
       (message as { type: string }).type === "P2P_CHUNK_SERVED"
     ) {
       const msg = message as unknown as { chunkHash: string; peerPubkey: string; bytes: number };
+
+      void peerReputationStore.recordSuccess(msg.peerPubkey, msg.bytes).catch((err) => {
+        logger.warn("[peer-reputation] failed to record offscreen upload peer success:", err);
+      });
+
       void recordUploadCredit({
         peerPubkey: msg.peerPubkey,
         bytes: msg.bytes,
@@ -256,6 +391,26 @@ browser.runtime.onMessage.addListener(
         receiptSignature: `rtc-upload:${msg.chunkHash}:${Date.now()}`,
         timestamp: Math.floor(Date.now() / 1000)
       }).then(emitCreditUpdate);
+      return;
+    }
+
+    // Handle peer verification failures reported by offscreen fetch path
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type: string }).type === "P2P_PEER_FAILED_VERIFICATION"
+    ) {
+      const msg = message as unknown as { peerPubkey: string };
+      void peerReputationStore.recordFailedVerification(msg.peerPubkey)
+        .then((updated) => {
+          if (updated.banned) {
+            logger.warn("[peer-reputation] auto-banned peer", msg.peerPubkey.slice(0, 8) + "…");
+          }
+        })
+        .catch((err) => {
+          logger.warn("[peer-reputation] failed to record offscreen verification failure:", err);
+        });
       return;
     }
 
@@ -284,6 +439,10 @@ browser.runtime.onMessage.addListener(
             }
 
             await enqueueDelegation(message.payload);
+            await publishSeederAnnouncement(
+              message.payload.rootHash,
+              message.payload.chunkHashes.length
+            );
 
             const creditSummary = await recordUploadCredit({
               peerPubkey: "self",
@@ -312,17 +471,42 @@ browser.runtime.onMessage.addListener(
               });
             }
 
-            // Fallback: try to fetch from a gatekeeper peer via WebRTC
+            // Fallback: try to fetch from a gatekeeper/seeder peer via WebRTC
             const { rootHash: reqRootHash, gatekeepers } = message.payload;
             logger.log("[GET_CHUNK] P2P fallback check — rootHash:", reqRootHash?.slice(0, 12), "gatekeepers:", gatekeepers);
-            if (!reqRootHash || !gatekeepers || gatekeepers.length === 0) {
+            if (!reqRootHash) {
               logger.log("[GET_CHUNK] no gatekeepers, returning null");
               return chunkDataResponse(message.requestId, null);
             }
 
             const identity = await getOrCreateKeypair();
             const pool = getRelayPool();
-            logger.log("[GET_CHUNK] my pubkey:", identity.pubkey.slice(0, 8) + "…", "gatekeepers to try:", gatekeepers.length);
+
+            let dynamicGatekeepers: string[] = [];
+            try {
+              dynamicGatekeepers = await discoverSeeders(pool, reqRootHash, {
+                timeoutMs: 1_500,
+                minChunkCount: 1
+              });
+            } catch (discoveryErr) {
+              logger.warn("[GET_CHUNK] seeder discovery failed:", discoveryErr);
+            }
+
+            const candidateGatekeepers = [
+              ...new Set([...(gatekeepers ?? []), ...dynamicGatekeepers])
+            ];
+
+            logger.log(
+              "[GET_CHUNK] my pubkey:",
+              identity.pubkey.slice(0, 8) + "…",
+              "gatekeepers to try:",
+              candidateGatekeepers.length
+            );
+
+            if (candidateGatekeepers.length === 0) {
+              logger.log("[GET_CHUNK] no candidate gatekeepers after discovery, returning null");
+              return chunkDataResponse(message.requestId, null);
+            }
 
             const dedupeKey = message.payload.hash;
             let p2pPromise = inflightP2PFetches.get(dedupeKey);
@@ -330,11 +514,18 @@ browser.runtime.onMessage.addListener(
               logger.log("[GET_CHUNK] reusing in-flight P2P fetch for", dedupeKey.slice(0, 12) + "…");
             } else {
               p2pPromise = (async (): Promise<PeerChunkResult | null> => {
-                for (const gk of gatekeepers) {
+                for (const gk of candidateGatekeepers) {
                   if (gk === identity.pubkey) {
                     logger.log("[GET_CHUNK] skipping self as gatekeeper");
                     continue;
                   }
+
+                  const banned = await peerReputationStore.isBanned(gk);
+                  if (banned) {
+                    logger.log("[GET_CHUNK] skipping banned gatekeeper", gk.slice(0, 8) + "…");
+                    continue;
+                  }
+
                   try {
                     logger.log(`[GET_CHUNK] fetching ${message.payload.hash.slice(0, 12)}… from peer ${gk.slice(0, 8)}…`);
                     const peerResult = await fetchChunkP2P({
@@ -343,7 +534,17 @@ browser.runtime.onMessage.addListener(
                       gatekeeperPubkey: gk,
                       myPubkey: identity.pubkey,
                       relayPool: pool,
-                      signEvent: signNostrEvent
+                      signEvent: signNostrEvent,
+                      isPeerBanned: (peerPubkey) => peerReputationStore.isBanned(peerPubkey),
+                      onPeerTransferSuccess: async (peerPubkey, bytes) => {
+                        await peerReputationStore.recordSuccess(peerPubkey, bytes);
+                      },
+                      onPeerFailedVerification: async (peerPubkey) => {
+                        const updated = await peerReputationStore.recordFailedVerification(peerPubkey);
+                        if (updated.banned) {
+                          logger.warn("[peer-reputation] auto-banned peer", peerPubkey.slice(0, 8) + "…");
+                        }
+                      }
                     });
                     if (peerResult) return peerResult;
                   } catch (err) {
@@ -513,6 +714,29 @@ browser.runtime.onMessage.addListener(
               relayStatuses,
               seedingActive: seedingActiveNow
             });
+          }
+
+          case "GET_COLD_STORAGE_ASSIGNMENTS": {
+            const payload = await buildColdStorageStatusPayload();
+            return coldStorageStatusResponse(message.requestId, message.type, payload);
+          }
+
+          case "RELEASE_COLD_ASSIGNMENT": {
+            await coldStorageManager.release(message.payload.chunkHash);
+            const payload = await buildColdStorageStatusPayload();
+            return coldStorageStatusResponse(message.requestId, message.type, payload);
+          }
+
+          case "GET_NODE_METRICS": {
+            const metrics = await metricsCollector.getMetrics();
+            const metricsPayload: NodeMetricsPayload = metrics;
+            const metricsResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "GET_NODE_METRICS",
+              payload: metricsPayload
+            };
+            return metricsResponse;
           }
 
         }

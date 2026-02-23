@@ -3,6 +3,7 @@ import {
   createRtcConfiguration,
   encodeChunkRequest,
   createChunkReceiver,
+  sha256Hex,
   logger,
   type RelayPool,
   type SignEventFn,
@@ -45,6 +46,9 @@ export interface FetchChunkParams {
   myPubkey: string;
   relayPool: RelayPool;
   signEvent: SignEventFn;
+  isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
+  onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
+  onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
 }
 
 /**
@@ -59,8 +63,17 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
     gatekeeperPubkey,
     myPubkey,
     relayPool,
-    signEvent
+    signEvent,
+    isPeerBanned,
+    onPeerTransferSuccess,
+    onPeerFailedVerification
   } = params;
+
+  const banned = await Promise.resolve(isPeerBanned?.(gatekeeperPubkey) ?? false);
+  if (banned) {
+    logger.log("[peer-fetch] skipping banned gatekeeper", gatekeeperPubkey.slice(0, 8) + "…");
+    return null;
+  }
 
   logger.log("[peer-fetch] fetchChunkFromPeer called — chunk:", chunkHash.slice(0, 12) + "…", "root:", rootHash.slice(0, 12) + "…", "gatekeeper:", gatekeeperPubkey.slice(0, 8) + "…", "myPubkey:", myPubkey.slice(0, 8) + "…");
 
@@ -256,16 +269,58 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
         if (!message) return;
 
         if (message.type === "CHUNK_DATA" && message.chunkHash === chunkHash) {
-          settled = true;
-          clearTimeout(connectTimeout);
-          logger.log("[peer-fetch] received chunk", chunkHash.slice(0, 12) + "…", message.data.byteLength, "bytes");
+          void sha256Hex(new Uint8Array(message.data))
+            .then((actualHash) => {
+              if (settled) return;
 
-          cleanup();
-          resolve({
-            hash: chunkHash,
-            rootHash,
-            data: message.data
-          });
+              if (actualHash !== chunkHash) {
+                logger.warn(
+                  "[peer-fetch] hash mismatch from peer",
+                  gatekeeperPubkey.slice(0, 8) + "…",
+                  "expected:",
+                  chunkHash.slice(0, 12) + "…",
+                  "actual:",
+                  actualHash.slice(0, 12) + "…"
+                );
+
+                void Promise.resolve(onPeerFailedVerification?.(gatekeeperPubkey)).catch((callbackErr) => {
+                  logger.warn("[peer-fetch] failed to record peer verification failure:", callbackErr);
+                });
+
+                settled = true;
+                clearTimeout(connectTimeout);
+                cleanup();
+                resolve(null);
+                return;
+              }
+
+              settled = true;
+              clearTimeout(connectTimeout);
+              logger.log("[peer-fetch] received chunk", chunkHash.slice(0, 12) + "…", message.data.byteLength, "bytes");
+
+              void Promise.resolve(onPeerTransferSuccess?.(gatekeeperPubkey, message.data.byteLength)).catch(
+                (callbackErr) => {
+                  logger.warn("[peer-fetch] failed to record peer transfer success:", callbackErr);
+                }
+              );
+
+              cleanup();
+              resolve({
+                hash: chunkHash,
+                rootHash,
+                data: message.data
+              });
+            })
+            .catch((hashErr) => {
+              if (settled) return;
+
+              logger.warn("[peer-fetch] failed to verify received chunk hash:", hashErr);
+
+              settled = true;
+              clearTimeout(connectTimeout);
+              cleanup();
+              resolve(null);
+            });
         } else if (message.type === "CHUNK_ERROR" && message.chunkHash === chunkHash) {
           settled = true;
           clearTimeout(connectTimeout);

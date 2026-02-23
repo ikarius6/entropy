@@ -5,12 +5,15 @@ import {
   type StoredChunk
 } from "@entropy/core";
 
-import type { CreditSummaryPayload, NodeStatusPayload } from "../shared/messaging";
+import type { ColdStorageAssignmentPayload, CreditSummaryPayload, NodeMetricsPayload, NodeStatusPayload } from "../shared/messaging";
 import {
   addRuntimeRelay,
   importRuntimeKeypair,
+  releaseColdStorageAssignment,
   removeRuntimeRelay,
+  requestColdStorageAssignments,
   requestCreditSummary,
+  requestNodeMetrics,
   requestNodeSettings,
   requestNodeStatus,
   requestPublicKey,
@@ -35,13 +38,178 @@ const relayListElement = document.getElementById("relay-list");
 const relayStatusElement = document.getElementById("relay-status");
 const seedingToggle = document.getElementById("seeding-toggle");
 const seedingStatusElement = document.getElementById("seeding-status");
+const coldStorageStatusElement = document.getElementById("cold-storage-status");
+const coldStorageListElement = document.getElementById("cold-storage-list");
+const refreshColdStorageButton = document.getElementById("refresh-cold-storage");
+const metricsContentElement = document.getElementById("metrics-content");
+const refreshMetricsButton = document.getElementById("refresh-metrics");
 
 let latestStatus: NodeStatusPayload | null = null;
 let latestCredits: CreditSummaryPayload | null = null;
 let latestPubkey: string | null = null;
+let latestColdAssignments: ColdStorageAssignmentPayload[] = [];
+let latestMetrics: NodeMetricsPayload | null = null;
 
 const chunkStore = createIndexedDbChunkStore();
 const quotaManager = createIndexedDbQuotaManager(chunkStore);
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return `${minutes}m`;
+}
+
+function setColdStorageStatus(message: string): void {
+  if (!(coldStorageStatusElement instanceof HTMLElement)) {
+    return;
+  }
+
+  coldStorageStatusElement.textContent = message;
+}
+
+function renderColdStorageList(assignments: ColdStorageAssignmentPayload[]): void {
+  if (!(coldStorageListElement instanceof HTMLElement)) {
+    return;
+  }
+
+  clearList(coldStorageListElement);
+
+  if (assignments.length === 0) {
+    appendListMessage(coldStorageListElement, "No active cold storage assignments.");
+    return;
+  }
+
+  const now = Date.now();
+
+  for (const assignment of assignments) {
+    const item = document.createElement("li");
+    item.className = "cold-assignment-item";
+
+    const info = document.createElement("div");
+    info.className = "cold-assignment-info";
+
+    const expiresIn = assignment.expiresAt - now;
+    const expiresLabel = expiresIn > 0 ? `expires in ${formatDuration(expiresIn)}` : "expired";
+
+    info.innerHTML = [
+      `<code>${assignment.chunkHash.slice(0, 14)}…</code>`,
+      `root: <code>${assignment.rootHash.slice(0, 10)}…</code>`,
+      `credits: ${assignment.premiumCredits}`,
+      expiresLabel
+    ].join(" · ");
+
+    const releaseBtn = document.createElement("button");
+    releaseBtn.textContent = "Release";
+    releaseBtn.type = "button";
+    releaseBtn.className = "cold-release-btn";
+    releaseBtn.addEventListener("click", () => {
+      void (async () => {
+        setColdStorageStatus(`Releasing ${assignment.chunkHash.slice(0, 12)}…`);
+        releaseBtn.disabled = true;
+
+        try {
+          const updated = await releaseColdStorageAssignment({ chunkHash: assignment.chunkHash });
+          latestColdAssignments = updated.assignments;
+          renderColdStorageList(latestColdAssignments);
+          setColdStorageStatus(
+            `Released. ${updated.assignments.length} assignment(s) active · ${updated.totalPremiumCredits} premium credits.`
+          );
+        } catch (caughtError) {
+          const message = caughtError instanceof Error ? caughtError.message : "Unknown error.";
+          setColdStorageStatus(`Release failed: ${message}`);
+          releaseBtn.disabled = false;
+        }
+      })();
+    });
+
+    item.appendChild(info);
+    item.appendChild(releaseBtn);
+    coldStorageListElement.appendChild(item);
+  }
+}
+
+async function refreshColdStorage(): Promise<void> {
+  setColdStorageStatus("Loading cold storage assignments…");
+
+  try {
+    const status = await requestColdStorageAssignments();
+    latestColdAssignments = status.assignments;
+    renderColdStorageList(latestColdAssignments);
+
+    const totalCredits = status.totalPremiumCredits;
+    setColdStorageStatus(
+      `${status.assignments.length} assignment(s) active · ${totalCredits} premium credits total.`
+    );
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown cold storage error.";
+    setColdStorageStatus(`Cold storage unavailable: ${message}`);
+
+    if (coldStorageListElement instanceof HTMLElement) {
+      clearList(coldStorageListElement);
+      appendListMessage(coldStorageListElement, "Could not load cold storage assignments.");
+    }
+  }
+}
+
+function renderMetrics(metrics: NodeMetricsPayload): void {
+  if (!(metricsContentElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const healthClass =
+    metrics.healthStatus === "healthy"
+      ? "health-badge-ext--healthy"
+      : metrics.healthStatus === "degraded"
+        ? "health-badge-ext--degraded"
+        : "health-badge-ext--unknown";
+
+  const rows: Array<[string, string]> = [
+    ["Health", `<span class="health-badge-ext ${healthClass}">${metrics.healthStatus}</span>`],
+    ["Uptime", formatDuration(metrics.uptimeMs)],
+    ["Chunks served", metrics.chunksServed.toString()],
+    ["Bytes served", formatBytes(metrics.bytesServed)],
+    ["Chunks downloaded", metrics.chunksDownloaded.toString()],
+    ["Bytes downloaded", formatBytes(metrics.bytesDownloaded)],
+    ["Peers connected", metrics.peersConnected.toString()],
+    ["Cold assignments", metrics.coldStorageAssignments.toString()],
+    [
+      "Last health check",
+      metrics.lastHealthCheck
+        ? new Date(metrics.lastHealthCheck).toLocaleTimeString()
+        : "never"
+    ]
+  ];
+
+  metricsContentElement.innerHTML = rows
+    .map(
+      ([label, value]) =>
+        `<div class="metric-row-ext"><span class="metric-label-ext">${label}</span><span class="metric-value-ext">${value}</span></div>`
+    )
+    .join("");
+}
+
+async function refreshMetrics(): Promise<void> {
+  if (metricsContentElement instanceof HTMLElement) {
+    metricsContentElement.textContent = "Loading…";
+  }
+
+  try {
+    const metrics = await requestNodeMetrics();
+    latestMetrics = metrics;
+    renderMetrics(metrics);
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown metrics error.";
+    if (metricsContentElement instanceof HTMLElement) {
+      metricsContentElement.textContent = `Metrics unavailable: ${message}`;
+    }
+  }
+}
 
 function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -419,7 +587,7 @@ async function refresh(): Promise<void> {
 
   try {
     const [status, credits] = await Promise.all([requestNodeStatus(), requestCreditSummary()]);
-    await refreshInventory();
+    await Promise.all([refreshInventory(), refreshColdStorage()]);
     latestStatus = status;
     latestCredits = credits;
     statusElement.textContent = renderStatus();
@@ -487,6 +655,18 @@ const unsubscribeCreditUpdates = subscribeCreditUpdates((summary) => {
   void refreshInventory();
 });
 
+if (refreshColdStorageButton instanceof HTMLButtonElement) {
+  refreshColdStorageButton.addEventListener("click", () => {
+    void refreshColdStorage();
+  });
+}
+
+if (refreshMetricsButton instanceof HTMLButtonElement) {
+  refreshMetricsButton.addEventListener("click", () => {
+    void refreshMetrics();
+  });
+}
+
 window.addEventListener("beforeunload", () => {
   unsubscribeStatusUpdates();
   unsubscribeCreditUpdates();
@@ -497,3 +677,5 @@ void refresh();
 void refreshPublicKey();
 void refreshInventory();
 void refreshRelaySettings();
+void refreshColdStorage();
+void refreshMetrics();

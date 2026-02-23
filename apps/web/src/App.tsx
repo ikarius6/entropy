@@ -8,8 +8,10 @@ import {
 } from "@entropy/core";
 
 import { ChunkMapOutput } from "./components/ChunkMapOutput";
+import { ColdStoragePanel } from "./components/ColdStoragePanel";
 import { CreditPanel } from "./components/CreditPanel";
 import { FilePickerSection } from "./components/FilePickerSection";
+import { NodeMetricsPanel } from "./components/NodeMetricsPanel";
 import { NodeStatusPanel } from "./components/NodeStatusPanel";
 import { delegateSeeding, storeChunk } from "./lib/extension-bridge";
 
@@ -125,6 +127,8 @@ export function App(): JSX.Element {
 
       <NodeStatusPanel />
       <CreditPanel />
+      <ColdStoragePanel />
+      <NodeMetricsPanel />
     </main>
   );
 }

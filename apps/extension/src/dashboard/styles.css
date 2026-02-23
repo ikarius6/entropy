@@ -152,6 +152,137 @@ body {
   color: #9eead6;
 }
 
+.cold-storage-card {
+  margin-top: 1rem;
+  border-radius: 12px;
+  background: rgba(5, 12, 25, 0.84);
+  border: 1px solid rgba(130, 213, 255, 0.28);
+  padding: 0.85rem;
+}
+
+.cold-storage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.cold-storage-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+#cold-storage-status {
+  margin: 0.4rem 0;
+  font-size: 0.82rem;
+  color: #b3fce8;
+}
+
+.cold-assignment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(130, 213, 255, 0.1);
+}
+
+.cold-assignment-item:last-child {
+  border-bottom: none;
+}
+
+.cold-assignment-info {
+  flex: 1;
+  font-size: 0.78rem;
+  color: #d7ebff;
+  line-height: 1.5;
+}
+
+.cold-assignment-info code {
+  color: #93ffda;
+  font-family: monospace;
+}
+
+.cold-release-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #ff6b6b, #ff9f43);
+  color: #1a0000;
+}
+
+.btn-small {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.metrics-card {
+  margin-top: 1rem;
+  border-radius: 12px;
+  background: rgba(5, 12, 25, 0.84);
+  border: 1px solid rgba(130, 213, 255, 0.28);
+  padding: 0.85rem;
+}
+
+.metrics-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.metrics-card-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.metric-row-ext {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(130, 213, 255, 0.08);
+  font-size: 0.8rem;
+}
+
+.metric-row-ext:last-child {
+  border-bottom: none;
+}
+
+.metric-label-ext {
+  color: #9eead6;
+}
+
+.metric-value-ext {
+  color: #d7ebff;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-badge-ext {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.health-badge-ext--healthy {
+  background: rgba(100, 255, 180, 0.18);
+  color: #64ffb4;
+}
+
+.health-badge-ext--degraded {
+  background: rgba(255, 160, 60, 0.18);
+  color: #ffa03c;
+}
+
+.health-badge-ext--unknown {
+  background: rgba(175, 194, 255, 0.12);
+  color: #9eead6;
+}
+
 button {
   border: 0;
   border-radius: 999px;

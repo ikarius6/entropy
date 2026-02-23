@@ -71,24 +71,32 @@ entropy/
 │       │   │   ├── chunker.ts          # Fragmentación de archivos en chunks de 5MB
 │       │   │   ├── assembler.ts        # Reensamblaje de chunks a archivo original
 │       │   │   └── merkle.ts           # Árbol Merkle para hash raíz + verificación
-│       │   ├── nostr/
-│       │   │   ├── client.ts           # Conexión y suscripción a relays
-│       │   │   ├── events.ts           # Creación/parseo de eventos (kind:7001 y estándar)
-│       │   │   ├── identity.ts         # Gestión de keypairs (nsec/npub)
-│       │   │   └── nip-entropy.ts      # Definición del NIP custom para Chunk Maps
 │       │   ├── transport/
 │       │   │   ├── peer-manager.ts     # Pool de conexiones WebRTC activas
 │       │   │   ├── signaling.ts        # Señalización vía Nostr ephemeral events
-│       │   │   ├── chunk-transfer.ts   # Protocolo de envío/recepción de chunks (con fragmentación 64KB)
+│       │   │   ├── chunk-transfer.ts   # Protocolo binario: CHUNK_REQUEST/DATA/ERROR + CUSTODY_CHALLENGE/PROOF
+│       │   │   ├── chunk-downloader.ts # Descarga multi-peer + reputación + seeder discovery
 │       │   │   └── nat-traversal.ts    # Configuración STUN/TURN
 │       │   ├── credits/
 │       │   │   ├── ledger.ts           # Registro local de créditos (ratio upload/download)
 │       │   │   ├── proof-of-upstream.ts # Generación y verificación de pruebas firmadas
-│       │   │   └── cold-storage.ts     # Lógica de asignación de custodia de chunks fríos
+│       │   │   ├── cold-storage.ts     # Lógica de asignación de custodia de chunks fríos
+│       │   │   ├── peer-reputation.ts  # PeerReputationStore interface + banning policy
+│       │   │   └── credit-gating.ts    # Gate: verificar crédito antes de servir chunks
 │       │   ├── storage/
 │       │   │   ├── chunk-store.ts      # CRUD de chunks en IndexedDB
-│       │   │   ├── db.ts              # Schema y migraciones de Dexie.js
-│       │   │   └── quota-manager.ts    # Control de cuota de disco del usuario
+│       │   │   ├── db.ts              # Schema y migraciones de Dexie.js (tabla peers)
+│       │   │   ├── quota-manager.ts    # Control de cuota de disco del usuario
+│       │   │   ├── indexeddb-chunk-store.ts  # Implementación IDB de ChunkStore
+│       │   │   ├── quota-manager-idb.ts      # Implementación IDB de QuotaManager
+│       │   │   ├── quota-aware-store.ts      # ChunkStore con control de cuota
+│       │   │   └── peer-reputation-idb.ts    # Implementación IDB de PeerReputationStore
+│       │   ├── nostr/
+│       │   │   ├── client.ts           # Conexión y suscripción a relays
+│       │   │   ├── events.ts           # Creación/parseo de eventos (kind:7001 y estándar)
+│       │   │   ├── identity.ts         # Gestión de keypairs (nsec/npub)
+│       │   │   ├── nip-entropy.ts      # Definición del NIP custom para Chunk Maps
+│       │   │   └── seeder-announcement.ts    # Build/parse kind:20002
 │       │   └── index.ts
 │       ├── package.json
 │       └── tsconfig.json
@@ -102,15 +110,19 @@ entropy/
 │   │   │   │   ├── player/             # Reproductor de video/audio (MediaSource API)
 │   │   │   │   ├── uploader/           # UI de carga + progreso de chunking
 │   │   │   │   ├── profile/            # Perfil Nostr del usuario
-│   │   │   │   ├── NodeStatusPanel.tsx # Estado de nodo delegado (implementado)
-│   │   │   │   ├── CreditPanel.tsx     # Panel de créditos (Phase 2 implementado)
+│   │   │   │   ├── NodeStatusPanel.tsx # Estado de nodo delegado
+│   │   │   │   ├── CreditPanel.tsx     # Panel de créditos
+│   │   │   │   ├── ColdStoragePanel.tsx # Panel de cold storage assignments
+│   │   │   │   ├── NodeMetricsPanel.tsx # Panel de métricas del nodo
 │   │   │   │   └── ui/                 # Componentes base (shadcn/ui)
 │   │   │   ├── hooks/
 │   │   │   │   ├── useNostr.ts         # Suscripción a eventos Nostr
 │   │   │   │   ├── usePeerSwarm.ts     # Estado del swarm WebRTC activo
 │   │   │   │   ├── useChunkDownload.ts # Orquestación de descarga de chunks
 │   │   │   │   ├── useExtensionNodeStatus.ts # Estado live del nodo delegado
-│   │   │   │   └── useCredits.ts       # Estado de créditos del usuario
+│   │   │   │   ├── useCredits.ts       # Estado de créditos del usuario
+│   │   │   │   ├── useColdStorage.ts   # Cold storage assignments desde extensión
+│   │   │   │   └── useNodeMetrics.ts   # Métricas del nodo con auto-refresh 30s
 │   │   │   ├── stores/
 │   │   │   │   └── entropy-store.ts    # Estado global (Zustand)
 │   │   │   ├── lib/
@@ -135,20 +147,27 @@ entropy/
 │       │   │   ├── service-worker.ts   # Service Worker principal (Manifest V3)
 │       │   │   ├── seeder.ts           # Lógica de seeding persistente en background
 │       │   │   ├── credit-ledger.ts    # Ledger de créditos persistido en chrome.storage
-│       │   │   └── scheduler.ts        # Planificador de tareas (cold storage, limpieza)
+│       │   │   ├── scheduler.ts        # Planificador: prune + cold storage + integrity + health checks
+│       │   │   ├── cold-storage-manager.ts  # Ciclos de cold storage real
+│       │   │   ├── metrics.ts          # MetricsCollector + health checks
+│       │   │   ├── chunk-server.ts     # Sirve chunks + reputación + rate limiting + custody
+│       │   │   ├── peer-fetch.ts       # Fetch de chunks + reputación + SHA-256
+│       │   │   ├── relay-manager.ts    # Gestión de conexiones a relays
+│       │   │   ├── signaling-listener.ts  # Escucha offers + publica seeder announcements
+│       │   │   ├── chunk-ingest.ts     # Persistencia de chunks binarios
+│       │   │   └── identity-store.ts   # Keypair persistido en chrome.storage
 │       │   ├── popup/
 │       │   │   ├── Popup.tsx           # Dashboard compacto de nodo
 │       │   │   └── main.tsx
 │       │   ├── dashboard/
-│       │   │   ├── Dashboard.tsx       # Dashboard completo (nueva pestaña)
-│       │   │   ├── StatsPanel.tsx      # Estadísticas: MB compartidos, ratio, peers
-│       │   │   ├── ChunkInventory.tsx  # Lista de chunks en custodia
-│       │   │   └── main.tsx
+│       │   │   ├── index.html          # Dashboard completo (nueva pestaña) con secciones peers/cold/metrics
+│       │   │   ├── main.ts             # Lógica: status, créditos, inventario, peers, cold storage, métricas
+│       │   │   └── styles.css          # Estilos del dashboard
 │       │   ├── content/
 │       │   │   └── content-script.ts   # Puente de comunicación con @entropy/web
 │       │   └── shared/
 │       │       ├── messaging.ts         # Tipos y helpers para chrome.runtime messaging
-│       │       └── status-client.ts     # Cliente para status + créditos en popup/dashboard
+│       │       └── status-client.ts     # Cliente: status + créditos + cold storage + métricas
 │       ├── manifest.json               # Manifest V3
 │       ├── vite.config.ts              # Build multi-entry (background, popup, dashboard, content)
 │       ├── package.json
@@ -290,13 +309,18 @@ Feed muestra publicación con kind:7001
 
 Mensajes clave:
 ─────────────────
-WEB → EXT:  "DELEGATE_SEEDING"   → Pasar chunks activos al background
-WEB → EXT:  "GET_NODE_STATUS"    → Solicitar estadísticas del nodo
-EXT → WEB:  "PEER_REQUEST"       → Notificar solicitud entrante de chunk (a revisar si es necesario)
-WEB → EXT:  "GET_CREDIT_SUMMARY" → Solicitar resumen de créditos
-WEB → EXT:  "HEARTBEAT"          → Mantener viva la conexión
-EXT → WEB:  "NODE_STATUS_UPDATE" → Push de estado de nodo en tiempo real
-EXT → WEB:  "CREDIT_UPDATE"      → Push de resumen de créditos en tiempo real
+WEB → EXT:  "DELEGATE_SEEDING"            → Pasar chunks activos al background
+WEB → EXT:  "GET_NODE_STATUS"             → Solicitar estadísticas del nodo
+WEB → EXT:  "GET_CREDIT_SUMMARY"          → Solicitar resumen de créditos
+WEB → EXT:  "GET_NODE_SETTINGS"           → Solicitar configuración (relays, seeding toggle)
+WEB → EXT:  "ADD_RELAY" / "REMOVE_RELAY" → Gestionar relays
+WEB → EXT:  "SET_SEEDING_ACTIVE"          → Activar/desactivar seeding
+WEB → EXT:  "GET_COLD_STORAGE_ASSIGNMENTS" → Listar asignaciones de cold storage
+WEB → EXT:  "RELEASE_COLD_ASSIGNMENT"     → Liberar asignación individual
+WEB → EXT:  "GET_NODE_METRICS"            → Solicitar métricas operacionales
+WEB → EXT:  "HEARTBEAT"                   → Mantener viva la conexión
+EXT → WEB:  "NODE_STATUS_UPDATE"          → Push de estado de nodo en tiempo real
+EXT → WEB:  "CREDIT_UPDATE"               → Push de resumen de créditos en tiempo real
 
 Todas las solicitudes y respuestas usan `requestId` para correlación robusta.
 ```
@@ -452,7 +476,6 @@ Archivo Original
 | **Negación plausible** | Chunks son fragmentos binarios sin formato; un nodo nunca posee contenido reconocible. |
 | **Cifrado en tránsito** | WebRTC usa DTLS por defecto; todo el tráfico P2P está cifrado. |
 | **Señalización cifrada** | SDP offers/answers encriptados con NIP-04/NIP-44. |
-| **Tor (opcional)** | La extensión puede enrutar WebRTC sobre Tor para ocultar IP. Feature avanzado para Fase 4+. |
 | **Sin servidores centrales** | Ni los relays ni los STUN servers ven el contenido; solo metadatos y señalización. |
 
 ---
@@ -489,10 +512,10 @@ Las operaciones pesadas **nunca** bloquean el hilo principal:
 
 | Operación | Worker |
 |---|---|
-| Fragmentación de archivo (5MB chunks) | `chunking-worker.ts` |
-| Hashing SHA-256 de chunks | `hashing-worker.ts` |
-| Construcción de Merkle Tree | `hashing-worker.ts` |
-| Re-ensamblaje de archivo | `assembly-worker.ts` |
+| Fragmentación de archivo (5MB chunks) | `chunker.ts` |
+| Hashing SHA-256 de chunks | `hash.ts` |
+| Construcción de Merkle Tree | `merkle.ts` |
+| Re-ensamblaje de archivo | `assembler.ts` |
 | Cifrado/descifrado NIP-04 | `crypto-worker.ts` |
 
 Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias de memoria.
@@ -562,30 +585,41 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [x] Dashboard completo: estadísticas, inventario de chunks, configuración
 - [x] Mensaje `DELEGATE_SEEDING` desde web app a extensión
 
-### Fase 4 — Web App Completa
+### Fase 4 — Web App Completa ✅
 
 > Plan detallado en [`phase4.md`](./phase4.md)
 
 **Objetivo:** Red social funcional con feed, perfiles y reproducción multimedia.
 
-- [ ] Feed de publicaciones (consulta de eventos kind:7001 + kind:1)
-- [ ] Reproductor de video con MediaSource Extensions (streaming progresivo)
-- [ ] UI de upload con progreso de chunking en tiempo real
-- [ ] Perfiles Nostr (kind:0) y follows
-- [ ] Descarga paralela desde múltiples peers
-- [ ] Quota Manager y política de evicción LRU
-- [ ] UI responsiva y accesible
+- [x] Scaffold UI: React Router, Zustand store, Tailwind v4, AppLayout + Sidebar + TopBar
+- [x] Identidad Nostr: `useNostrIdentity`, `useNostrProfile` (kind:0), `useContactList` (kind:3)
+- [x] Feed de publicaciones: `useNostrFeed` (kind:1 + kind:7001), `PostCard`, `Feed`, `HomePage`
+- [x] UI de upload con progreso de chunking en tiempo real: `useUploadPipeline`, `DragDropZone`, `UploadPipeline`, `UploadPage`
+- [x] Reproductor de video con MediaSource Extensions: `useMediaSource`, `VideoPlayer`, `WatchPage`
+- [x] Descarga paralela desde múltiples peers: `ChunkDownloader` (core), `useChunkDownload`
+- [x] Perfiles Nostr: `ProfileHeader`, `ProfileCard`, `ProfilePage`
+- [x] Quota Manager y política de evicción LRU: `useQuotaManager`, `SettingsPage`
+- [x] UI responsiva y accesible con Tailwind CSS
+- [x] Comunicación P2P WebRTC verificada end-to-end (Firefox ↔ Chrome): fragmentación 64KB, deduplicación de GET_CHUNK, señalización anti-stale
 
-### Fase 5 — Resiliencia y Escala
+### Fase 5 — Resiliencia y Escala *(en progreso)*
 
-**Objetivo:** Red robusta con redundancia y protección avanzada.
+> Plan detallado en [`phase5.md`](./phase5.md)
 
-- [ ] Exceso de Seeding automático para usuarios con ratio alto
-- [ ] Prueba de Custodia y Créditos Premium
-- [ ] Reputación de peers y banning automático
-- [ ] Soporte Tor opcional en la extensión
-- [ ] Métricas de red y health checks
-- [ ] Auditoría de seguridad
+**Objetivo:** Red robusta con redundancia, reputación de peers y protección avanzada.
+
+- [x] Reputación de peers: `peer-reputation.ts` + `peer-reputation-idb.ts`; banning automático tras 3 fallos en 24h; integrado en `chunk-server.ts`, `chunk-downloader.ts`, `peer-fetch.ts`; dashboard UI con tabla y ban/unban manual
+- [x] Cold storage real: `cold-storage-manager.ts` (runCycle / pruneExpired / verifyIntegrity); scheduler con ciclos 30min/1h/2h; panel en dashboard extensión y web app
+- [x] Prueba de Custodia: CUSTODY_CHALLENGE (0x05) + CUSTODY_PROOF (0x06) en `chunk-transfer.ts`; handler en `chunk-server.ts`; self-verification en `cold-storage-manager.ts`
+- [x] Seeder Announcements: `seeder-announcement.ts` (kind:20002); publicación en `signaling-listener.ts`; descubrimiento dinámico en `chunk-downloader.ts`
+- [x] Métricas de red y health checks: `metrics.ts` (MetricsCollector); `GET_NODE_METRICS` bridge message; panel en dashboard extensión + `NodeMetricsPanel` en web; health check cada 10min en scheduler
+- [x] Auditoría de seguridad parcial: rate limiting 10 req/s por peer; validación 4 MB max por mensaje; timeout 60s DataChannels inactivos; CSP en `index.html`; SHA-256 en `peer-fetch.ts`
+- [ ] Transmuxing client-side (mp4box.js/mux.js) para compatibilidad de codecs MSE *(Bloque 5)*
+- [ ] Chunk alignment con keyframes en upload *(Bloque 5)*
+- [ ] Reconexión automática de WebRTC (ICE restart) *(Bloque 6)*
+- [ ] NetworkHealth widget en TopBar *(Bloque 7 restante)*
+- [ ] Soporte Tor opcional en la extensión *(Bloque 8)*
+- [ ] RTCPeerConnection cleanup audit + full security checklist *(Bloque 9 restante)*
 
 ---
 

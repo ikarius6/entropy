@@ -73,6 +73,24 @@ async function canServeRoot(rootHash: string): Promise<boolean> {
   }
 }
 
+async function authorizeChunkRequest(request: {
+  peerPubkey: string;
+  chunkHash: string;
+  rootHash: string;
+  requestedBytes: number;
+}): Promise<boolean> {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "CHECK_CHUNK_AUTH",
+      ...request
+    }) as { authorized?: boolean };
+
+    return response?.authorized === true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Init — start seeding
 // ---------------------------------------------------------------------------
@@ -113,6 +131,9 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
             peerPubkey,
             bytes
           }).catch(() => { /* ignore */ });
+        },
+        {
+          authorizeRequest: authorizeChunkRequest
         }
       );
     },
@@ -140,7 +161,15 @@ async function handleFetchChunk(msg: P2PFetchChunkMessage): Promise<{ data: numb
     gatekeeperPubkey: msg.gatekeeperPubkey,
     myPubkey: identity.pubkey,
     relayPool,
-    signEvent: signNostrEvent
+    signEvent: signNostrEvent,
+    onPeerFailedVerification: async (peerPubkey) => {
+      chrome.runtime.sendMessage({
+        type: "P2P_PEER_FAILED_VERIFICATION",
+        peerPubkey
+      }).catch(() => {
+        // ignore if SW is not ready
+      });
+    }
   });
 
   if (!result) {

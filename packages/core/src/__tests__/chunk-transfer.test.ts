@@ -6,9 +6,13 @@ import {
   MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES,
   FRAGMENT_SIZE,
   decodeChunkTransferMessage,
+  decodeCustodyChallenge,
+  decodeCustodyProof,
   encodeChunkError,
   encodeChunkRequest,
   encodeChunkResponse,
+  encodeCustodyChallenge,
+  encodeCustodyProof,
   createChunkReceiver,
   sendChunkOverDataChannel
 } from "../transport/chunk-transfer";
@@ -141,6 +145,72 @@ describe("chunk transfer", () => {
       type: "CHUNK_ERROR",
       chunkHash: CHUNK_HASH,
       reason: "BUSY"
+    });
+  });
+
+  it("encodes and decodes custody challenges", () => {
+    const encoded = encodeCustodyChallenge({
+      type: "CUSTODY_CHALLENGE",
+      chunkHash: CHUNK_HASH,
+      offset: 12,
+      length: 34
+    });
+
+    const decoded = decodeCustodyChallenge(encoded);
+
+    expect(decoded).toEqual({
+      type: "CUSTODY_CHALLENGE",
+      chunkHash: CHUNK_HASH,
+      offset: 12,
+      length: 34
+    });
+  });
+
+  it("encodes and decodes custody proofs", () => {
+    const encoded = encodeCustodyProof({
+      type: "CUSTODY_PROOF",
+      chunkHash: CHUNK_HASH,
+      sliceHash: ROOT_HASH
+    });
+
+    const decoded = decodeCustodyProof(encoded);
+
+    expect(decoded).toEqual({
+      type: "CUSTODY_PROOF",
+      chunkHash: CHUNK_HASH,
+      sliceHash: ROOT_HASH
+    });
+  });
+
+  it("routes custody challenge/proof through generic decoder", () => {
+    const challenge = decodeChunkTransferMessage(
+      encodeCustodyChallenge({
+        type: "CUSTODY_CHALLENGE",
+        chunkHash: CHUNK_HASH,
+        offset: 1,
+        length: 2
+      })
+    );
+
+    expect(challenge).toEqual({
+      type: "CUSTODY_CHALLENGE",
+      chunkHash: CHUNK_HASH,
+      offset: 1,
+      length: 2
+    });
+
+    const proof = decodeChunkTransferMessage(
+      encodeCustodyProof({
+        type: "CUSTODY_PROOF",
+        chunkHash: CHUNK_HASH,
+        sliceHash: ROOT_HASH
+      })
+    );
+
+    expect(proof).toEqual({
+      type: "CUSTODY_PROOF",
+      chunkHash: CHUNK_HASH,
+      sliceHash: ROOT_HASH
     });
   });
 

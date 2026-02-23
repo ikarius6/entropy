@@ -10,6 +10,33 @@ export interface DelegateSeedingPayload {
   title?: string;
 }
 
+function isColdStorageAssignmentPayload(value: unknown): value is ColdStorageAssignmentPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.chunkHash === "string" &&
+    typeof value.rootHash === "string" &&
+    typeof value.assignedAt === "number" &&
+    typeof value.expiresAt === "number" &&
+    typeof value.premiumCredits === "number" &&
+    (value.replicationCount === undefined || typeof value.replicationCount === "number")
+  );
+}
+
+export function isColdStorageStatusPayload(value: unknown): value is ColdStorageStatusPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.assignments) &&
+    value.assignments.every((assignment) => isColdStorageAssignmentPayload(assignment)) &&
+    typeof value.totalPremiumCredits === "number"
+  );
+}
+
 export interface ServeChunkPayload {
   chunkHash: string;
   requestedBytes: number;
@@ -90,6 +117,24 @@ export interface NodeStatusPayload {
   signalingRangeHealthy: boolean;
 }
 
+export interface ColdStorageAssignmentPayload {
+  chunkHash: string;
+  rootHash: string;
+  assignedAt: number;
+  expiresAt: number;
+  premiumCredits: number;
+  replicationCount?: number;
+}
+
+export interface ColdStorageStatusPayload {
+  assignments: ColdStorageAssignmentPayload[];
+  totalPremiumCredits: number;
+}
+
+export interface ReleaseColdAssignmentPayload {
+  chunkHash: string;
+}
+
 export interface CreditHistoryItem {
   id: string;
   peerPubkey: string;
@@ -116,9 +161,23 @@ export interface CreditSummaryPayload {
   }>;
 }
 
+export interface NodeMetricsPayload {
+  chunksServed: number;
+  bytesServed: number;
+  chunksDownloaded: number;
+  bytesDownloaded: number;
+  peersConnected: number;
+  coldStorageAssignments: number;
+  uptimeMs: number;
+  lastHealthCheck: number | null;
+  healthStatus: "healthy" | "degraded" | "unknown";
+}
+
 export type EntropyRuntimePayload =
   | NodeStatusPayload
+  | ColdStorageStatusPayload
   | CreditSummaryPayload
+  | NodeMetricsPayload
   | PublicKeyPayload
   | NodeSettingsPayload
   | SignedEventPayload
@@ -203,6 +262,22 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "GET_CHUNK";
       payload: GetChunkPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_COLD_STORAGE_ASSIGNMENTS";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "RELEASE_COLD_ASSIGNMENT";
+      payload: ReleaseColdAssignmentPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_NODE_METRICS";
     };
 
 export type EntropyRuntimeResponse =
@@ -247,6 +322,18 @@ export type EntropyRuntimeResponse =
       requestId: string;
       type: "GET_NODE_SETTINGS" | "ADD_RELAY" | "REMOVE_RELAY" | "SET_SEEDING_ACTIVE";
       payload: NodeSettingsPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "GET_COLD_STORAGE_ASSIGNMENTS" | "RELEASE_COLD_ASSIGNMENT";
+      payload: ColdStorageStatusPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "GET_NODE_METRICS";
+      payload: NodeMetricsPayload;
     }
   | {
       ok: false;
@@ -299,7 +386,10 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "REMOVE_RELAY" ||
     value === "SET_SEEDING_ACTIVE" ||
     value === "SIGN_EVENT" ||
-    value === "GET_CHUNK"
+    value === "GET_CHUNK" ||
+    value === "GET_COLD_STORAGE_ASSIGNMENTS" ||
+    value === "RELEASE_COLD_ASSIGNMENT" ||
+    value === "GET_NODE_METRICS"
   );
 }
 
@@ -457,6 +547,34 @@ function isSetSeedingActivePayload(value: unknown): value is SetSeedingActivePay
   return typeof value.active === "boolean";
 }
 
+function isReleaseColdAssignmentPayload(value: unknown): value is ReleaseColdAssignmentPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.chunkHash === "string" && value.chunkHash.length > 0;
+}
+
+export function isNodeMetricsPayload(value: unknown): value is NodeMetricsPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.chunksServed === "number" &&
+    typeof value.bytesServed === "number" &&
+    typeof value.chunksDownloaded === "number" &&
+    typeof value.bytesDownloaded === "number" &&
+    typeof value.peersConnected === "number" &&
+    typeof value.coldStorageAssignments === "number" &&
+    typeof value.uptimeMs === "number" &&
+    (value.lastHealthCheck === null || typeof value.lastHealthCheck === "number") &&
+    (value.healthStatus === "healthy" ||
+      value.healthStatus === "degraded" ||
+      value.healthStatus === "unknown")
+  );
+}
+
 export function isPublicKeyPayload(value: unknown): value is PublicKeyPayload {
   if (!isRecord(value)) {
     return false;
@@ -499,6 +617,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isSetSeedingActivePayload(value.payload);
   }
 
+  if (value.type === "RELEASE_COLD_ASSIGNMENT") {
+    return isReleaseColdAssignmentPayload(value.payload);
+  }
+
   return true;
 }
 
@@ -523,6 +645,14 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
   if (requestType === "GET_CHUNK") {
     // null means chunk not found — valid response
     return payload === null || payload === undefined || isRecord(payload);
+  }
+
+  if (requestType === "GET_COLD_STORAGE_ASSIGNMENTS" || requestType === "RELEASE_COLD_ASSIGNMENT") {
+    return isColdStorageStatusPayload(payload);
+  }
+
+  if (requestType === "GET_NODE_METRICS") {
+    return isNodeMetricsPayload(payload);
   }
 
   if (requestType === "SIGN_EVENT") {
@@ -557,6 +687,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
       value.type === "SET_SEEDING_ACTIVE"
     ) {
       return isNodeSettingsPayload(value.payload);
+    }
+
+    if (value.type === "GET_COLD_STORAGE_ASSIGNMENTS" || value.type === "RELEASE_COLD_ASSIGNMENT") {
+      return isColdStorageStatusPayload(value.payload);
     }
 
     return value.payload === undefined || isNodeStatusPayload(value.payload);

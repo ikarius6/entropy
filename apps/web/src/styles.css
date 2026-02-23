@@ -32,4 +32,157 @@
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.32);
     padding: 1.25rem;
   }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .panel-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-accent);
+  }
+
+  .panel-header button {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .panel-header button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .muted {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+  }
+
+  .error {
+    color: #ff7b7b;
+    font-size: 0.85rem;
+  }
+
+  /* ---- Metrics panel ---- */
+
+  .metrics-panel {
+    margin-top: 1rem;
+  }
+
+  .metrics-health-row,
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid rgba(175, 194, 255, 0.08);
+    font-size: 0.85rem;
+  }
+
+  .metric-label {
+    color: var(--color-muted);
+  }
+
+  .metric-value {
+    color: #e8f0ff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .health-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .health-badge--healthy {
+    background: rgba(100, 255, 180, 0.18);
+    color: #64ffb4;
+  }
+
+  .health-badge--degraded {
+    background: rgba(255, 160, 60, 0.18);
+    color: #ffa03c;
+  }
+
+  .health-badge--unknown {
+    background: rgba(175, 194, 255, 0.12);
+    color: var(--color-muted);
+  }
+
+  /* ---- Cold storage panel ---- */
+
+  .cold-storage-panel {
+    margin-top: 1rem;
+  }
+
+  .cold-summary {
+    font-size: 0.85rem;
+    color: #b3fce8;
+    margin: 0.35rem 0 0.6rem;
+  }
+
+  .cold-assignment-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cold-assignment-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid rgba(175, 194, 255, 0.08);
+    font-size: 0.82rem;
+  }
+
+  .cold-assignment-row:last-child {
+    border-bottom: none;
+  }
+
+  .cold-assignment-info {
+    flex: 1;
+    color: #d7ebff;
+    line-height: 1.5;
+  }
+
+  .cold-assignment-info code {
+    color: #93ffda;
+    font-family: monospace;
+  }
+
+  .cold-meta {
+    color: var(--color-muted);
+    font-size: 0.78rem;
+    margin-left: 0.35rem;
+  }
+
+  .cold-release-btn {
+    flex-shrink: 0;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.72rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 107, 107, 0.4);
+    background: rgba(255, 107, 107, 0.12);
+    color: #ff9f9f;
+    cursor: pointer;
+  }
+
+  .cold-release-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 }
