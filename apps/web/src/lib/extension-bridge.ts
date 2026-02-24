@@ -4,6 +4,7 @@ import {
   isCreditSummaryPayload,
   isColdStorageStatusPayload,
   isNodeMetricsPayload,
+  isCheckLocalChunksResultPayload,
   isEntropyExtensionResponseEvent,
   isNodeSettingsPayload,
   isPublicKeyPayload,
@@ -11,6 +12,7 @@ import {
   isEntropyRuntimePushMessage,
   type ColdStorageStatusPayload,
   type CreditSummaryPayload,
+  type CheckLocalChunksResultPayload,
   type DelegateSeedingPayload,
   type ImportKeypairPayload,
   type EntropyRuntimeMessage,
@@ -402,6 +404,22 @@ export function releaseColdAssignment(payload: ReleaseColdAssignmentPayload): Pr
 
 export function getNodeMetrics(): Promise<NodeMetricsPayload> {
   return sendExtensionRequest("GET_NODE_METRICS");
+}
+
+export function checkLocalChunks(hashes: string[], timeoutMs = 3000): Promise<CheckLocalChunksResultPayload> {
+  const requestId = createEntropyRequestId("web");
+  const message: EntropyRuntimeMessage = {
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "CHECK_LOCAL_CHUNKS",
+    payload: { hashes }
+  };
+
+  return sendBridgeMessage(
+    message,
+    (p) => (isCheckLocalChunksResultPayload(p) ? p : null),
+    timeoutMs
+  );
 }
 
 export function getChunk(payload: GetChunkPayload, timeoutMs = 5000): Promise<ChunkDataPayload | null> {

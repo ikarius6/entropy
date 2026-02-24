@@ -13,6 +13,7 @@ import { KINDS } from "../lib/constants";
 export default function WatchPage() {
   const { rootHash } = useParams<{ rootHash: string }>();
   const [chunkMap, setChunkMap] = useState<EntropyChunkMap | null>(null);
+  const [authorPubkey, setAuthorPubkey] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const { relayPool, relayUrls, chunkMapCache } = useEntropyStore();
@@ -53,6 +54,7 @@ export default function WatchPage() {
           console.log(`[WatchPage] matched chunkMap:`, parsed);
           found = true;
           setChunkMap(parsed);
+          setAuthorPubkey(event.pubkey);
           sub.unsubscribe();
         } catch (e) {
           console.warn(`[WatchPage] failed to parse event:`, e);
@@ -71,7 +73,12 @@ export default function WatchPage() {
 
   // Credit gate: check balance before initiating any P2P transfer
   const contentSize = chunkMap?.size || 0;
-  const gate = useCreditGate(contentSize);
+  const chunkHashes = chunkMap?.chunks;
+  const gate = useCreditGate({
+    contentSizeBytes: contentSize,
+    authorPubkey,
+    chunkHashes,
+  });
 
   const {
     status,

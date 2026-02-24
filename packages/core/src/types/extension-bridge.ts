@@ -61,6 +61,16 @@ export interface GetChunkPayload {
   gatekeepers?: string[];
 }
 
+export interface CheckLocalChunksPayload {
+  hashes: string[];
+}
+
+export interface CheckLocalChunksResultPayload {
+  total: number;
+  local: number;
+  localBytes: number;
+}
+
 export interface ChunkDataPayload {
   hash: string;
   rootHash: string;
@@ -181,7 +191,8 @@ export type EntropyRuntimePayload =
   | PublicKeyPayload
   | NodeSettingsPayload
   | SignedEventPayload
-  | ChunkDataPayload;
+  | ChunkDataPayload
+  | CheckLocalChunksResultPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -278,6 +289,12 @@ export type EntropyRuntimeMessage =
       source: typeof ENTROPY_WEB_SOURCE;
       requestId: string;
       type: "GET_NODE_METRICS";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "CHECK_LOCAL_CHUNKS";
+      payload: CheckLocalChunksPayload;
     };
 
 export type EntropyRuntimeResponse =
@@ -336,6 +353,12 @@ export type EntropyRuntimeResponse =
       payload: NodeMetricsPayload;
     }
   | {
+      ok: true;
+      requestId: string;
+      type: "CHECK_LOCAL_CHUNKS";
+      payload: CheckLocalChunksResultPayload;
+    }
+  | {
       ok: false;
       requestId: string;
       type: EntropyRuntimeMessage["type"];
@@ -389,7 +412,8 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "GET_CHUNK" ||
     value === "GET_COLD_STORAGE_ASSIGNMENTS" ||
     value === "RELEASE_COLD_ASSIGNMENT" ||
-    value === "GET_NODE_METRICS"
+    value === "GET_NODE_METRICS" ||
+    value === "CHECK_LOCAL_CHUNKS"
   );
 }
 
@@ -555,6 +579,26 @@ function isReleaseColdAssignmentPayload(value: unknown): value is ReleaseColdAss
   return typeof value.chunkHash === "string" && value.chunkHash.length > 0;
 }
 
+function isCheckLocalChunksPayload(value: unknown): value is CheckLocalChunksPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Array.isArray(value.hashes) && value.hashes.every((h) => typeof h === "string");
+}
+
+export function isCheckLocalChunksResultPayload(value: unknown): value is CheckLocalChunksResultPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.total === "number" &&
+    typeof value.local === "number" &&
+    typeof value.localBytes === "number"
+  );
+}
+
 export function isNodeMetricsPayload(value: unknown): value is NodeMetricsPayload {
   if (!isRecord(value)) {
     return false;
@@ -621,6 +665,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isReleaseColdAssignmentPayload(value.payload);
   }
 
+  if (value.type === "CHECK_LOCAL_CHUNKS") {
+    return isCheckLocalChunksPayload(value.payload);
+  }
+
   return true;
 }
 
@@ -653,6 +701,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
 
   if (requestType === "GET_NODE_METRICS") {
     return isNodeMetricsPayload(payload);
+  }
+
+  if (requestType === "CHECK_LOCAL_CHUNKS") {
+    return isCheckLocalChunksResultPayload(payload);
   }
 
   if (requestType === "SIGN_EVENT") {
@@ -691,6 +743,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
 
     if (value.type === "GET_COLD_STORAGE_ASSIGNMENTS" || value.type === "RELEASE_COLD_ASSIGNMENT") {
       return isColdStorageStatusPayload(value.payload);
+    }
+
+    if (value.type === "CHECK_LOCAL_CHUNKS") {
+      return isCheckLocalChunksResultPayload(value.payload);
     }
 
     return value.payload === undefined || isNodeStatusPayload(value.payload);

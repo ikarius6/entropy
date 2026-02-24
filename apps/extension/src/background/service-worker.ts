@@ -351,9 +351,15 @@ browser.runtime.onMessage.addListener(
       (message as { type: string }).type === "CHECK_CAN_SERVE_ROOT"
     ) {
       const rootHash = (message as unknown as { rootHash: string }).rootHash;
-      return getDelegatedRootHashes().then((hashes) => ({
-        canServe: hashes.includes(rootHash)
-      })) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
+      return getDelegatedRootHashes().then(async (hashes) => {
+        if (hashes.includes(rootHash)) {
+          return { canServe: true };
+        }
+        // Fallback: check if chunks for this rootHash exist in IndexedDB
+        // (delegations may have been pruned but chunks are still stored)
+        const chunks = await chunkStore.listChunksByRoot(rootHash);
+        return { canServe: chunks.length > 0 };
+      }) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
     }
 
     // Handle authorization checks from offscreen document before serving chunk requests
@@ -750,6 +756,28 @@ browser.runtime.onMessage.addListener(
               payload: metricsPayload
             };
             return metricsResponse;
+          }
+
+          case "CHECK_LOCAL_CHUNKS": {
+            const { hashes } = message.payload;
+            let localCount = 0;
+            let localBytes = 0;
+
+            for (const hash of hashes) {
+              const chunk = await chunkStore.getChunk(hash);
+              if (chunk) {
+                localCount++;
+                localBytes += chunk.data.byteLength;
+              }
+            }
+
+            const checkResult: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "CHECK_LOCAL_CHUNKS",
+              payload: { total: hashes.length, local: localCount, localBytes }
+            };
+            return checkResult;
           }
 
         }

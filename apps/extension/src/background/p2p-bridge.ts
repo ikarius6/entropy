@@ -111,10 +111,16 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
       },
       {
         canServeRoot: async (rootHash: string) => {
+          // Check delegatedContent store first (active delegations)
           const result = await browser.storage.local.get("delegatedContent");
           const store = result["delegatedContent"];
-          if (!store || typeof store !== "object") return false;
-          return rootHash in (store as Record<string, unknown>);
+          if (store && typeof store === "object" && rootHash in (store as Record<string, unknown>)) {
+            return true;
+          }
+          // Fallback: check if chunks for this rootHash exist in IndexedDB
+          // (delegations may have been pruned but chunks are still stored)
+          const chunks = await options.chunkStore.listChunksByRoot(rootHash);
+          return chunks.length > 0;
         },
         signEvent: options.signEvent
       }

@@ -33,6 +33,10 @@
 - [ ] Reconexión automática de WebRTC y tolerancia a desconexiones
 - [ ] Soporte Tor opcional en la extensión
 - [x] Auditoría de seguridad (rate limiting, message size validation, inactive DC timeout, CSP, SHA-256 en peer-fetch)
+- [x] Credit gating: bloqueo de contenido multimedia sin créditos suficientes
+- [x] Fix: recordDownloadCredit faltante en GET_CHUNK P2P fallback (ratio ∞ bug)
+- [x] Fix: contenido propio no cobra créditos (owner bypass)
+- [x] Fix: contenido cacheado localmente no cobra créditos (CHECK_LOCAL_CHUNKS bridge)
 ```
 
 ### Módulos existentes que se extienden
@@ -761,12 +765,16 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 | extension | `background/metrics.ts` | ✅ | MetricsCollector con persistencia y health checks |
 | extension | `__tests__/cold-storage-manager.test.ts` | ✅ | Tests de cold storage manager (8 tests) |
 | extension | `__tests__/metrics.test.ts` | ✅ | Tests de métricas (8 tests) |
+| extension | `__tests__/credit-ledger.test.ts` | ✅ | Tests de credit ledger persistence (10 tests) |
 | extension | `__tests__/chunk-server.test.ts` | ✅ | Tests de rate limiting + oversized messages (7 tests) |
 | extension | `__tests__/signaling-listener.test.ts` | ✅ | Tests de seeder announcements en signaling (3 tests) |
 | web | `src/hooks/useColdStorage.ts` | ✅ | Hook para cold storage assignments desde extensión |
 | web | `src/hooks/useNodeMetrics.ts` | ✅ | Hook para métricas del nodo con auto-refresh 30s |
+| web | `src/hooks/useCreditGate.ts` | ✅ | Hook de credit gating con bypass por owner y local cache |
+| web | `src/components/CreditGate.tsx` | ✅ | Componente UI de overlay bloqueante con ad placeholder y earn options |
 | web | `src/components/ColdStoragePanel.tsx` | ✅ | Panel web de cold storage con release individual |
 | web | `src/components/NodeMetricsPanel.tsx` | ✅ | Panel web de métricas con health badge |
+| web | `src/__tests__/useCreditGate.test.ts` | ✅ | Tests de credit gate hook: owner bypass, local bypass, balance check (16 tests) |
 
 ## Archivos Modificados
 
@@ -775,21 +783,24 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 | core | `transport/chunk-transfer.ts` | ✅ | CUSTODY_CHALLENGE (0x05) y CUSTODY_PROOF (0x06) |
 | core | `transport/chunk-downloader.ts` | ✅ | Reputación + seeder discovery (kind:20002) + SHA-256 verify |
 | core | `storage/db.ts` | ✅ | Tabla `peers` en Dexie schema |
-| core | `types/extension-bridge.ts` | ✅ | `GET_NODE_METRICS`, `NodeMetricsPayload`, `isNodeMetricsPayload`, `GET_COLD_STORAGE_ASSIGNMENTS`, `RELEASE_COLD_ASSIGNMENT` |
+| core | `types/extension-bridge.ts` | ✅ | `GET_NODE_METRICS`, `NodeMetricsPayload`, `isNodeMetricsPayload`, `GET_COLD_STORAGE_ASSIGNMENTS`, `RELEASE_COLD_ASSIGNMENT`, `CHECK_LOCAL_CHUNKS`, `CheckLocalChunksPayload`, `CheckLocalChunksResultPayload` |
 | core | `index.ts` | ✅ | Exportar todos los módulos nuevos |
 | core | `package.json` | ⏳ pendiente | Agregar `mp4box` dependency (Bloque 5) |
 | extension | `background/chunk-server.ts` | ✅ | Reputación + rate limiting (10 req/s) + 4MB size guard + 60s inactivity timeout + custody challenge handler |
-| extension | `background/peer-fetch.ts` | ✅ | Reputación + SHA-256 hash verification + skip banned peers |
+| extension | `background/peer-fetch.ts` | ✅ | Reputación + SHA-256 hash verification + skip banned peers + peerPubkey en PeerChunkResult |
+| extension | `background/p2p-bridge.ts` | ✅ | peerPubkey en PeerChunkResult de offscreen path |
 | extension | `background/signaling-listener.ts` | ✅ | Publicar seeder announcements (kind:20002) + re-publicación periódica |
 | extension | `background/scheduler.ts` | ✅ | Cold storage cycles (30min) + prune (1h) + integrity check (2h) + health checks (10min) |
-| extension | `background/service-worker.ts` | ✅ | Bootstrap metricsCollector + coldStorageManager + GET_NODE_METRICS handler |
+| extension | `background/service-worker.ts` | ✅ | Bootstrap metricsCollector + coldStorageManager + GET_NODE_METRICS + CHECK_LOCAL_CHUNKS + recordDownloadCredit en GET_CHUNK P2P fallback |
 | extension | `shared/status-client.ts` | ✅ | `requestNodeMetrics`, `requestColdStorageAssignments`, `releaseColdStorageAssignment` |
 | extension | `dashboard/index.html` | ✅ | Secciones peers, cold storage, metrics |
 | extension | `dashboard/main.ts` | ✅ | Panels: peers table + ban/unban, cold storage list + release, metrics |
 | extension | `dashboard/styles.css` | ✅ | Estilos para todos los paneles nuevos |
-| web | `src/lib/extension-bridge.ts` | ✅ | `getNodeMetrics()`, `getColdStorageAssignments()`, `releaseColdAssignment()` + overloads |
+| web | `src/lib/extension-bridge.ts` | ✅ | `getNodeMetrics()`, `getColdStorageAssignments()`, `releaseColdAssignment()`, `checkLocalChunks()` + overloads |
 | web | `src/App.tsx` | ✅ | Integrar ColdStoragePanel + NodeMetricsPanel |
-| web | `src/styles.css` | ✅ | Estilos para panels de cold storage y métricas |
+| web | `src/styles.css` | ✅ | Estilos para panels de cold storage, métricas y CreditGate |
+| web | `src/components/feed/PostCard.tsx` | ✅ | Integrar CreditGate con owner bypass + chunk hashes para local check |
+| web | `src/pages/WatchPage.tsx` | ✅ | Integrar CreditGate con author pubkey tracking + local check |
 | web | `index.html` | ✅ | CSP meta tag |
 | web | `src/hooks/useMediaSource.ts` | ⏳ pendiente | Integrar transmuxer fallback (Bloque 5) |
 | web | `src/hooks/useUploadPipeline.ts` | ⏳ pendiente | Integrar keyframe alignment para video (Bloque 5) |
@@ -842,4 +853,5 @@ pnpm --filter @entropy/extension build    # Sin regresiones
 - [ ] Conexiones WebRTC se reconectan automáticamente tras desconexiones temporales (≤5s). *(Bloque 6 — pendiente)*
 - [x] El dashboard de extensión y la web app muestran métricas operacionales detalladas y health checks.
 - [x] Chunk requests entrantes están rate-limited (10 req/s) y todos los mensajes se validan por tamaño (4 MB max).
-- [x] Typecheck, build y tests pasan sin errores en los 3 paquetes. *(core: 118 tests ✅ · extension: 36 tests ✅ · web: typecheck ✅)*
+- [x] Credit gating bloquea descargas P2P cuando el usuario no tiene créditos suficientes, con bypass para contenido propio y cacheado localmente.
+- [x] Typecheck, build y tests pasan sin errores en los 3 paquetes. *(core: 130 tests ✅ · extension: 46 tests ✅ · web: 19 tests ✅)*

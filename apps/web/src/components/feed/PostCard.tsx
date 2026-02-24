@@ -16,7 +16,12 @@ export function PostCard({ item }: { item: FeedItem }) {
 
   const isMedia = item.kind === KINDS.ENTROPY_CHUNK_MAP && !!item.chunkMap;
   const contentSize = isMedia ? (item.chunkMap as EntropyChunkMap).size || 0 : 0;
-  const gate = useCreditGate(contentSize);
+  const chunkHashes = isMedia ? (item.chunkMap as EntropyChunkMap).chunks : undefined;
+  const gate = useCreditGate({
+    contentSizeBytes: contentSize,
+    authorPubkey: item.pubkey,
+    chunkHashes,
+  });
 
   // Only start P2P transfer if credit gate allows it
   const { blobUrl, status: blobStatus, progress: blobProgress } = useChunkBlob(

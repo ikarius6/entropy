@@ -1,9 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 
 // ---------------------------------------------------------------------------
-// Mock useCredits — we control what the hook returns so we can test
-// useCreditGate logic in isolation without the extension bridge.
+// Mock useCredits
 // ---------------------------------------------------------------------------
 
 const mockRefresh = vi.fn(async () => {});
@@ -19,11 +18,40 @@ vi.mock("../hooks/useCredits", () => ({
   useCredits: () => mockCreditsReturn
 }));
 
+// ---------------------------------------------------------------------------
+// Mock useEntropyStore — controls the current user pubkey
+// ---------------------------------------------------------------------------
+
+let mockMyPubkey: string | null = null;
+
+vi.mock("../stores/entropy-store", () => ({
+  useEntropyStore: (selector: (s: { pubkey: string | null }) => unknown) =>
+    selector({ pubkey: mockMyPubkey })
+}));
+
+// ---------------------------------------------------------------------------
+// Mock checkLocalChunks bridge call
+// ---------------------------------------------------------------------------
+
+let mockCheckLocalResult: { total: number; local: number; localBytes: number } = { total: 0, local: 0, localBytes: 0 };
+let mockCheckLocalShouldReject = false;
+
+vi.mock("../lib/extension-bridge", () => ({
+  checkLocalChunks: vi.fn(() =>
+    mockCheckLocalShouldReject
+      ? Promise.reject(new Error("bridge timeout"))
+      : Promise.resolve(mockCheckLocalResult)
+  )
+}));
+
 import { useCreditGate } from "../hooks/useCreditGate";
 
 describe("useCreditGate", () => {
   beforeEach(() => {
     mockRefresh.mockClear();
+    mockMyPubkey = null;
+    mockCheckLocalShouldReject = false;
+    mockCheckLocalResult = { total: 0, local: 0, localBytes: 0 };
     mockCreditsReturn = {
       summary: null,
       isLoading: true,
@@ -33,17 +61,10 @@ describe("useCreditGate", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Loading state
+  // Backward-compatible number overload
   // ---------------------------------------------------------------------------
 
-  it("returns loading state when credits are still loading", () => {
-    mockCreditsReturn = {
-      summary: null,
-      isLoading: true,
-      error: null,
-      refresh: mockRefresh
-    };
-
+  it("returns loading state when credits are still loading (number overload)", () => {
     const { result } = renderHook(() => useCreditGate(5000));
 
     expect(result.current.isLoading).toBe(true);
@@ -51,6 +72,7 @@ describe("useCreditGate", () => {
     expect(result.current.balance).toBe(0);
     expect(result.current.required).toBe(5000);
     expect(result.current.deficit).toBe(5000);
+    expect(result.current.bypassReason).toBeNull();
   });
 
   // ---------------------------------------------------------------------------
@@ -72,6 +94,7 @@ describe("useCreditGate", () => {
     expect(result.current.balance).toBe(10000);
     expect(result.current.required).toBe(5000);
     expect(result.current.deficit).toBe(0);
+    expect(result.current.bypassReason).toBeNull();
   });
 
   it("allows download when balance exactly equals content size", () => {
@@ -211,10 +234,149 @@ describe("useCreditGate", () => {
     expect(result.current.allowed).toBe(true);
     expect(result.current.deficit).toBe(0);
 
-    // Increase content size beyond balance
     rerender({ size: 8000 });
 
     expect(result.current.allowed).toBe(false);
     expect(result.current.deficit).toBe(3000);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Owner bypass — own content is always free
+  // ---------------------------------------------------------------------------
+
+  it("bypasses gate for own content even with zero balance", () => {
+    mockMyPubkey = "my-pubkey-abc";
+    mockCreditsReturn = {
+      summary: { balance: 0, totalUploaded: 0, totalDownloaded: 0, ratio: null, entryCount: 0 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({ contentSizeBytes: 10_000_000, authorPubkey: "my-pubkey-abc" })
+    );
+
+    expect(result.current.allowed).toBe(true);
+    expect(result.current.bypassReason).toBe("owner");
+    expect(result.current.deficit).toBe(0);
+  });
+
+  it("does NOT bypass for different author pubkey", () => {
+    mockMyPubkey = "my-pubkey-abc";
+    mockCreditsReturn = {
+      summary: { balance: 0, totalUploaded: 0, totalDownloaded: 0, ratio: null, entryCount: 0 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({ contentSizeBytes: 5000, authorPubkey: "other-pubkey-xyz" })
+    );
+
+    expect(result.current.allowed).toBe(false);
+    expect(result.current.bypassReason).toBeNull();
+  });
+
+  it("does NOT bypass when myPubkey is null (not logged in)", () => {
+    mockMyPubkey = null;
+    mockCreditsReturn = {
+      summary: { balance: 0, totalUploaded: 0, totalDownloaded: 0, ratio: null, entryCount: 0 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({ contentSizeBytes: 5000, authorPubkey: "some-pubkey" })
+    );
+
+    expect(result.current.allowed).toBe(false);
+    expect(result.current.bypassReason).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Local bypass — all chunks cached locally
+  // ---------------------------------------------------------------------------
+
+  it("bypasses gate when all chunks are locally cached", async () => {
+    mockMyPubkey = "different-user";
+    mockCheckLocalResult = { total: 3, local: 3, localBytes: 15000 };
+    mockCreditsReturn = {
+      summary: { balance: 0, totalUploaded: 0, totalDownloaded: 0, ratio: null, entryCount: 0 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({
+        contentSizeBytes: 15000,
+        authorPubkey: "other-author",
+        chunkHashes: ["hash-a", "hash-b", "hash-c"]
+      })
+    );
+
+    // Wait for async checkLocalChunks to resolve
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.allowed).toBe(true);
+    expect(result.current.bypassReason).toBe("local");
+  });
+
+  it("does NOT bypass when only some chunks are local", async () => {
+    mockMyPubkey = "different-user";
+    mockCheckLocalResult = { total: 3, local: 1, localBytes: 5000 };
+    mockCreditsReturn = {
+      summary: { balance: 0, totalUploaded: 0, totalDownloaded: 0, ratio: null, entryCount: 0 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({
+        contentSizeBytes: 15000,
+        authorPubkey: "other-author",
+        chunkHashes: ["hash-a", "hash-b", "hash-c"]
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.allowed).toBe(false);
+    expect(result.current.bypassReason).toBeNull();
+  });
+
+  it("falls back to credit check when local check fails", async () => {
+    mockMyPubkey = "different-user";
+    mockCheckLocalShouldReject = true;
+    mockCreditsReturn = {
+      summary: { balance: 20000, totalUploaded: 20000, totalDownloaded: 0, ratio: null, entryCount: 1 },
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh
+    };
+
+    const { result } = renderHook(() =>
+      useCreditGate({
+        contentSizeBytes: 15000,
+        authorPubkey: "other-author",
+        chunkHashes: ["hash-a", "hash-b"]
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Falls back to balance check — 20000 >= 15000
+    expect(result.current.allowed).toBe(true);
+    expect(result.current.bypassReason).toBeNull();
   });
 });
