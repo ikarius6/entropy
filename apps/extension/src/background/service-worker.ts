@@ -569,6 +569,19 @@ browser.runtime.onMessage.addListener(
                   pinned: false
                 });
 
+                // Record download credit — debit balance for P2P consumption
+                try {
+                  await recordDownloadCredit({
+                    peerPubkey: peerResult.peerPubkey,
+                    bytes: peerResult.data.byteLength,
+                    chunkHash: peerResult.hash,
+                    receiptSignature: "p2p-fetch",
+                    timestamp: Date.now(),
+                  });
+                } catch (creditErr) {
+                  logger.warn("[GET_CHUNK] failed to record download credit:", creditErr);
+                }
+
                 return chunkDataResponse(message.requestId, {
                   hash: peerResult.hash,
                   rootHash: peerResult.rootHash,

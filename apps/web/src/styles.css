@@ -185,4 +185,214 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
+
+  /* ---- Credit gate ---- */
+
+  .credit-gate {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .credit-gate--loading {
+    gap: 0.75rem;
+    background: rgba(17, 26, 53, 0.6);
+    border: 1px solid var(--color-border);
+  }
+
+  .credit-gate--locked {
+    gap: 1rem;
+    padding: 2rem 1.5rem;
+    background: linear-gradient(160deg, rgba(17, 26, 53, 0.95), rgba(7, 9, 16, 0.98));
+    border: 1px solid rgba(255, 160, 60, 0.25);
+  }
+
+  .credit-gate__backdrop {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .credit-gate__pattern {
+    width: 100%;
+    height: 100%;
+    background:
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 20px,
+        rgba(255, 160, 60, 0.03) 20px,
+        rgba(255, 160, 60, 0.03) 40px
+      );
+  }
+
+  .credit-gate__icon {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(255, 160, 60, 0.12);
+    color: #ffa03c;
+    border: 1px solid rgba(255, 160, 60, 0.25);
+  }
+
+  .credit-gate__title {
+    position: relative;
+    z-index: 1;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f3f5ff;
+    text-align: center;
+    margin: 0;
+  }
+
+  .credit-gate__info {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    max-width: 280px;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--color-border);
+  }
+
+  .credit-gate__info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+  }
+
+  .credit-gate__info-row--deficit {
+    padding-top: 0.35rem;
+    border-top: 1px solid rgba(175, 194, 255, 0.1);
+  }
+
+  .credit-gate__ad-section {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 340px;
+    text-align: center;
+  }
+
+  .credit-gate__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+  }
+
+  .credit-gate__btn--ad {
+    width: 100%;
+    background: linear-gradient(135deg, #ffa03c, #ff6b35);
+    color: #0a0e18;
+  }
+
+  .credit-gate__btn--ad:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .credit-gate__btn--seed {
+    width: 100%;
+    background: rgba(94, 164, 255, 0.12);
+    color: var(--color-primary);
+    border: 1px solid rgba(94, 164, 255, 0.25);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .credit-gate__btn--seed:hover {
+    background: rgba(94, 164, 255, 0.2);
+  }
+
+  .credit-gate__btn--refresh {
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: rgba(100, 255, 180, 0.1);
+    color: #64ffb4;
+    border: 1px solid rgba(100, 255, 180, 0.2);
+  }
+
+  .credit-gate__ad-player {
+    width: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 160, 60, 0.2);
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .credit-gate__ad-player-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.25rem 1rem 0.75rem;
+  }
+
+  .credit-gate__ad-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 0;
+  }
+
+  .credit-gate__ad-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+  }
+
+  .credit-gate__ad-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ffa03c, #64ffb4);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+  }
+
+  .credit-gate__ad-complete {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0;
+  }
+
+  .credit-gate__earn-alt {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 340px;
+  }
 }

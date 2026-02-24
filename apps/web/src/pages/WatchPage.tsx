@@ -3,6 +3,8 @@ import { useEntropyStore } from "../stores/entropy-store";
 import { useEffect, useState } from "react";
 import { useChunkDownload } from "../hooks/useChunkDownload";
 import { useChunkBlob } from "../hooks/useChunkBlob";
+import { useCreditGate } from "../hooks/useCreditGate";
+import { CreditGate } from "../components/CreditGate";
 import { VideoPlayer } from "../components/player/VideoPlayer";
 import { Server, Download, ShieldCheck, Loader2 } from "lucide-react";
 import { parseEntropyChunkMapTags, type EntropyChunkMap, type NostrEvent } from "@entropy/core";
@@ -67,6 +69,10 @@ export default function WatchPage() {
     return () => { sub.unsubscribe(); };
   }, [rootHash, relayPool, relayUrls.join(",")]);
 
+  // Credit gate: check balance before initiating any P2P transfer
+  const contentSize = chunkMap?.size || 0;
+  const gate = useCreditGate(contentSize);
+
   const {
     status,
     progress,
@@ -75,9 +81,12 @@ export default function WatchPage() {
     start,
     pause,
     error: downloadError
-  } = useChunkDownload(chunkMap);
+  } = useChunkDownload(gate.allowed ? chunkMap : null);
 
-  const { blobUrl, status: blobStatus, error: blobError, progress: blobProgress } = useChunkBlob(chunkMap);
+  // Only start P2P transfer if credit gate allows it
+  const { blobUrl, status: blobStatus, error: blobError, progress: blobProgress } = useChunkBlob(
+    gate.allowed ? chunkMap : null
+  );
 
   const mime = chunkMap?.mimeType || "";
   const isImage = mime.startsWith("image/");
@@ -112,30 +121,32 @@ export default function WatchPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
-      {/* Media viewer */}
-      <div className="w-full rounded-xl overflow-hidden border border-border bg-black/60 flex items-center justify-center min-h-[300px]">
-        {blobStatus === "loading" && (
-          <div className="flex flex-col items-center gap-3 py-16">
-            <Loader2 className="animate-spin text-primary" size={40} />
-            <span className="text-muted text-sm">{Math.round(blobProgress * 100)}% loaded</span>
-          </div>
-        )}
-        {blobStatus === "error" && (
-          <div className="text-red-400 text-sm p-8 text-center">{blobError}</div>
-        )}
-        {blobStatus === "ready" && blobUrl && isImage && (
-          <img src={blobUrl} alt={chunkMap.title || "image"} className="max-w-full max-h-[70vh] object-contain" />
-        )}
-        {blobStatus === "ready" && blobUrl && isAudio && (
-          <div className="flex flex-col items-center gap-4 p-8 w-full">
-            <div className="text-6xl">🎵</div>
-            <audio controls src={blobUrl} className="w-full max-w-lg" autoPlay />
-          </div>
-        )}
-        {blobStatus === "ready" && blobUrl && isVideo && (
-          <video controls src={blobUrl} className="w-full max-h-[70vh]" autoPlay />
-        )}
-      </div>
+      {/* Media viewer — gated by credits */}
+      <CreditGate gate={gate} contentTitle={chunkMap.title} mimeType={chunkMap.mimeType}>
+        <div className="w-full rounded-xl overflow-hidden border border-border bg-black/60 flex items-center justify-center min-h-[300px]">
+          {blobStatus === "loading" && (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <Loader2 className="animate-spin text-primary" size={40} />
+              <span className="text-muted text-sm">{Math.round(blobProgress * 100)}% loaded</span>
+            </div>
+          )}
+          {blobStatus === "error" && (
+            <div className="text-red-400 text-sm p-8 text-center">{blobError}</div>
+          )}
+          {blobStatus === "ready" && blobUrl && isImage && (
+            <img src={blobUrl} alt={chunkMap.title || "image"} className="max-w-full max-h-[70vh] object-contain" />
+          )}
+          {blobStatus === "ready" && blobUrl && isAudio && (
+            <div className="flex flex-col items-center gap-4 p-8 w-full">
+              <div className="text-6xl">🎵</div>
+              <audio controls src={blobUrl} className="w-full max-w-lg" autoPlay />
+            </div>
+          )}
+          {blobStatus === "ready" && blobUrl && isVideo && (
+            <video controls src={blobUrl} className="w-full max-h-[70vh]" autoPlay />
+          )}
+        </div>
+      </CreditGate>
 
       <div className="panel grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 flex flex-col gap-4">
@@ -158,11 +169,11 @@ export default function WatchPage() {
         <div className="flex flex-col gap-3 justify-start md:border-l md:border-border md:pl-6">
           <button
             onClick={handleDownload}
-            disabled={blobStatus !== "ready"}
+            disabled={blobStatus !== "ready" || !gate.allowed}
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-bold bg-primary text-background hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download size={18} />
-            {blobStatus === "loading" ? `Loading… ${Math.round(blobProgress * 100)}%` : "Save to Disk"}
+            {!gate.allowed ? "Insufficient Credits" : blobStatus === "loading" ? `Loading… ${Math.round(blobProgress * 100)}%` : "Save to Disk"}
           </button>
 
           <button className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-bold bg-white/5 text-white hover:bg-white/10 transition-colors">

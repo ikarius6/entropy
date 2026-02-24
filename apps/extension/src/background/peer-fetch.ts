@@ -33,6 +33,7 @@ export interface PeerChunkResult {
   hash: string;
   rootHash: string;
   data: ArrayBuffer;
+  peerPubkey: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +309,8 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
               resolve({
                 hash: chunkHash,
                 rootHash,
-                data: message.data
+                data: message.data,
+                peerPubkey: gatekeeperPubkey
               });
             })
             .catch((hashErr) => {

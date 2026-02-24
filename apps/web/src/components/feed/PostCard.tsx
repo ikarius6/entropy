@@ -6,13 +6,21 @@ import type { EntropyChunkMap } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
 import { useNostrProfile } from "../../hooks/useNostrProfile";
 import { useChunkBlob } from "../../hooks/useChunkBlob";
+import { useCreditGate } from "../../hooks/useCreditGate";
+import { CreditGate } from "../CreditGate";
 import { KINDS } from "../../lib/constants";
 
 export function PostCard({ item }: { item: FeedItem }) {
   const { profile } = useNostrProfile(item.pubkey);
   const timeAgo = Math.floor(Date.now() / 1000) - item.created_at;
+
+  const isMedia = item.kind === KINDS.ENTROPY_CHUNK_MAP && !!item.chunkMap;
+  const contentSize = isMedia ? (item.chunkMap as EntropyChunkMap).size || 0 : 0;
+  const gate = useCreditGate(contentSize);
+
+  // Only start P2P transfer if credit gate allows it
   const { blobUrl, status: blobStatus, progress: blobProgress } = useChunkBlob(
-    item.kind === KINDS.ENTROPY_CHUNK_MAP ? item.chunkMap ?? null : null
+    isMedia && gate.allowed ? item.chunkMap ?? null : null
   );
 
   const formatTime = (seconds: number) => {
@@ -47,9 +55,11 @@ export function PostCard({ item }: { item: FeedItem }) {
         </div>
       )}
 
-      {/* Media specific rendering */}
-      {item.kind === KINDS.ENTROPY_CHUNK_MAP && item.chunkMap && (
-        <MediaPost chunkMap={item.chunkMap} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
+      {/* Media specific rendering — gated by credits */}
+      {isMedia && item.chunkMap && (
+        <CreditGate gate={gate} contentTitle={item.chunkMap.title} mimeType={item.chunkMap.mimeType}>
+          <MediaPost chunkMap={item.chunkMap} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
+        </CreditGate>
       )}
 
       {/* Actions */}

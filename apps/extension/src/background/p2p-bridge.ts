@@ -195,7 +195,8 @@ export async function fetchChunkP2P(params: {
   return {
     hash: params.chunkHash,
     rootHash: params.rootHash,
-    data: buffer
+    data: buffer,
+    peerPubkey: params.gatekeeperPubkey
   };
 }
 
