@@ -854,4 +854,3 @@ pnpm --filter @entropy/extension build    # Sin regresiones
 - [x] El dashboard de extensión y la web app muestran métricas operacionales detalladas y health checks.
 - [x] Chunk requests entrantes están rate-limited (10 req/s) y todos los mensajes se validan por tamaño (4 MB max).
 - [x] Credit gating bloquea descargas P2P cuando el usuario no tiene créditos suficientes, con bypass para contenido propio y cacheado localmente.
-- [x] Typecheck, build y tests pasan sin errores en los 3 paquetes. *(core: 130 tests ✅ · extension: 46 tests ✅ · web: 19 tests ✅)*
