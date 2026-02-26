@@ -55,7 +55,7 @@ export function PostCard({ item }: { item: FeedItem }) {
 
       {/* Content */}
       {item.content && (
-        <div className="text-white/90 whitespace-pre-wrap leading-relaxed mt-1">
+        <div className="text-white/90 whitespace-pre-wrap break-words leading-relaxed mt-1">
           {item.content}
         </div>
       )}

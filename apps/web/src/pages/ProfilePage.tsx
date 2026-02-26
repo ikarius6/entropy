@@ -3,6 +3,8 @@ import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useNostrFeed } from "../hooks/useNostrFeed";
 import { ProfileHeader } from "../components/profile/ProfileHeader";
 import { useEntropyStore } from "../stores/entropy-store";
+import { useFollow } from "../hooks/useFollow";
+import { useContactList } from "../hooks/useContactList";
 import { KINDS } from "../lib/constants";
 
 export default function ProfilePage() {
@@ -13,6 +15,10 @@ export default function ProfilePage() {
   const targetPubkey = isMe ? currentPubkey : pubkey;
   
   const { profile, isLoading } = useNostrProfile(targetPubkey || null);
+  const { follows } = useContactList(targetPubkey ?? null);
+  const { isFollowing, toggle: toggleFollow, isPending: isFollowPending } = useFollow(
+    isMe ? null : (targetPubkey ?? null)
+  );
 
   // Fetch only kind:7001 events published by this profile
   const { items: publications, isLoading: feedLoading } = useNostrFeed(
@@ -40,7 +46,10 @@ export default function ProfilePage() {
           pubkey={targetPubkey} 
           isCurrentUser={isMe} 
           followersCount={0}
-          followingCount={0}
+          followingCount={follows.length}
+          isFollowing={isFollowing}
+          isFollowPending={isFollowPending}
+          onFollow={toggleFollow}
         />
       )}
       

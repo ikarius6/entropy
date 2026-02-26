@@ -8,6 +8,9 @@ interface ProfileHeaderProps {
   followersCount?: number;
   followingCount?: number;
   isCurrentUser?: boolean;
+  isFollowing?: boolean;
+  isFollowPending?: boolean;
+  onFollow?: () => void;
 }
 
 export function ProfileHeader({ 
@@ -15,7 +18,10 @@ export function ProfileHeader({
   pubkey, 
   followersCount = 0, 
   followingCount = 0,
-  isCurrentUser = false
+  isCurrentUser = false,
+  isFollowing = false,
+  isFollowPending = false,
+  onFollow,
 }: ProfileHeaderProps) {
   if (!pubkey) return null;
 
@@ -36,8 +42,16 @@ export function ProfileHeader({
           
           <div>
             {!isCurrentUser && (
-              <button className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium">
-                Follow
+              <button
+                onClick={onFollow}
+                disabled={isFollowPending}
+                className={`px-4 py-1.5 rounded-full transition-colors text-sm font-medium disabled:opacity-50 ${
+                  isFollowing
+                    ? "bg-primary/20 text-primary hover:bg-red-500/20 hover:text-red-400"
+                    : "bg-white/10 hover:bg-white/20"
+                }`}
+              >
+                {isFollowPending ? "…" : isFollowing ? "Following" : "Follow"}
               </button>
             )}
           </div>
