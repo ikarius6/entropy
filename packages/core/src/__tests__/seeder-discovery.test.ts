@@ -51,7 +51,8 @@ describe("seeder-discovery", () => {
     );
 
     const relayPool = {
-      subscribe
+      subscribe,
+      getRelayCount: vi.fn(() => 1)
     } as unknown as RelayPool;
 
     const discovered = await discoverSeeders(relayPool, ROOT_HASH, {
@@ -85,7 +86,8 @@ describe("seeder-discovery", () => {
     );
 
     const relayPool = {
-      subscribe
+      subscribe,
+      getRelayCount: vi.fn(() => 1)
     } as unknown as RelayPool;
 
     const discovered = await discoverSeeders(relayPool, ROOT_HASH, { timeoutMs: 250 });
@@ -98,7 +100,8 @@ describe("seeder-discovery", () => {
     const subscribe = vi.fn();
 
     const relayPool = {
-      subscribe
+      subscribe,
+      getRelayCount: vi.fn(() => 1)
     } as unknown as RelayPool;
 
     const discovered = await discoverSeeders(relayPool, ROOT_HASH, { timeoutMs: 0 });
