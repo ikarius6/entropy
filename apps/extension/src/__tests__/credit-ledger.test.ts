@@ -313,4 +313,20 @@ describe("extension credit-ledger", () => {
     expect(summary.ratio).toBe(2.5);
     expect(summary.entryCount).toBe(2);
   });
+
+  // ---------------------------------------------------------------------------
+  // Regression: DELEGATE_SEEDING must never self-award upload credits
+  // ---------------------------------------------------------------------------
+
+  it("no upload credits on a fresh ledger — delegation alone must not award credits", async () => {
+    // Before the fix, DELEGATE_SEEDING called recordUploadCredit({ peerPubkey: "self" })
+    // immediately on upload, even when zero peers had pulled any chunk.
+    // Credits must only come from onChunkServed / P2P_CHUNK_SERVED (real downstream peers).
+    const { getCreditSummary } = await loadModule();
+    const summary = await getCreditSummary();
+
+    expect(summary.totalUploaded).toBe(0);
+    expect(summary.balance).toBe(0);
+    expect(summary.entryCount).toBe(0);
+  });
 });

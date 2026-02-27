@@ -27,8 +27,8 @@
 - [x] Exceso de Seeding automático para usuarios con ratio alto (cold storage real)
 - [x] Prueba de Custodia periódica y Créditos Premium activos (self-verification)
 - [x] Seeder Announcements: descubrimiento de peers sin gatekeepers explícitos
-- [ ] Transmuxing client-side (mp4box.js/mux.js) para compatibilidad de codecs MSE
-- [ ] Chunk alignment con keyframes en upload (pre-procesamiento)
+- [x] Transmuxing client-side (mp4box.js) para compatibilidad de codecs MSE
+- [x] Chunk alignment con keyframes en upload (pre-procesamiento)
 - [x] Métricas de red y health checks (dashboard de extensión + web)
 - [ ] Reconexión automática de WebRTC y tolerancia a desconexiones
 - [ ] Soporte Tor opcional en la extensión
@@ -681,14 +681,12 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 │  Bloque 5: Transmuxing + Keyframe Alignment                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ○ 5.1  Install mp4box dependency                               │
-│  ○ 5.2  keyframe-aligner.ts (core: upload pre-processing)       │
-│  ○ 5.3  transmuxer.ts (core: playback transmuxing)              │
-│  ○ 5.4  Integrar en useMediaSource.ts                           │
-│  ○ 5.5  Integrar en useUploadPipeline.ts                        │
-│  ○ 5.6  Tests                                                   │
-│                                                                 │
-│  ⚠️  PENDIENTE                                                   │
+│  ✅ 5.1  Install mp4box dependency (mp4box@2.3.0)               │
+│  ✅ 5.2  keyframe-aligner.ts (core: upload pre-processing)      │
+│  ✅ 5.3  transmuxer.ts (core: playback transmuxing)             │
+│  ✅ 5.4  Integrar en useMediaSource.ts                          │
+│  ✅ 5.5  Integrar en useUploadPipeline.ts                       │
+│  ✅ 5.6  Tests (13 tests: 8 keyframe-aligner + 5 transmuxer)    │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
@@ -754,13 +752,13 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 | core | `credits/peer-reputation.ts` | ✅ | `PeerReputationStore` interface + banning policy |
 | core | `storage/peer-reputation-idb.ts` | ✅ | IndexedDB implementation de PeerReputationStore |
 | core | `nostr/seeder-announcement.ts` | ✅ | Build/parse kind:20002 seeder announcements |
-| core | `chunking/keyframe-aligner.ts` | ⏳ pendiente | Chunking con alineación a keyframes de video |
-| core | `transport/transmuxer.ts` | ⏳ pendiente | Transmuxing on-the-fly para MSE playback |
+| core | `chunking/keyframe-aligner.ts` | ✅ | Chunking con alineación a keyframes de video |
+| core | `transport/transmuxer.ts` | ✅ | Transmuxing on-the-fly para MSE playback |
 | core | `__tests__/peer-reputation.test.ts` | ✅ | Tests de reputación de peers (6 tests) |
 | core | `__tests__/peer-reputation-idb.test.ts` | ✅ | Tests de IDB reputation store (5 tests) |
 | core | `__tests__/seeder-announcement.test.ts` | ✅ | Tests de seeder announcements (4 tests) |
-| core | `__tests__/keyframe-aligner.test.ts` | ⏳ pendiente | Tests de keyframe alignment |
-| core | `__tests__/transmuxer.test.ts` | ⏳ pendiente | Tests de transmuxing |
+| core | `__tests__/keyframe-aligner.test.ts` | ✅ | Tests de keyframe alignment (8 tests) |
+| core | `__tests__/transmuxer.test.ts` | ✅ | Tests de transmuxing (5 tests) |
 | extension | `background/cold-storage-manager.ts` | ✅ | Gestor de cold storage real (runCycle, pruneExpired, verifyIntegrity) |
 | extension | `background/metrics.ts` | ✅ | MetricsCollector con persistencia y health checks |
 | extension | `__tests__/cold-storage-manager.test.ts` | ✅ | Tests de cold storage manager (8 tests) |
@@ -785,7 +783,7 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 | core | `storage/db.ts` | ✅ | Tabla `peers` en Dexie schema |
 | core | `types/extension-bridge.ts` | ✅ | `GET_NODE_METRICS`, `NodeMetricsPayload`, `isNodeMetricsPayload`, `GET_COLD_STORAGE_ASSIGNMENTS`, `RELEASE_COLD_ASSIGNMENT`, `CHECK_LOCAL_CHUNKS`, `CheckLocalChunksPayload`, `CheckLocalChunksResultPayload` |
 | core | `index.ts` | ✅ | Exportar todos los módulos nuevos |
-| core | `package.json` | ⏳ pendiente | Agregar `mp4box` dependency (Bloque 5) |
+| core | `package.json` | ✅ | `mp4box@2.3.0` dependency agregada (Bloque 5) |
 | extension | `background/chunk-server.ts` | ✅ | Reputación + rate limiting (10 req/s) + 4MB size guard + 60s inactivity timeout + custody challenge handler |
 | extension | `background/peer-fetch.ts` | ✅ | Reputación + SHA-256 hash verification + skip banned peers + peerPubkey en PeerChunkResult |
 | extension | `background/p2p-bridge.ts` | ✅ | peerPubkey en PeerChunkResult de offscreen path |
@@ -802,8 +800,8 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 | web | `src/components/feed/PostCard.tsx` | ✅ | Integrar CreditGate con owner bypass + chunk hashes para local check |
 | web | `src/pages/WatchPage.tsx` | ✅ | Integrar CreditGate con author pubkey tracking + local check |
 | web | `index.html` | ✅ | CSP meta tag |
-| web | `src/hooks/useMediaSource.ts` | ⏳ pendiente | Integrar transmuxer fallback (Bloque 5) |
-| web | `src/hooks/useUploadPipeline.ts` | ⏳ pendiente | Integrar keyframe alignment para video (Bloque 5) |
+| web | `src/hooks/useMediaSource.ts` | ✅ | Transmuxer integrado — SourceBuffer diferido al primer chunk, init segment prepend, pending queue |
+| web | `src/hooks/useUploadPipeline.ts` | ✅ | Keyframe alignment para video (Bloque 5) |
 | web | `src/components/layout/TopBar.tsx` | ⏳ pendiente | NetworkHealth widget (Bloque 7 restante) |
 
 ---
@@ -812,7 +810,7 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 
 | Paquete | Dependencia | Versión | Uso |
 |---|---|---|---|
-| `@entropy/core` | `mp4box` | `^0.5.x` | Parsing MP4, detección de keyframes, generación de init segments |
+| `@entropy/core` | `mp4box` | `2.3.0` | Parsing MP4, detección de keyframes (stss), generación de init segments fMP4 |
 
 ---
 
@@ -848,8 +846,8 @@ pnpm --filter @entropy/extension build    # Sin regresiones
 - [x] Nodos con ratio ≥ 2.0 reciben automáticamente asignaciones de cold storage y acumulan premium credits.
 - [x] Seeders dinámicos son descubiertos vía kind:20002 sin necesidad de estar listados como gatekeepers en el chunk map original.
 - [x] Las pruebas de custodia (self-verification) verifican que los custodios realmente poseen los chunks asignados.
-- [ ] Archivos multimedia no-MP4 se reproducen mediante transmuxing client-side. *(Bloque 5 — pendiente)*
-- [ ] Los chunks de video se alinean con keyframes durante el upload para streaming fluido. *(Bloque 5 — pendiente)*
+- [x] Archivos multimedia no-MP4 se reproducen mediante transmuxing client-side (`transmuxer.ts` + `useMediaSource.ts`).
+- [x] Los chunks de video se alinean con keyframes durante el upload para streaming fluido (`keyframe-aligner.ts` + `useUploadPipeline.ts`).
 - [ ] Conexiones WebRTC se reconectan automáticamente tras desconexiones temporales (≤5s). *(Bloque 6 — pendiente)*
 - [x] El dashboard de extensión y la web app muestran métricas operacionales detalladas y health checks.
 - [x] Chunk requests entrantes están rate-limited (10 req/s) y todos los mensajes se validan por tamaño (4 MB max).

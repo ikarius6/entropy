@@ -42,9 +42,9 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
 
   if (selectedFile) {
     return (
-      <div className="p-6 border border-border bg-white/5 rounded-xl flex items-center justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="font-medium text-white">{selectedFile.name}</div>
+      <div className="p-6 border border-border bg-white/5 rounded-xl flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1 min-w-0 flex-1">
+          <div className="font-medium text-white truncate" title={selectedFile.name}>{selectedFile.name}</div>
           <div className="text-sm text-muted">
             {selectedFile.type || "unknown"} • {formatSize(selectedFile.size)}
           </div>
@@ -54,7 +54,7 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
             if (fileInputRef.current) fileInputRef.current.value = "";
             onFileSelected(null);
           }}
-          className="text-sm px-3 py-1.5 bg-white/10 hover:bg-red-500/20 hover:text-red-400 rounded-md transition-colors"
+          className="text-sm px-3 py-1.5 bg-white/10 hover:bg-red-500/20 hover:text-red-400 rounded-md transition-colors flex-shrink-0"
         >
           Change
         </button>

@@ -2,25 +2,58 @@ import { describe, expect, it, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useUploadPipeline } from "../hooks/useUploadPipeline";
 
+// ---------------------------------------------------------------------------
+// Mocks — must not reference top-level variables (vi.mock is hoisted)
+// ---------------------------------------------------------------------------
+
+vi.mock("@entropy/core", () => ({
+  chunkFile: vi.fn(async (file: Blob) => ({
+    rootHash: "root-hash-standard",
+    chunkSize: 5 * 1024 * 1024,
+    totalSize: file.size,
+    mimeType: "text/plain",
+    chunkHashes: ["hash-0"],
+    chunks: [{ index: 0, hash: "hash-0", size: file.size, data: new Uint8Array(file.size) }],
+  })),
+  chunkFileWithKeyframeAlignment: vi.fn(async (opts: { file: Blob; mimeType: string }) => ({
+    rootHash: "root-hash-video",
+    chunkSize: 5 * 1024 * 1024,
+    totalSize: opts.file.size,
+    mimeType: opts.mimeType,
+    chunkHashes: ["kf-hash-0"],
+    chunks: [{ index: 0, hash: "kf-hash-0", size: opts.file.size, data: new Uint8Array(opts.file.size) }],
+    keyframeOffsets: [0],
+  })),
+  isVideoMimeType: vi.fn((mime: string) => (mime as string).startsWith("video/")),
+  buildEntropyChunkMapEvent: vi.fn(() => ({ kind: 7001, tags: [], content: "" })),
+}));
+
 vi.mock("../lib/extension-bridge", () => ({
   storeChunk: vi.fn(async () => undefined),
-  delegateSeeding: vi.fn(async () => undefined)
+  delegateSeeding: vi.fn(async () => undefined),
 }));
 
 vi.mock("../stores/entropy-store", () => ({
-  useEntropyStore: () => ({ pubkey: "test-pub", relayPool: null })
+  useEntropyStore: () => ({ pubkey: "test-pub", relayPool: null }),
 }));
 
-// Mock the NIP-07 signer on window.nostr
 vi.stubGlobal("nostr", {
   getPublicKey: vi.fn(async () => "test-pub"),
-  signEvent: vi.fn(async (event: unknown) => ({ ...(event as object), id: "signed-id", sig: "signed-sig", pubkey: "test-pub" }))
+  signEvent: vi.fn(async (event: unknown) => ({
+    ...(event as object),
+    id: "signed-id",
+    sig: "signed-sig",
+    pubkey: "test-pub",
+  })),
 });
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe("useUploadPipeline", () => {
   it("should initialize with idle state", () => {
     const { result } = renderHook(() => useUploadPipeline());
-
     expect(result.current.progress.stage).toBe("idle");
     expect(result.current.progress.chunkingProgress).toBe(0);
     expect(result.current.progress.storingProgress).toBe(0);
@@ -30,23 +63,41 @@ describe("useUploadPipeline", () => {
     expect(result.current.progress.error).toBeNull();
   });
 
-  it("should transition states during upload (mocked)", async () => {
-    const { result } = renderHook(() => useUploadPipeline());
-    const file = new File(["test data"], "test.txt", { type: "text/plain" });
+  it("should use chunkFileWithKeyframeAlignment for video/mp4 files", async () => {
+    const { chunkFileWithKeyframeAlignment, chunkFile } = await import("@entropy/core");
+    vi.mocked(chunkFile).mockClear();
+    vi.mocked(chunkFileWithKeyframeAlignment).mockClear();
 
-    // Start the upload
-    let promise: Promise<void>;
+    const { result } = renderHook(() => useUploadPipeline());
+    const file = new File(["video-data"], "test.mp4", { type: "video/mp4" });
+
     await act(async () => {
-      promise = result.current.start(file, "Test Title", "Test Desc");
-      await new Promise(r => setTimeout(r, 600)); // chunking
-      await new Promise(r => setTimeout(r, 600)); // hashing
-      await new Promise(r => setTimeout(r, 2500)); // storing
-      await new Promise(r => setTimeout(r, 600)); // delegating
-      await new Promise(r => setTimeout(r, 600)); // publishing
+      await result.current.start(file, "Test Video", "A video file");
     });
 
+    expect(chunkFileWithKeyframeAlignment).toHaveBeenCalledWith({
+      file,
+      mimeType: "video/mp4",
+    });
+    expect(chunkFile).not.toHaveBeenCalled();
     expect(result.current.progress.stage).toBe("done");
-    expect(result.current.progress.error).toBeNull();
+  });
+
+  it("should use chunkFile for non-video files (text/plain)", async () => {
+    const { chunkFileWithKeyframeAlignment, chunkFile } = await import("@entropy/core");
+    vi.mocked(chunkFile).mockClear();
+    vi.mocked(chunkFileWithKeyframeAlignment).mockClear();
+
+    const { result } = renderHook(() => useUploadPipeline());
+    const file = new File(["text data"], "test.txt", { type: "text/plain" });
+
+    await act(async () => {
+      await result.current.start(file, "Test Text", "A text file");
+    });
+
+    expect(chunkFile).toHaveBeenCalledWith(file);
+    expect(chunkFileWithKeyframeAlignment).not.toHaveBeenCalled();
+    expect(result.current.progress.stage).toBe("done");
   });
 
   it("should allow cancellation and reset state", () => {

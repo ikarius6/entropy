@@ -1,6 +1,7 @@
 export * from "./chunking/chunker";
 export * from "./chunking/assembler";
 export * from "./chunking/merkle";
+export * from "./chunking/keyframe-aligner";
 export * from "./crypto/hash";
 export * from "./nostr/nip-entropy";
 export * from "./nostr/events";
@@ -14,6 +15,7 @@ export * from "./transport/nat-traversal";
 export * from "./transport/chunk-transfer";
 export * from "./transport/chunk-downloader";
 export * from "./transport/seeder-discovery";
+export * from "./transport/transmuxer";
 export * from "./credits/proof-of-upstream";
 export * from "./credits/verify-receipt";
 export * from "./credits/ledger";

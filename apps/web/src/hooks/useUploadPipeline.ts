@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { chunkFile, buildEntropyChunkMapEvent } from "@entropy/core";
+import {
+  chunkFile,
+  chunkFileWithKeyframeAlignment,
+  isVideoMimeType,
+  buildEntropyChunkMapEvent,
+} from "@entropy/core";
 import type { EntropyChunkMap } from "@entropy/core";
 import { storeChunk, delegateSeeding } from "../lib/extension-bridge";
 import { useEntropyStore } from "../stores/entropy-store";
@@ -51,9 +56,11 @@ export function useUploadPipeline() {
     try {
       setProgress({ ...IDLE_PROGRESS, stage: "chunking", error: null });
 
-      // 1. Chunk + hash (chunker computes hashes and merkle root internally)
+      // 1. Chunk + hash: use keyframe-aligned chunking for video to enable smooth MSE streaming
       console.log("[upload] chunking file:", file.name, file.size);
-      const result = await chunkFile(file);
+      const result = isVideoMimeType(file.type)
+        ? await chunkFileWithKeyframeAlignment({ file, mimeType: file.type })
+        : await chunkFile(file);
       console.log("[upload] chunking done, rootHash:", result.rootHash, "chunks:", result.chunks.length);
 
       setProgress(p => ({

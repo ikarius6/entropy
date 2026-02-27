@@ -68,7 +68,8 @@ entropy/
 │   └── core/                 # @entropy/core
 │       ├── src/
 │       │   ├── chunking/
-│       │   │   ├── chunker.ts          # Fragmentación de archivos en chunks de 5MB
+│       │   │   ├── chunker.ts          # Fragmentación de archivos en chunks de 5MB (target)
+│       │   │   ├── keyframe-aligner.ts # Chunking con alineación a keyframes (mp4box, video/mp4)
 │       │   │   ├── assembler.ts        # Reensamblaje de chunks a archivo original
 │       │   │   └── merkle.ts           # Árbol Merkle para hash raíz + verificación
 │       │   ├── transport/
@@ -76,6 +77,7 @@ entropy/
 │       │   │   ├── signaling.ts        # Señalización vía Nostr ephemeral events
 │       │   │   ├── chunk-transfer.ts   # Protocolo binario: CHUNK_REQUEST/DATA/ERROR + CUSTODY_CHALLENGE/PROOF
 │       │   │   ├── chunk-downloader.ts # Descarga multi-peer + reputación + seeder discovery
+│       │   │   ├── transmuxer.ts       # Transmuxing on-the-fly a fMP4 para MSE (mp4box)
 │       │   │   └── nat-traversal.ts    # Configuración STUN/TURN
 │       │   ├── credits/
 │       │   │   ├── ledger.ts           # Registro local de créditos (ratio upload/download)
@@ -194,6 +196,7 @@ entropy/
 | **Hashing** | Web Crypto API (SHA-256) | Nativo del navegador, rápido, sin dependencias. |
 | **Almacenamiento** | Dexie.js (IndexedDB) | API ergonómica sobre IndexedDB con soporte de migraciones. |
 | **Media Playback** | MediaSource Extensions (MSE) | Streaming progresivo: alimentar el reproductor chunk por chunk. |
+| **Transmuxing** | mp4box 2.3.0 | Detección de keyframes (stss), generación de fMP4 init segments, remuxing para compatibilidad MSE. |
 | **Extensión** | Manifest V3 + Chrome APIs | Estándar actual; Service Worker para background. Compatible con Firefox vía polyfill. |
 | **Build Extensión** | Vite + CRXJS o vite-plugin-web-extension | Build multi-entry optimizado para extensiones. |
 | **Testing** | Vitest + Playwright | Unit tests para core; E2E para flujos web. |
@@ -614,8 +617,8 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [x] Seeder Announcements: `seeder-announcement.ts` (kind:20002); publicación en `signaling-listener.ts`; descubrimiento dinámico en `chunk-downloader.ts`
 - [x] Métricas de red y health checks: `metrics.ts` (MetricsCollector); `GET_NODE_METRICS` bridge message; panel en dashboard extensión + `NodeMetricsPanel` en web; health check cada 10min en scheduler
 - [x] Auditoría de seguridad parcial: rate limiting 10 req/s por peer; validación 4 MB max por mensaje; timeout 60s DataChannels inactivos; CSP en `index.html`; SHA-256 en `peer-fetch.ts`
-- [ ] Transmuxing client-side (mp4box.js/mux.js) para compatibilidad de codecs MSE *(Bloque 5)*
-- [ ] Chunk alignment con keyframes en upload *(Bloque 5)*
+- [x] Transmuxing client-side: `transmuxer.ts` (mp4box 2.3.0) integrado en `useMediaSource.ts`; pass-through si el browser soporta el MIME, remuxing a fMP4 si no
+- [x] Chunk alignment con keyframes: `keyframe-aligner.ts` usando stss (sync sample table); integrado en `useUploadPipeline.ts` para archivos `video/*`; fallback a `chunkFile()` para formatos no-MP4
 - [ ] Reconexión automática de WebRTC (ICE restart) *(Bloque 6)*
 - [ ] NetworkHealth widget en TopBar *(Bloque 7 restante)*
 - [ ] Soporte Tor opcional en la extensión *(Bloque 8)*
@@ -635,10 +638,10 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 **Decisión:** Usar eventos efímeros de Nostr (kind 20000-29999) como canal de señalización.  
 **Consecuencia:** Cero infraestructura propia para señalización; dependemos de la disponibilidad de relays Nostr (riesgo aceptable dado que son distribuidos).
 
-### ADR-003: Chunks de tamaño fijo (5MB)
-**Contexto:** Necesitamos un tamaño que balancee granularidad de distribución con overhead de metadatos.  
-**Decisión:** 5MB fijo para todos los tipos de archivo.  
-**Consecuencia:** Simple de implementar; ~30 chunks para un video de 150MB. Podría revisarse en el futuro para adaptar a calidad de conexión.
+### ADR-003: Chunks con alineación a keyframes para video
+**Contexto:** Para streaming progresivo fluido, cada chunk debe comenzar en un keyframe (IDR frame) para que MSE pueda iniciar la reproducción desde cualquier punto.
+**Decisión:** Para archivos `video/mp4`, usar `keyframe-aligner.ts` (mp4box + stss) en upload para ajustar los puntos de corte al keyframe más cercano (target ~5MB ±20%). Para otros formatos, se usa `chunkFile()` estándar.
+**Consecuencia:** Chunks de video de tamaño variable (~4–6MB). El MSE player puede saltar directamente a cualquier chunk sin depender de chunks anteriores. Para formatos sin tabla stss (WebM, MKV), se usa chunking estándar con fallback automático.
 
 ### ADR-004: IndexedDB como almacenamiento principal
 **Contexto:** Necesitamos persistir gigabytes de datos binarios en el navegador.  
@@ -650,10 +653,10 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 **Decisión:** Fragmentar los chunks en bloques de 64KB para el envío sobre DataChannel. Se envía primero un mensaje `CHUNK_DATA_HEADER` (type 0x04) con el hash y tamaño total, seguido de N fragmentos binarios puros. El receptor usa `createChunkReceiver()` para reensamblar.  
 **Consecuencia:** Chunks de cualquier tamaño se transfieren de forma confiable sobre WebRTC. El overhead es mínimo (1 header por chunk). Compatible con backpressure via `bufferedAmount`.
 
-### ADR-006: MediaSource Extensions para streaming progresivo
-**Contexto:** No podemos esperar a tener todos los chunks para reproducir un video.  
-**Decisión:** Usar MSE para alimentar el `<video>` tag chunk por chunk conforme se descargan.  
-**Consecuencia:** Experiencia de streaming fluida; requiere que los chunks estén alineados con los keyframes del video (pre-procesamiento en upload).
+### ADR-006: MediaSource Extensions + Transmuxing para streaming progresivo
+**Contexto:** MSE (`MediaSource.isTypeSupported()`) solo acepta codecs específicos por navegador. Videos en WebM, MKV u otros formatos no-MP4 rompen el `SourceBuffer`.
+**Decisión:** Usar MSE para alimentar el `<video>` tag chunk por chunk. Al primer chunk, `transmuxer.ts` detecta si el MIME es soportado nativamente: si sí, pass-through transparente; si no, remuxing a fMP4 via mp4box. El `SourceBuffer` se crea en diferido (al primer chunk) usando el `outputMimeType` real del transmuxer.
+**Consecuencia:** Compatibilidad universal de codecs sin overhead para formatos ya soportados. Los chunks alineados a keyframes (ADR-003) garantizan que MSE puede iniciar desde cualquier segmento.
 
 ---
 

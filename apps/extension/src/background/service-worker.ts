@@ -476,17 +476,8 @@ browser.runtime.onMessage.addListener(
               message.payload.chunkHashes.length
             );
 
-            const creditSummary = await recordUploadCredit({
-              peerPubkey: "self",
-              bytes: message.payload.size,
-              chunkHash: message.payload.rootHash,
-              receiptSignature: `delegate:${message.requestId}`,
-              timestamp: Math.floor(Date.now() / 1000)
-            });
-
             const status = await buildNodeStatus();
             emitNodeStatusUpdate(status);
-            emitCreditUpdate(creditSummary);
             return successResponse(message.requestId, message.type, status);
           }
 

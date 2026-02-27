@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "dexie": "^4.0.10",
+    "mp4box": "2.3.0",
     "nostr-tools": "^2.9.0",
     "simple-peer": "^9.11.1"
   },
