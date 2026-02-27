@@ -10,7 +10,7 @@ import {
 } from "../nostr/seeder-announcement";
 
 export const DEFAULT_SEEDER_DISCOVERY_TIMEOUT_MS = 3_000;
-export const DEFAULT_SEEDER_DISCOVERY_LOOKBACK_SECONDS = 60 * 60;
+export const DEFAULT_SEEDER_DISCOVERY_LOOKBACK_SECONDS = 24 * 60 * 60; // 24h — wide enough to survive SW sleep + 15min re-announcement gap
 
 export interface DiscoverSeedersOptions {
   timeoutMs?: number;
@@ -56,6 +56,11 @@ export async function discoverSeeders(
     let unsubscribeCalled = false;
     let finishRequestedBeforeSubscribe = false;
 
+    // Wait for ALL relays to EOSE before resolving — otherwise fast relays
+    // can tear down the subscription before slower relays deliver events.
+    const totalRelays = relayPool.getRelayCount();
+    let eoseCount = 0;
+
     const onEvent: EventCallback = (event) => {
       try {
         const announcement = parseSeederAnnouncementEvent(event);
@@ -95,9 +100,15 @@ export async function discoverSeeders(
       resolve([...discovered]);
     }
 
-    subscription = relayPool.subscribe(filters, onEvent, () => {
-      finish();
-    });
+    function onEose(): void {
+      eoseCount += 1;
+      // Only finish once every relay has sent EOSE (or timeout fires first)
+      if (eoseCount >= totalRelays) {
+        finish();
+      }
+    }
+
+    subscription = relayPool.subscribe(filters, onEvent, onEose);
 
     if (finishRequestedBeforeSubscribe && !unsubscribeCalled) {
       unsubscribeCalled = true;

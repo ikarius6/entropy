@@ -234,6 +234,30 @@ async function publishDelegationSeederAnnouncements(): Promise<void> {
   }
 }
 
+/**
+ * Announce ALL roots currently in the chunk store, not just active delegations.
+ * This covers chunks acquired via cold storage, P2P download, or any path
+ * that predates the STORE_CHUNK announcement fix.
+ */
+async function publishInventorySeederAnnouncements(): Promise<void> {
+  try {
+    const allChunks = await chunkStore.listAllChunks();
+    // Group chunk counts by rootHash
+    const rootCounts = new Map<string, number>();
+    for (const chunk of allChunks) {
+      rootCounts.set(chunk.rootHash, (rootCounts.get(chunk.rootHash) ?? 0) + 1);
+    }
+    for (const [rootHash, count] of rootCounts) {
+      await publishSeederAnnouncement(rootHash, count);
+    }
+    if (rootCounts.size > 0) {
+      logger.log(`[inventory-announce] published announcements for ${rootCounts.size} root(s)`);
+    }
+  } catch (err) {
+    logger.warn("[inventory-announce] failed:", err);
+  }
+}
+
 function scheduleSeederAnnouncements(): void {
   if (seederAnnouncementInterval) {
     clearInterval(seederAnnouncementInterval);
@@ -241,6 +265,7 @@ function scheduleSeederAnnouncements(): void {
 
   seederAnnouncementInterval = setInterval(() => {
     void publishDelegationSeederAnnouncements();
+    void publishInventorySeederAnnouncements();
   }, SEEDER_ANNOUNCEMENT_INTERVAL_MS);
 }
 
@@ -296,6 +321,7 @@ async function bootstrapBackground(): Promise<void> {
   });
 
   await publishDelegationSeederAnnouncements();
+  await publishInventorySeederAnnouncements();
   scheduleSeederAnnouncements();
 
   browser.alarms.create(KEEP_ALIVE_ALARM_NAME, {
@@ -609,6 +635,11 @@ browser.runtime.onMessage.addListener(
 
           case "STORE_CHUNK": {
             await storeChunkPayload(chunkStore, message.payload);
+            // Announce we now serve this root — without this, nodes that acquire
+            // chunks via cold storage are invisible to seeder discovery.
+            void publishSeederAnnouncement(message.payload.rootHash, 1).catch((err) => {
+              logger.warn("[STORE_CHUNK] failed to publish seeder announcement:", err);
+            });
             const status = await buildNodeStatus();
             emitNodeStatusUpdate(status);
             return successResponse(message.requestId, message.type, status);

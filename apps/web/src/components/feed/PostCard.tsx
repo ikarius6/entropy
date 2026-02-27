@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Server, Loader2, Maximize, X } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
@@ -84,7 +84,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const sizeMB = (chunkMap.size / (1024 * 1024)).toFixed(1);
-  const numChunks = chunkMap.chunks?.length || 0;
   const mime: string = chunkMap.mimeType || "";
   const isImage = mime.startsWith("image/");
   const isAudio = mime.startsWith("audio/");
@@ -108,10 +107,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
     <div className="flex gap-2">
       <div className="px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-md text-xs font-mono border border-white/10">
         {sizeMB} MB
-      </div>
-      <div className="px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-md text-xs font-mono border border-white/10 flex items-center gap-1">
-        <Server size={12} />
-        {numChunks} chunks
       </div>
     </div>
   );
@@ -213,24 +208,11 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
       ) : null}
 
       {/* Footer Info */}
-      <div className="p-3 bg-white/5 border-t border-border flex items-center justify-between">
-        <div>
-          <span className="font-medium text-sm">{chunkMap.title || "Untitled Media"}</span>
-          <span className="text-xs text-muted font-mono truncate block mt-0.5" title={chunkMap.rootHash}>
-            hash: {chunkMap.rootHash.slice(0, 12)}...
-          </span>
-        </div>
-        <button
-          onClick={handleDownload}
-          disabled={blobStatus !== "ready"}
-          className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors px-2 py-1 rounded border border-border hover:border-white/30 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {blobStatus === "loading" ? (
-            <><Loader2 size={12} className="animate-spin" />{Math.round(blobProgress * 100)}%</>
-          ) : (
-            <><Download size={12} />Save</>
-          )}
-        </button>
+      <div className="p-3 bg-white/5 border-t border-border">
+        <span className="font-medium text-sm">{chunkMap.title || "Untitled Media"}</span>
+        <span className="text-xs text-muted font-mono truncate block mt-0.5" title={chunkMap.rootHash}>
+          hash: {chunkMap.rootHash.slice(0, 12)}...
+        </span>
       </div>
     </div>
   );
@@ -268,10 +250,6 @@ function PostActions({ item, blobUrl, blobStatus, blobProgress }: { item: FeedIt
             ) : (
               <><Download size={16} />Download</>
             )}
-          </button>
-          <button className="flex items-center gap-2 text-sm text-muted hover:text-green-400 transition-colors" title="Seed this content to earn credits">
-            <Server size={16} />
-            Seed
           </button>
         </>
       )}

@@ -249,6 +249,11 @@ export class RelayPool {
     }));
   }
 
+  /** How many relay connections are currently managed by this pool. */
+  getRelayCount(): number {
+    return this.relays.size;
+  }
+
   /** Publish a signed event to all connected relays. */
   publish(event: NostrEvent): void {
     for (const relay of this.relays.values()) {

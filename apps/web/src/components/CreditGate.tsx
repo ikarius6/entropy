@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Lock, Upload, Tv, Coins, Loader2, CheckCircle } from "lucide-react";
+import { Lock, Upload, Share2, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { parseEntropyChunkMapTags, ENTROPY_TAG } from "@entropy/core";
+import type { NostrEvent, EntropyChunkMap, RelayPool } from "@entropy/core";
+import { checkLocalChunks, delegateSeeding } from "../lib/extension-bridge";
+import { useEntropyStore } from "../stores/entropy-store";
+import { KINDS } from "../lib/constants";
 import type { CreditGateState } from "../hooks/useCreditGate";
 
 interface CreditGateProps {
@@ -17,10 +22,44 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/** 50 MB cap on how many bytes we volunteer to seed in one click */
+const SEED_CAP_BYTES = 50 * 1024 * 1024;
+
+/** Fetch additional kind:7001 chunk maps from relays using a one-shot subscription (EOSE-based). */
+function fetchChunkMapsFromRelays(
+  relayPool: RelayPool,
+  timeoutMs = 5000
+): Promise<EntropyChunkMap[]> {
+  return new Promise((resolve) => {
+    const maps: EntropyChunkMap[] = [];
+
+    const sub = relayPool.subscribe(
+      [{ kinds: [KINDS.ENTROPY_CHUNK_MAP], [`#t`]: [ENTROPY_TAG], limit: 20 }],
+      (event: NostrEvent) => {
+        try {
+          maps.push(parseEntropyChunkMapTags(event.tags));
+        } catch {
+          // skip malformed events
+        }
+      },
+      () => {
+        // EOSE — we have the initial batch, stop here
+        sub.unsubscribe();
+        resolve(maps);
+      }
+    );
+
+    // Safety timeout in case EOSE never fires
+    setTimeout(() => {
+      sub.unsubscribe();
+      resolve(maps);
+    }, timeoutMs);
+  });
+}
+
 /**
  * Wraps multimedia content. If the user lacks credits, shows a locked
- * overlay with an ad placeholder and options to earn credits instead
- * of starting the P2P transfer.
+ * overlay with two seed-to-earn options.
  */
 export function CreditGate({ gate, contentTitle, mimeType, children }: CreditGateProps) {
   if (gate.isLoading) {
@@ -52,44 +91,115 @@ interface LockedOverlayProps {
 }
 
 function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
-  const [adState, setAdState] = useState<"idle" | "watching" | "complete">("idle");
-  const [adProgress, setAdProgress] = useState(0);
+  const [seedState, setSeedState] = useState<"idle" | "seeding" | "done" | "error">("idle");
+  const [seedError, setSeedError] = useState<string | null>(null);
+  const [seededCount, setSeededCount] = useState(0);
+
+  const chunkMapCache = useEntropyStore((s) => s.chunkMapCache);
+  const relayPool = useEntropyStore((s) => s.relayPool);
 
   const isVideo = mimeType?.startsWith("video/");
   const isImage = mimeType?.startsWith("image/");
   const isAudio = mimeType?.startsWith("audio/");
-
   const mediaLabel = isVideo ? "video" : isImage ? "image" : isAudio ? "audio" : "content";
 
-  const handleWatchAd = useCallback(() => {
-    setAdState("watching");
-    setAdProgress(0);
-  }, []);
+  const handleSeedNetwork = useCallback(async () => {
+    if (!relayPool) {
+      setSeedError("No relay connection — open the feed first.");
+      setSeedState("error");
+      return;
+    }
 
-  // Simulate ad playback (15 seconds countdown)
-  useEffect(() => {
-    if (adState !== "watching") return;
+    setSeedState("seeding");
+    setSeedError(null);
 
-    const AD_DURATION_MS = 15_000;
-    const TICK_MS = 100;
-    let elapsed = 0;
+    try {
+      // 1. Start with chunk maps already seen in the feed
+      let candidates = Object.values(chunkMapCache);
 
-    const interval = setInterval(() => {
-      elapsed += TICK_MS;
-      setAdProgress(Math.min(elapsed / AD_DURATION_MS, 1));
-
-      if (elapsed >= AD_DURATION_MS) {
-        clearInterval(interval);
-        setAdState("complete");
-        // After ad completes, refresh credits — the extension would have
-        // granted bonus credits via the ad callback in a real implementation.
-        // For now we just refresh to pick up any seeding credits earned.
-        void gate.refresh();
+      // 2. If few maps in cache, also fetch from relays (EOSE-based, 5s cap)
+      const cachedCount = candidates.length;
+      if (cachedCount < 10) {
+        const fetched = await fetchChunkMapsFromRelays(relayPool);
+        const seen = new Set(candidates.map((m) => m.rootHash));
+        for (const m of fetched) {
+          if (!seen.has(m.rootHash)) {
+            candidates.push(m);
+            seen.add(m.rootHash);
+          }
+        }
       }
-    }, TICK_MS);
 
-    return () => clearInterval(interval);
-  }, [adState, gate]);
+      if (candidates.length === 0) {
+        setSeedError("No content found to seed — browse the feed first or try again later.");
+        setSeedState("error");
+        return;
+      }
+
+      // 3. Filter to ONLY chunk maps whose chunks are fully stored locally.
+      //    DELEGATE_SEEDING requires the extension to already have the data.
+      const localChecks = await Promise.allSettled(
+        candidates.map(async (map) => {
+          const result = await checkLocalChunks(map.chunks);
+          return { map, result };
+        })
+      );
+
+      const localMaps = localChecks
+        .filter(
+          (r): r is PromiseFulfilledResult<{ map: EntropyChunkMap; result: { total: number; local: number; localBytes: number } }> =>
+            r.status === "fulfilled" && r.value.result.local === r.value.result.total && r.value.result.total > 0
+        )
+        .map((r) => r.value.map);
+
+      if (localMaps.length === 0) {
+        setSeedError(
+          "Your node hasn't cached these chunks locally yet. " +
+          "Download some content first — once it's in your node's storage, " +
+          "you can seed it to earn credits."
+        );
+        setSeedState("error");
+        return;
+      }
+
+      // 4. Shuffle and pick up to the 50 MB cap
+      const shuffled = [...localMaps].sort(() => Math.random() - 0.5);
+      const selected: EntropyChunkMap[] = [];
+      let totalBytes = 0;
+      for (const map of shuffled) {
+        if (totalBytes >= SEED_CAP_BYTES) break;
+        selected.push(map);
+        totalBytes += map.size;
+      }
+
+      // 5. Delegate — extension already has these chunks, so no IndexedDB error
+      await Promise.all(
+        selected.map((map) =>
+          delegateSeeding({
+            rootHash: map.rootHash,
+            chunkHashes: map.chunks,
+            size: map.size,
+            chunkSize: map.chunkSize,
+            mimeType: map.mimeType ?? "",
+            title: map.title,
+          })
+        )
+      );
+
+      setSeededCount(selected.length);
+      setSeedState("done");
+      void gate.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTimeout = msg.toLowerCase().includes("timeout");
+      setSeedError(
+        isTimeout
+          ? "Entropy extension not found — install the browser extension to seed content."
+          : msg
+      );
+      setSeedState("error");
+    }
+  }, [chunkMapCache, relayPool, gate]);
 
   return (
     <div className="credit-gate credit-gate--locked">
@@ -130,68 +240,71 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
         </div>
       </div>
 
-      {/* Ad section */}
+      {/* Earn credits section */}
       <div className="credit-gate__ad-section">
-        {adState === "idle" && (
-          <>
-            <p className="text-sm text-muted mb-3">
-              Earn credits by watching a short ad or seeding content to the network.
-            </p>
-            <button onClick={handleWatchAd} className="credit-gate__btn credit-gate__btn--ad">
-              <Tv size={18} />
-              Watch Ad to Earn Credits
-            </button>
-          </>
+        <p className="text-sm text-muted mb-3">
+          Earn credits by contributing to the network:
+        </p>
+
+        {/* Option 1 — Upload own content */}
+        <Link to="/upload" className="credit-gate__btn credit-gate__btn--seed">
+          <Upload size={16} />
+          Upload &amp; Publish Your Content
+        </Link>
+
+        <span className="text-xs text-muted my-2">or</span>
+
+        {/* Option 2 — Seed network content */}
+        {seedState === "idle" && (
+          <button onClick={() => void handleSeedNetwork()} className="credit-gate__btn credit-gate__btn--ad">
+            <Share2 size={16} />
+            Seed Content from the Network
+          </button>
         )}
 
-        {adState === "watching" && (
+        {seedState === "seeding" && (
           <div className="credit-gate__ad-player">
-            <div className="credit-gate__ad-player-inner">
-              {/* Simulated ad content */}
-              <div className="credit-gate__ad-content">
-                <Coins size={40} className="text-yellow-400 animate-pulse" />
-                <p className="text-sm font-medium mt-2">Sponsor Message</p>
-                <p className="text-xs text-muted mt-1">
-                  Support the Entropy network — credits incoming…
-                </p>
-              </div>
-              {/* Progress bar */}
-              <div className="credit-gate__ad-progress-track">
-                <div
-                  className="credit-gate__ad-progress-fill"
-                  style={{ width: `${Math.round(adProgress * 100)}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted mt-1">
-                {Math.ceil((1 - adProgress) * 15)}s remaining
-              </span>
+            <div className="credit-gate__ad-content">
+              <Loader2 size={28} className="animate-spin text-primary" />
+              <p className="text-sm font-medium mt-2">Finding content to seed…</p>
+              <p className="text-xs text-muted mt-1">
+                Fetching chunk maps and delegating to your node
+              </p>
             </div>
           </div>
         )}
 
-        {adState === "complete" && (
+        {seedState === "done" && (
           <div className="credit-gate__ad-complete">
             <CheckCircle size={24} className="text-green-400" />
-            <p className="text-sm font-medium">Ad complete!</p>
-            <p className="text-xs text-muted">
-              Credits are being applied. If the content doesn't unlock,
-              try seeding more content to earn additional credits.
+            <p className="text-sm font-medium">
+              Now seeding {seededCount} item{seededCount !== 1 ? "s" : ""}!
             </p>
-            <button onClick={() => void gate.refresh()} className="credit-gate__btn credit-gate__btn--refresh">
+            <p className="text-xs text-muted">
+              Credits will increase as peers download from you.
+            </p>
+            <button
+              onClick={() => void gate.refresh()}
+              className="credit-gate__btn credit-gate__btn--refresh"
+            >
               <Loader2 size={16} />
-              Refresh Credits
+              Refresh Balance
             </button>
           </div>
         )}
-      </div>
 
-      {/* Alternative: seed content */}
-      <div className="credit-gate__earn-alt">
-        <span className="text-xs text-muted">or</span>
-        <Link to="/upload" className="credit-gate__btn credit-gate__btn--seed">
-          <Upload size={16} />
-          Upload & Seed Content to Earn Credits
-        </Link>
+        {seedState === "error" && (
+          <div className="credit-gate__ad-complete">
+            <AlertCircle size={24} className="text-red-400" />
+            <p className="text-xs text-muted mt-1">{seedError}</p>
+            <button
+              onClick={() => setSeedState("idle")}
+              className="credit-gate__btn credit-gate__btn--refresh"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
