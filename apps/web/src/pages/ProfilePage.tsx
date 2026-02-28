@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useNostrFeed } from "../hooks/useNostrFeed";
+import { useNip05Resolve } from "../hooks/useNip05Resolve";
 import { ProfileHeader } from "../components/profile/ProfileHeader";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useFollow } from "../hooks/useFollow";
@@ -8,12 +9,24 @@ import { useContactList } from "../hooks/useContactList";
 import { KINDS } from "../lib/constants";
 
 export default function ProfilePage() {
-  const { pubkey } = useParams<{ pubkey: string }>();
+  const { pubkey: paramPubkey } = useParams<{ pubkey: string }>();
   const currentPubkey = useEntropyStore((s) => s.pubkey);
-  
-  const isMe = pubkey === "me" || pubkey === currentPubkey;
-  const targetPubkey = isMe ? currentPubkey : pubkey;
-  
+
+  // Determine if the param is a NIP-05 alias or a raw pubkey
+  const isAlias = !!paramPubkey && paramPubkey.includes("@");
+  const isMe = paramPubkey === "me" || (!isAlias && paramPubkey === currentPubkey);
+
+  // For "me" or direct pubkey, skip the NIP-05 resolver
+  const aliasInput = isMe ? null : (isAlias ? paramPubkey : null);
+  const { resolvedPubkey, isResolving, error: resolveError } = useNip05Resolve(aliasInput);
+
+  // The actual pubkey to load the profile for
+  const targetPubkey = isMe
+    ? currentPubkey
+    : isAlias
+    ? resolvedPubkey
+    : (paramPubkey ?? null);
+
   const { profile, isLoading } = useNostrProfile(targetPubkey || null);
   const { follows } = useContactList(targetPubkey ?? null);
   const { isFollowing, toggle: toggleFollow, isPending: isFollowPending } = useFollow(
@@ -26,6 +39,27 @@ export default function ProfilePage() {
       ? { authors: [targetPubkey], kinds: [KINDS.ENTROPY_CHUNK_MAP], limit: 30 }
       : { kinds: [] }
   );
+
+  // NIP-05 resolution error
+  if (resolveError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+        <h2 className="text-2xl font-bold">Could not resolve alias</h2>
+        <p className="text-muted max-w-md">{resolveError}</p>
+        <p className="text-xs text-muted/60 font-mono">{paramPubkey}</p>
+      </div>
+    );
+  }
+
+  // Still resolving the NIP-05 alias
+  if (isResolving) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted">Resolving <span className="text-accent font-mono">{paramPubkey}</span>…</p>
+      </div>
+    );
+  }
 
   if (!targetPubkey) {
     return (

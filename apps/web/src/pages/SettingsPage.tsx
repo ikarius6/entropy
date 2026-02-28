@@ -1,13 +1,18 @@
 import { useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
+import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useQuotaManager } from "../hooks/useQuotaManager";
 import { useToast } from "../components/ui/Toast";
-import { Save, Trash2, Shield, Activity, HardDrive } from "lucide-react";
+import { EditProfileModal } from "../components/profile/EditProfileModal";
+import { AvatarBadge } from "../components/profile/ProfileHeader";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil } from "lucide-react";
 
 export default function SettingsPage() {
   const { pubkey, relayUrls, initRelays } = useEntropyStore();
+  const { profile } = useNostrProfile(pubkey);
   const { usedBytes, quotaBytes, usagePercent, setQuota, evictLRU } = useQuotaManager();
   const { success, error } = useToast();
+  const [showEditProfile, setShowEditProfile] = useState(false);
   
   const [relaysText, setRelaysText] = useState(relayUrls.join("\n"));
   const [quotaGB, setQuotaGB] = useState(quotaBytes / (1024 * 1024 * 1024));
@@ -49,6 +54,51 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted">Manage your Entropy node configuration.</p>
       </div>
+
+      {/* Profile Section */}
+      {pubkey && (
+        <section className="panel flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-border pb-3">
+            <UserCircle2 className="text-primary" />
+            <h2 className="text-xl font-bold">Profile</h2>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <AvatarBadge profile={profile} pubkey={pubkey} size="md" />
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="font-semibold truncate">
+                {profile?.displayName || profile?.name || "Anonymous Node"}
+              </span>
+              {profile?.nip05 ? (
+                <span className="text-sm text-accent flex items-center gap-1">
+                  {profile.nip05}
+                  <span className="text-green-400 text-[10px]" title="Verified NIP-05">✓</span>
+                </span>
+              ) : (
+                <span className="text-sm text-muted font-mono">{pubkey.slice(0, 16)}…</span>
+              )}
+              {profile?.about && (
+                <p className="text-sm text-muted mt-1 truncate">{profile.about}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowEditProfile(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+            >
+              <Pencil size={14} />
+              Edit Profile
+            </button>
+          </div>
+
+          {showEditProfile && (
+            <EditProfileModal
+              profile={profile}
+              pubkey={pubkey}
+              onClose={() => setShowEditProfile(false)}
+            />
+          )}
+        </section>
+      )}
 
       {/* Identity Section */}
       <section className="panel flex flex-col gap-4">

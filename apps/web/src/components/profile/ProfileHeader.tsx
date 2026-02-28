@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
-import { User, Users } from "lucide-react";
+import { ReactNode, useState } from "react";
+import { User, Users, Pencil } from "lucide-react";
 import type { NostrProfile } from "../../types/nostr";
+import { EditProfileModal } from "./EditProfileModal";
 
 interface ProfileHeaderProps {
   profile: NostrProfile | null;
@@ -23,6 +24,7 @@ export function ProfileHeader({
   isFollowPending = false,
   onFollow,
 }: ProfileHeaderProps) {
+  const [showEditModal, setShowEditModal] = useState(false);
   if (!pubkey) return null;
 
   return (
@@ -41,7 +43,15 @@ export function ProfileHeader({
           </div>
           
           <div>
-            {!isCurrentUser && (
+            {isCurrentUser ? (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 transition-colors"
+              >
+                <Pencil size={14} />
+                Edit Profile
+              </button>
+            ) : (
               <button
                 onClick={onFollow}
                 disabled={isFollowPending}
@@ -60,8 +70,14 @@ export function ProfileHeader({
         <div>
           <h1 className="text-2xl font-bold">{profile?.name || profile?.displayName || "Anonymous Node"}</h1>
           <div className="flex items-center gap-2 text-muted text-sm mt-1 mb-4">
-            <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-xs">{pubkey.slice(0, 12)}...{pubkey.slice(-4)}</span>
-            {profile?.nip05 && <span className="text-accent">{profile.nip05}</span>}
+              <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-xs"
+              >{pubkey.slice(0, 12)}...{pubkey.slice(-4)}</span>
+            {profile?.nip05 && (
+              <span className="flex items-center gap-1 text-accent">
+                {profile.nip05}
+                <span className="text-green-400 text-[10px]" title="Verified NIP-05">✓</span>
+              </span>
+            )}
           </div>
           
           <p className="text-white/90 mb-4 whitespace-pre-wrap">
@@ -80,6 +96,14 @@ export function ProfileHeader({
           </div>
         </div>
       </div>
+
+      {showEditModal && pubkey && (
+        <EditProfileModal
+          profile={profile}
+          pubkey={pubkey}
+          onClose={() => setShowEditModal(false)}
+        />
+      )}
     </div>
   );
 }
