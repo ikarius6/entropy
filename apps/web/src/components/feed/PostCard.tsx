@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
@@ -12,6 +12,30 @@ import { KINDS } from "../../lib/constants";
 import { useReactions } from "../../hooks/useReactions";
 import { useReplies } from "../../hooks/useReplies";
 import { ReplyComposer } from "./ReplyComposer";
+
+/** Build a shareable URL pointing to this Entropy instance. */
+function postUrl(item: FeedItem): string {
+  const base = window.location.origin;
+  if (item.chunkMap?.rootHash) {
+    return `${base}/watch/${item.chunkMap.rootHash}`;
+  }
+  return `${base}/watch/${item.id}`;
+}
+
+/** Share via Web Share API, fall back to clipboard. */
+async function sharePost(item: FeedItem) {
+  const url = postUrl(item);
+  const text = item.content
+    ? `${item.content.slice(0, 120)}${item.content.length > 120 ? "\u2026" : ""}`
+    : "Check out this post on Entropy";
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Entropy", text, url });
+      return;
+    } catch { /* user cancelled — fall through */ }
+  }
+  await navigator.clipboard.writeText(url);
+}
 
 export function PostCard({ item }: { item: FeedItem }) {
   const { profile } = useNostrProfile(item.pubkey);
@@ -38,6 +62,7 @@ export function PostCard({ item }: { item: FeedItem }) {
   const { replies, isLoading: repliesLoading, load: loadReplies, isLoaded: repliesLoaded } = useReplies(item.id);
   const [showReplies, setShowReplies] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState(false);
 
   const toggleReplies = () => {
     if (!showReplies && !repliesLoaded) {
@@ -45,6 +70,12 @@ export function PostCard({ item }: { item: FeedItem }) {
     }
     setShowReplies((v) => !v);
     if (!showReplies) setShowComposer(false);
+  };
+
+  const handleShare = async () => {
+    await sharePost(item);
+    setShareFeedback(true);
+    setTimeout(() => setShareFeedback(false), 2000);
   };
 
   const formatTime = (seconds: number) => {
@@ -145,24 +176,34 @@ export function PostCard({ item }: { item: FeedItem }) {
           {!repliesLoaded ? "Replies" : replies.length === 0 ? "Reply" : ""}
         </button>
 
-        {/* Media-specific actions */}
+        {/* Full Page link */}
+        <Link
+          to={isMedia && item.chunkMap ? `/watch/${item.chunkMap.rootHash}` : `/watch/${item.id}`}
+          className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-1"
+        >
+          <Maximize size={15} />
+          Full Page
+        </Link>
+
+        {/* Media-specific download */}
         {isMedia && item.chunkMap && (
-          <>
-            <Link
-              to={`/watch/${item.chunkMap.rootHash}`}
-              className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-1"
-            >
-              <Maximize size={15} />
-              Full Page
-            </Link>
-            <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={item.chunkMap} />
-          </>
+          <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={item.chunkMap} />
         )}
 
         {/* Share */}
-        <button className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-auto">
-          <Share2 size={15} />
-          Share
+        <button
+          onClick={handleShare}
+          className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg transition-all ml-auto ${
+            shareFeedback
+              ? "text-green-400 bg-green-400/10"
+              : "text-muted hover:text-white hover:bg-white/5"
+          }`}
+        >
+          {shareFeedback ? (
+            <><Check size={15} /> Copied!</>
+          ) : (
+            <><Share2 size={15} /> Share</>
+          )}
         </button>
       </div>
 
@@ -210,7 +251,7 @@ export function PostCard({ item }: { item: FeedItem }) {
 
 // ─── Lightweight reply card (no recursion to a avoid deep nesting) ────────────
 
-function ReplyCard({ item }: { item: FeedItem }) {
+export function ReplyCard({ item }: { item: FeedItem }) {
   const { profile } = useNostrProfile(item.pubkey);
   const timeAgo = Math.floor(Date.now() / 1000) - item.created_at;
   const { total: reactionTotal, myReaction, react } = useReactions(item.id, item.pubkey);
