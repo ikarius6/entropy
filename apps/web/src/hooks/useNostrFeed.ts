@@ -10,6 +10,8 @@ interface UseNostrFeedOptions {
   authors?: string[];
   kinds?: number[];
   limit?: number;
+  /** When false, drops the #t entropy tag filter so plain Nostr events show up. Default: true */
+  entropyOnly?: boolean;
 }
 
 // Virtual seconds added to followed-user posts so they sort above same-time
@@ -22,6 +24,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
   const kinds = options.kinds ?? [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP];
   const limit = options.limit ?? 50;
+  const entropyOnly = options.entropyOnly !== false; // default true
 
   const followSet = new Set([...(pubkey ? [pubkey] : []), ...myFollows]);
 
@@ -143,7 +146,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       if (followSet.size > 0) {
         // 1. Follows + self (boosted)
         subs.push(relayPool.subscribe(
-          [{ kinds, limit, "#t": [ENTROPY_TAG], authors: [...followSet] }],
+          [{ kinds, limit, ...(entropyOnly ? { "#t": [ENTROPY_TAG] } : {}), authors: [...followSet] }],
           (event: NostrEvent) => { ingestEvent(event, FOLLOW_BOOST_SECONDS); flush(); },
           onEose
         ));
@@ -151,7 +154,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
       // 2. Global discovery (no author filter, no boost)
       subs.push(relayPool.subscribe(
-        [{ kinds, limit, "#t": [ENTROPY_TAG] }],
+        [{ kinds, limit, ...(entropyOnly ? { "#t": [ENTROPY_TAG] } : {}) }],
         (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
         onEose
       ));
@@ -162,7 +165,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       subs.forEach((s) => s.unsubscribe());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, limit]);
+  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, limit, entropyOnly]);
 
   const loadMore = () => {
     console.log("[feed] loadMore not yet implemented");

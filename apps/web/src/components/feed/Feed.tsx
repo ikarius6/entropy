@@ -1,10 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNostrFeed } from "../../hooks/useNostrFeed";
 import { PostCard } from "./PostCard";
-import { Loader2 } from "lucide-react";
+import { Loader2, Zap, Globe } from "lucide-react";
+
+type FeedMode = "entropy" | "global";
 
 export function Feed() {
-  const { items, isLoading, loadMore } = useNostrFeed();
+  const [mode, setMode] = useState<FeedMode>("entropy");
+  const { items, isLoading, loadMore } = useNostrFeed({
+    entropyOnly: mode === "entropy",
+  });
 
   // Infinite scroll intersection observer
   useEffect(() => {
@@ -25,25 +30,67 @@ export function Feed() {
     };
   }, [isLoading, loadMore]);
 
-  if (items.length === 0 && !isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[30vh] text-center gap-4 border border-dashed border-border rounded-xl p-8 bg-white/5">
-        <h2 className="text-xl font-bold text-white">No content yet</h2>
-        <p className="text-muted max-w-md">Connect to more relays or follow some users to see their publications.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
-      {items.map(item => (
-        <PostCard key={item.id} item={item} />
-      ))}
-      
-      <div id="feed-loader" className="h-16 flex items-center justify-center text-muted">
-        {isLoading && <Loader2 className="animate-spin" size={24} />}
-        {!isLoading && items.length > 0 && "End of feed"}
+    <div className="flex flex-col gap-4">
+      {/* Feed mode tabs */}
+      <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-border">
+        <button
+          onClick={() => setMode("entropy")}
+          className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            mode === "entropy"
+              ? "bg-primary text-background shadow-sm"
+              : "text-muted hover:text-white"
+          }`}
+        >
+          <Zap size={14} />
+          Entropy
+        </button>
+        <button
+          onClick={() => setMode("global")}
+          className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            mode === "global"
+              ? "bg-primary text-background shadow-sm"
+              : "text-muted hover:text-white"
+          }`}
+        >
+          <Globe size={14} />
+          Open Network
+        </button>
       </div>
+
+      {/* Feed items */}
+      {items.length === 0 && !isLoading ? (
+        <div className="flex flex-col items-center justify-center min-h-[30vh] text-center gap-4 border border-dashed border-border rounded-xl p-8 bg-white/5">
+          {mode === "entropy" ? (
+            <>
+              <Zap size={32} className="text-muted" />
+              <h2 className="text-xl font-bold text-white">No Entropy posts yet</h2>
+              <p className="text-muted max-w-md">Connect to more relays or follow some users to see their publications.</p>
+            </>
+          ) : (
+            <>
+              <Globe size={32} className="text-muted" />
+              <h2 className="text-xl font-bold text-white">Nothing in the open network yet</h2>
+              <p className="text-muted max-w-md">Connect to more relays to see posts from across Nostr.</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {items.map(item => (
+            <PostCard key={item.id} item={item} />
+          ))}
+
+          <div id="feed-loader" className="h-16 flex items-center justify-center text-muted">
+            {isLoading && <Loader2 className="animate-spin" size={24} />}
+            {!isLoading && items.length > 0 && (
+              <span className="text-sm text-muted/60">
+                {mode === "global" ? "Open network · read-only outside Entropy" : "End of feed"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
