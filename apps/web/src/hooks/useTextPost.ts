@@ -9,13 +9,20 @@ export interface TextPostState {
   error: string | null;
 }
 
+/** NIP-10 reply context */
+export interface ReplyTo {
+  rootId: string;         // Root event id of the thread
+  parentId: string;       // Direct parent event id
+  authorPubkey: string;   // Author of the parent event
+}
+
 const IDLE: TextPostState = { stage: "idle", error: null };
 
 export function useTextPost() {
   const { relayPool } = useEntropyStore();
   const [state, setState] = useState<TextPostState>(IDLE);
 
-  const publish = async (content: string) => {
+  const publish = async (content: string, replyTo?: ReplyTo) => {
     if (!content.trim()) return;
 
     if (!window.nostr) {
@@ -26,10 +33,19 @@ export function useTextPost() {
     try {
       setState({ stage: "signing", error: null });
 
+      // Build tags: replies get NIP-10 e/p markers; standalone posts get #t entropy tag
+      const tags: string[][] = replyTo
+        ? [
+            ["e", replyTo.rootId, "", "root"],
+            ["e", replyTo.parentId, "", "reply"],
+            ["p", replyTo.authorPubkey],
+          ]
+        : [["t", ENTROPY_TAG]];
+
       const draft = {
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [["t", ENTROPY_TAG]],
+        tags,
         content: content.trim(),
       };
 
@@ -60,3 +76,4 @@ export function useTextPost() {
 
   return { state, publish, reset };
 }
+

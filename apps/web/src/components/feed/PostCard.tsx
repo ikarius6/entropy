@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Loader2, Maximize, X } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
@@ -9,6 +9,9 @@ import { useChunkBlob } from "../../hooks/useChunkBlob";
 import { useCreditGate } from "../../hooks/useCreditGate";
 import { CreditGate } from "../CreditGate";
 import { KINDS } from "../../lib/constants";
+import { useReactions } from "../../hooks/useReactions";
+import { useReplies } from "../../hooks/useReplies";
+import { ReplyComposer } from "./ReplyComposer";
 
 export function PostCard({ item }: { item: FeedItem }) {
   const { profile } = useNostrProfile(item.pubkey);
@@ -28,11 +31,36 @@ export function PostCard({ item }: { item: FeedItem }) {
     isMedia && gate.allowed ? item.chunkMap ?? null : null
   );
 
+  // Reactions (always-on, lightweight)
+  const { counts: reactionCounts, total: reactionTotal, myReaction, react, isReacting } = useReactions(item.id, item.pubkey);
+
+  // Replies (lazy — only loads on demand)
+  const { replies, isLoading: repliesLoading, load: loadReplies, isLoaded: repliesLoaded } = useReplies(item.id);
+  const [showReplies, setShowReplies] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
+
+  const toggleReplies = () => {
+    if (!showReplies && !repliesLoaded) {
+      loadReplies();
+    }
+    setShowReplies((v) => !v);
+    if (!showReplies) setShowComposer(false);
+  };
+
   const formatTime = (seconds: number) => {
     if (seconds < 60) return `${seconds}s`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
     return `${Math.floor(seconds / 86400)}d`;
+  };
+
+  // NIP-10 root id for reply threading
+  const rootId = item.tags.find(t => t[0] === "e" && t[3] === "root")?.[1] ?? item.id;
+
+  const replyContext = {
+    rootId,
+    parentId: item.id,
+    authorPubkey: item.pubkey,
   };
 
   return (
@@ -67,11 +95,199 @@ export function PostCard({ item }: { item: FeedItem }) {
         </CreditGate>
       )}
 
-      {/* Actions */}
-      <PostActions item={item} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
+      {/* Action bar */}
+      <div className="flex items-center gap-1 mt-1 pt-3 border-t border-border/50">
+
+        {/* ❤️ Like */}
+        <button
+          onClick={() => react("❤️")}
+          disabled={isReacting}
+          title={myReaction ? `You reacted ${myReaction}` : "Like"}
+          className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg transition-all ${
+            myReaction
+              ? "text-red-400 bg-red-400/10"
+              : "text-muted hover:text-red-400 hover:bg-red-400/10"
+          } disabled:opacity-50`}
+        >
+          <Heart size={15} fill={myReaction ? "currentColor" : "none"} />
+          {reactionTotal > 0 && <span className="tabular-nums">{reactionTotal}</span>}
+        </button>
+
+        {/* Emoji reactions summary (top 3) */}
+        {Object.entries(reactionCounts)
+          .filter(([emoji]) => emoji !== "❤️")
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 2)
+          .map(([emoji, count]) => (
+            <button
+              key={emoji}
+              onClick={() => react(emoji)}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg text-muted hover:bg-white/5 transition-colors"
+            >
+              {emoji} {count}
+            </button>
+          ))}
+
+        {/* 💬 Replies */}
+        <button
+          onClick={toggleReplies}
+          title={showReplies ? "Hide replies" : "Show replies"}
+          className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg transition-all ${
+            showReplies
+              ? "text-primary bg-primary/10"
+              : "text-muted hover:text-white hover:bg-white/5"
+          }`}
+        >
+          {showReplies ? <ChevronUp size={15} /> : <MessageCircle size={15} />}
+          {repliesLoaded && replies.length > 0
+            ? <span className="tabular-nums">{replies.length}</span>
+            : null}
+          {!repliesLoaded ? "Replies" : replies.length === 0 ? "Reply" : ""}
+        </button>
+
+        {/* Media-specific actions */}
+        {isMedia && item.chunkMap && (
+          <>
+            <Link
+              to={`/watch/${item.chunkMap.rootHash}`}
+              className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-1"
+            >
+              <Maximize size={15} />
+              Full Page
+            </Link>
+            <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={item.chunkMap} />
+          </>
+        )}
+
+        {/* Share */}
+        <button className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-auto">
+          <Share2 size={15} />
+          Share
+        </button>
+      </div>
+
+      {/* Replies section (lazy) */}
+      {showReplies && (
+        <div className="flex flex-col gap-3 mt-1 pl-4 border-l-2 border-border/40">
+          {repliesLoading && (
+            <div className="flex items-center gap-2 text-muted text-sm py-2">
+              <Loader2 size={15} className="animate-spin" /> Loading replies…
+            </div>
+          )}
+
+          {repliesLoaded && replies.length === 0 && !showComposer && (
+            <p className="text-muted text-sm py-1">No replies yet.</p>
+          )}
+
+          {/* Existing replies (use a lightweight inline card) */}
+          {replies.map((reply) => (
+            <ReplyCard key={reply.id} item={reply} />
+          ))}
+
+          {/* Reply composer toggle */}
+          {!showComposer ? (
+            <button
+              onClick={() => setShowComposer(true)}
+              className="text-sm text-muted hover:text-primary transition-colors text-left py-1"
+            >
+              + Write a reply…
+            </button>
+          ) : (
+            <ReplyComposer
+              replyTo={replyContext}
+              onReplied={() => {
+                setShowComposer(false);
+                // Re-load to show the new reply
+                loadReplies();
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+// ─── Lightweight reply card (no recursion to a avoid deep nesting) ────────────
+
+function ReplyCard({ item }: { item: FeedItem }) {
+  const { profile } = useNostrProfile(item.pubkey);
+  const timeAgo = Math.floor(Date.now() / 1000) - item.created_at;
+  const { total: reactionTotal, myReaction, react } = useReactions(item.id, item.pubkey);
+
+  const formatTime = (s: number) => {
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    return `${Math.floor(s / 86400)}d`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Link to={`/profile/${item.pubkey}`}>
+          <AvatarBadge profile={profile} pubkey={item.pubkey} size="sm" />
+        </Link>
+        <Link to={`/profile/${item.pubkey}`} className="font-semibold text-sm hover:underline">
+          {profile?.name || profile?.displayName || "Anonymous Node"}
+        </Link>
+        <span className="text-muted text-xs font-mono">{item.pubkey.slice(0, 6)}…</span>
+        <span className="text-muted text-xs">• {formatTime(timeAgo)}</span>
+      </div>
+
+      {item.content && (
+        <div className="text-white/85 text-sm whitespace-pre-wrap break-words leading-relaxed ml-9">
+          {item.content}
+        </div>
+      )}
+
+      <div className="ml-9">
+        <button
+          onClick={() => react("❤️")}
+          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all ${
+            myReaction ? "text-red-400" : "text-muted hover:text-red-400"
+          }`}
+        >
+          <Heart size={12} fill={myReaction ? "currentColor" : "none"} />
+          {reactionTotal > 0 && reactionTotal}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Download button (extracted to keep PostCard JSX tidy) ────────────────────
+
+function DownloadButton({ blobUrl, blobStatus, blobProgress, chunkMap }: {
+  blobUrl: string | null;
+  blobStatus: string;
+  blobProgress: number;
+  chunkMap: EntropyChunkMap;
+}) {
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = chunkMap.title || chunkMap.rootHash.slice(0, 12);
+    a.click();
+  };
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={blobStatus !== "ready"}
+      className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {blobStatus === "loading" ? (
+        <><Loader2 size={15} className="animate-spin" />{Math.round(blobProgress * 100)}%</>
+      ) : (
+        <><Download size={15} />Download</>
+      )}
+    </button>
+  );
+}
+
+// ─── Kept from original ────────────────────────────────────────────────────────
 
 interface BlobProps {
   blobUrl: string | null;
@@ -111,14 +327,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
     </div>
   );
 
-  function handleDownload() {
-    if (!blobUrl) return;
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = chunkMap.title || "entropy-file";
-    a.click();
-  }
-
   return (
     <div className="mt-2 rounded-xl overflow-hidden border border-border bg-black/40">
       {isImage ? (
@@ -148,7 +356,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
         </div>
       ) : isVideo ? (
         <div className="relative group cursor-pointer" onClick={!expanded ? handlePlay : undefined}>
-          {/* Loading / error states (no blob yet) */}
           {blobStatus === "loading" && (
             <div className="aspect-video bg-gradient-to-br from-panel to-background flex flex-col items-center justify-center">
               <Loader2 className="animate-spin text-primary" size={40} />
@@ -160,8 +367,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               <span className="text-red-400 text-sm">Failed to load video</span>
             </div>
           )}
-
-          {/* Video element — always mounted when blob is ready; browser shows first frame as preview */}
           {blobUrl && (
             <video
               ref={videoRef}
@@ -172,8 +377,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               className="w-full max-h-[480px] bg-black"
             />
           )}
-
-          {/* Play button overlay (collapsed state) */}
           {blobUrl && !expanded && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
               <button className="w-16 h-16 rounded-full bg-primary/90 text-background flex items-center justify-center transform group-hover:scale-110 transition-transform shadow-lg shadow-primary/20">
@@ -181,8 +384,6 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               </button>
             </div>
           )}
-
-          {/* Controls overlay (expanded state) */}
           {expanded && (
             <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
               <Link
@@ -202,62 +403,16 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               </button>
             </div>
           )}
-
           <div className="absolute bottom-3 left-3 z-10 pointer-events-none">{metaBadges}</div>
         </div>
       ) : null}
 
-      {/* Footer Info */}
       <div className="p-3 bg-white/5 border-t border-border">
         <span className="font-medium text-sm">{chunkMap.title || "Untitled Media"}</span>
         <span className="text-xs text-muted font-mono truncate block mt-0.5" title={chunkMap.rootHash}>
           hash: {chunkMap.rootHash.slice(0, 12)}...
         </span>
       </div>
-    </div>
-  );
-}
-
-function PostActions({ item, blobUrl, blobStatus, blobProgress }: { item: FeedItem } & BlobProps) {
-  const isMedia = item.kind === KINDS.ENTROPY_CHUNK_MAP;
-
-  function handleDownload() {
-    if (!blobUrl || !item.chunkMap) return;
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = item.chunkMap.title || item.chunkMap.rootHash.slice(0, 12);
-    a.click();
-  }
-
-  return (
-    <div className="flex items-center gap-4 mt-2 pt-3 border-t border-border/50">
-      {isMedia && item.chunkMap && (
-        <>
-          <Link
-            to={`/watch/${item.chunkMap.rootHash}`}
-            className="flex items-center gap-2 text-sm text-muted hover:text-white transition-colors"
-          >
-            <Maximize size={16} />
-            Full Page
-          </Link>
-          <button
-            onClick={handleDownload}
-            disabled={blobStatus !== "ready"}
-            className="flex items-center gap-2 text-sm text-muted hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {blobStatus === "loading" ? (
-              <><Loader2 size={16} className="animate-spin" />{Math.round(blobProgress * 100)}%</>
-            ) : (
-              <><Download size={16} />Download</>
-            )}
-          </button>
-        </>
-      )}
-      
-      <button className="flex items-center gap-2 text-sm text-muted hover:text-white transition-colors ml-auto">
-        <Share2 size={16} />
-        Share
-      </button>
     </div>
   );
 }
