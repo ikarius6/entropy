@@ -7,6 +7,8 @@ import { useEntropyStore } from "../stores/entropy-store";
 import { useFollow } from "../hooks/useFollow";
 import { useContactList } from "../hooks/useContactList";
 import { KINDS } from "../lib/constants";
+import { PostCard } from "../components/feed/PostCard";
+import { Loader2 } from "lucide-react";
 
 export default function ProfilePage() {
   const { pubkey: paramPubkey } = useParams<{ pubkey: string }>();
@@ -33,10 +35,10 @@ export default function ProfilePage() {
     isMe ? null : (targetPubkey ?? null)
   );
 
-  // Fetch only kind:7001 events published by this profile
-  const { items: publications, isLoading: feedLoading } = useNostrFeed(
+  // Fetch both kind:1 (text) and kind:7001 (media) from this profile
+  const { items: posts, isLoading: feedLoading } = useNostrFeed(
     targetPubkey
-      ? { authors: [targetPubkey], kinds: [KINDS.ENTROPY_CHUNK_MAP], limit: 30 }
+      ? { authors: [targetPubkey], kinds: [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP], limit: 50 }
       : { kinds: [] }
   );
 
@@ -87,51 +89,31 @@ export default function ProfilePage() {
         />
       )}
       
-      <div className="panel p-6 mt-4">
-        <h3 className="text-xl font-bold mb-4 border-b border-border pb-2">
-          Publications {publications.length > 0 && <span className="text-muted font-normal text-base">({publications.length})</span>}
-        </h3>
+      <div className="flex flex-col gap-1 mt-2">
+        <div className="px-1 pb-2 flex items-center gap-2">
+          <h3 className="text-lg font-bold">
+            Posts
+          </h3>
+          {posts.length > 0 && (
+            <span className="text-muted font-normal text-sm">{posts.length}</span>
+          )}
+        </div>
 
         {feedLoading ? (
-          <div className="flex flex-col gap-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-20 rounded-lg bg-white/5 animate-pulse" />
-            ))}
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted">
+            <Loader2 className="animate-spin" size={28} />
+            <span className="text-sm">Loading posts…</span>
           </div>
-        ) : publications.length === 0 ? (
-          <div className="text-center py-12 text-muted">
-            No publications yet.
+        ) : posts.length === 0 ? (
+          <div className="panel flex flex-col items-center justify-center py-16 text-center gap-3">
+            <span className="text-4xl">📭</span>
+            <p className="text-muted">No posts yet.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {publications.map(item => {
-              const title = item.tags.find(t => t[0] === "title")?.[1] ?? item.content ?? "Untitled";
-              const mime = item.tags.find(t => t[0] === "mime")?.[1] ?? "";
-              const size = Number(item.tags.find(t => t[0] === "size")?.[1] ?? 0);
-              const rootHash = item.tags.find(t => t[0] === "x-hash")?.[1] ?? "";
-              const chunkCount = item.tags.filter(t => t[0] === "chunk").length;
-              const date = new Date(item.created_at * 1000).toLocaleDateString();
-
-              return (
-                <div key={item.id} className="flex items-center gap-4 p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                  <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center text-primary text-xl flex-shrink-0">
-                    {mime.startsWith("video") ? "🎬" : mime.startsWith("audio") ? "🎵" : "📄"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate">{title}</div>
-                    <div className="text-sm text-muted flex gap-3 mt-0.5">
-                      {mime && <span>{mime}</span>}
-                      {size > 0 && <span>{(size / 1024 / 1024).toFixed(1)} MB</span>}
-                      <span>{chunkCount} chunks</span>
-                      <span>{date}</span>
-                    </div>
-                    {rootHash && (
-                      <div className="text-xs text-muted/60 font-mono mt-0.5 truncate">{rootHash}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-4">
+            {posts.map(item => (
+              <PostCard key={item.id} item={item} />
+            ))}
           </div>
         )}
       </div>

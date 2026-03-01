@@ -106,19 +106,33 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
     if (options.authors !== undefined) {
       // ── Explicit authors mode (profile page, etc.) ──────────────────────────
-      // Single subscription, no discovery, no boost.
-      expectedEose = 1;
-      const filter = {
-        kinds,
-        limit,
-        "#t": [ENTROPY_TAG],
-        ...(options.authors.length > 0 ? { authors: options.authors } : {}),
-      };
-      subs.push(relayPool.subscribe(
-        [filter],
-        (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
-        onEose
-      ));
+      // Split into two subscriptions:
+      //  1. Media posts (kind:7001) — must have the entropy #t tag
+      //  2. Text notes (kind:1)    — no tag filter, plain Nostr events
+      // This way plain text-only kind:1 posts are included even without the entropy tag.
+      const authorFilter = options.authors.length > 0 ? { authors: options.authors } : {};
+
+      const mediaKinds = kinds.filter(k => k !== KINDS.TEXT_NOTE);
+      const textKinds  = kinds.filter(k => k === KINDS.TEXT_NOTE);
+
+      expectedEose = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0);
+      if (expectedEose === 0) expectedEose = 1; // safety guard
+
+      if (mediaKinds.length > 0) {
+        subs.push(relayPool.subscribe(
+          [{ kinds: mediaKinds, limit, "#t": [ENTROPY_TAG], ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          onEose
+        ));
+      }
+
+      if (textKinds.length > 0) {
+        subs.push(relayPool.subscribe(
+          [{ kinds: textKinds, limit, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          onEose
+        ));
+      }
 
     } else {
       // ── Home feed mode: follows-priority + global discovery ─────────────────
