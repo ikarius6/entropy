@@ -22,8 +22,8 @@ export function useReactions(eventId: string, authorPubkey: string): UseReaction
   const [myReaction, setMyReaction] = useState<string | null>(null);
   const [isReacting, setIsReacting] = useState(false);
 
-  // eventId → { pubkey → emoji } so every user counts once
-  const reactionsRef = useRef<Map<string, { pubkey: string; content: string }>>(new Map());
+  // pubkey → { content, eventId } so every user counts once and we can delete
+  const reactionsRef = useRef<Map<string, { pubkey: string; content: string; eventId: string; created_at: number }>>(new Map());
 
   const rebuild = useCallback(() => {
     const grouped: ReactionCounts = {};
@@ -49,12 +49,12 @@ export function useReactions(eventId: string, authorPubkey: string): UseReaction
       (event: NostrEvent) => {
         // Last reaction per pubkey wins (highest created_at)
         const existing = reactionsRef.current.get(event.pubkey);
-        if (!existing || event.created_at > (existing as { created_at?: number }).created_at!) {
+        if (!existing || event.created_at > existing.created_at) {
           reactionsRef.current.set(event.pubkey, {
             pubkey: event.pubkey,
             content: event.content || "+",
-            // store created_at for ordering
-            ...{ created_at: event.created_at },
+            eventId: event.id,
+            created_at: event.created_at,
           });
         }
         rebuild();
@@ -67,12 +67,46 @@ export function useReactions(eventId: string, authorPubkey: string): UseReaction
   }, [relayPool, relayUrls.join(","), eventId]);
 
   const react = useCallback(async (emoji = "❤️") => {
-    if (!window.nostr || !relayPool || isReacting) return;
+    if (!window.nostr || !relayPool || isReacting || !pubkey) return;
     setIsReacting(true);
     try {
+      const existing = reactionsRef.current.get(pubkey);
+      const isSameEmoji = existing && existing.content === emoji;
+
+      // If clicking the same emoji → unlike (NIP-09 deletion)
+      if (isSameEmoji && existing.eventId) {
+        const deleteDraft = {
+          kind: 5 as const,
+          created_at: Math.floor(Date.now() / 1000),
+          content: "",
+          tags: [["e", existing.eventId]],
+        };
+        const signed = await window.nostr.signEvent(deleteDraft);
+        relayPool.publish(signed as Parameters<typeof relayPool.publish>[0]);
+
+        // Optimistic removal
+        reactionsRef.current.delete(pubkey);
+        rebuild();
+        return;
+      }
+
+      // If switching emoji → delete old first, then publish new
+      if (existing && existing.eventId) {
+        const deleteDraft = {
+          kind: 5 as const,
+          created_at: Math.floor(Date.now() / 1000),
+          content: "",
+          tags: [["e", existing.eventId]],
+        };
+        const signed = await window.nostr.signEvent(deleteDraft);
+        relayPool.publish(signed as Parameters<typeof relayPool.publish>[0]);
+      }
+
+      // Publish new reaction
+      const now = Math.floor(Date.now() / 1000);
       const draft = {
         kind: REACTION_KIND,
-        created_at: Math.floor(Date.now() / 1000),
+        created_at: now,
         content: emoji,
         tags: [
           ["e", eventId],
@@ -80,13 +114,12 @@ export function useReactions(eventId: string, authorPubkey: string): UseReaction
         ],
       };
       const signed = await window.nostr.signEvent(draft);
-      relayPool.publish(signed as Parameters<typeof relayPool.publish>[0]);
+      const published = signed as Parameters<typeof relayPool.publish>[0];
+      relayPool.publish(published);
 
       // Optimistic update
-      if (pubkey) {
-        reactionsRef.current.set(pubkey, { pubkey, content: emoji, ...{ created_at: draft.created_at } });
-        rebuild();
-      }
+      reactionsRef.current.set(pubkey, { pubkey, content: emoji, eventId: (published as { id?: string }).id || "", created_at: now });
+      rebuild();
     } catch (err) {
       console.error("[useReactions] react error:", err);
     } finally {

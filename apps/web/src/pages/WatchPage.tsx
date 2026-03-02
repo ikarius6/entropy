@@ -233,9 +233,6 @@ export default function WatchPage() {
                     <Download size={15} />
                     {!gate.allowed ? "No Credits" : blobStatus === "loading" ? `${Math.round(blobProgress * 100)}%` : "Save"}
                   </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-white/5 text-white hover:bg-white/10 transition-colors">
-                    <Server size={15} /> Seed
-                  </button>
                 </div>
               </div>
             </div>
