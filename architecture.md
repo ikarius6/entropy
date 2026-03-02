@@ -619,7 +619,7 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
 - [x] Auditoría de seguridad parcial: rate limiting 10 req/s por peer; validación 4 MB max por mensaje; timeout 60s DataChannels inactivos; CSP en `index.html`; SHA-256 en `peer-fetch.ts`
 - [x] Transmuxing client-side: `transmuxer.ts` (mp4box 2.3.0) integrado en `useMediaSource.ts`; pass-through si el browser soporta el MIME, remuxing a fMP4 si no
 - [x] Chunk alignment con keyframes: `keyframe-aligner.ts` usando stss (sync sample table); integrado en `useUploadPipeline.ts` para archivos `video/*`; fallback a `chunkFile()` para formatos no-MP4
-- [ ] Reconexión automática de WebRTC (ICE restart) *(Bloque 6)*
+- [x] Reconexión automática de WebRTC (ICE restart): grace timer 5s en `disconnected`, ICE restart con `iceRestart: true` offer en `failed` (15s timeout), integrado en `chunk-downloader.ts`, `peer-fetch.ts` y `signaling-listener.ts` (acepta restart offers reutilizando RTCPeerConnection existente)
 - [ ] NetworkHealth widget en TopBar *(Bloque 7 restante)*
 - [ ] Soporte Tor opcional en la extensión *(Bloque 8)*
 - [ ] RTCPeerConnection cleanup audit + full security checklist *(Bloque 9 restante)*

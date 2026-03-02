@@ -18,6 +18,10 @@ const DATA_CHANNEL_LABEL = "entropy";
 const CONNECT_TIMEOUT_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+// ICE reconnection constants
+const ICE_DISCONNECT_GRACE_MS = 5_000;
+const ICE_RESTART_TIMEOUT_MS = 15_000;
+
 /** Extract the ice-ufrag from an SDP string. */
 function extractUfrag(sdp: string | undefined): string | null {
   if (!sdp) return null;
@@ -209,8 +213,85 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
       }
     };
 
+    // ICE reconnection state
+    let iceDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let iceRestartTimer: ReturnType<typeof setTimeout> | null = null;
+    let iceRestartAttempted = false;
+
+    function cancelIceTimers(): void {
+      if (iceDisconnectTimer) { clearTimeout(iceDisconnectTimer); iceDisconnectTimer = null; }
+      if (iceRestartTimer) { clearTimeout(iceRestartTimer); iceRestartTimer = null; }
+    }
+
+    function attemptIceRestart(): void {
+      if (iceRestartAttempted || settled || pc.signalingState === "closed") return;
+      iceRestartAttempted = true;
+      logger.log("[peer-fetch] attempting ICE restart for", gatekeeperPubkey.slice(0, 8) + "…");
+
+      // Allow new remote description for the restart answer
+      remoteDescriptionSet = false;
+      pendingCandidates.length = 0;
+
+      iceRestartTimer = setTimeout(() => {
+        iceRestartTimer = null;
+        if (!settled) {
+          logger.warn("[peer-fetch] ICE restart timed out for", gatekeeperPubkey.slice(0, 8) + "…");
+          settled = true;
+          cleanup();
+          resolve(null);
+        }
+      }, ICE_RESTART_TIMEOUT_MS);
+
+      void (async () => {
+        try {
+          pc.restartIce();
+          const restartOffer = await pc.createOffer({ iceRestart: true });
+          await pc.setLocalDescription(restartOffer);
+          offerSentAt = Math.floor(Date.now() / 1000);
+
+          logger.log("[peer-fetch] sending ICE restart offer to", gatekeeperPubkey.slice(0, 8) + "…");
+          channel.sendOffer({
+            targetPubkey: gatekeeperPubkey,
+            sdp: restartOffer,
+            rootHash
+          });
+        } catch (err) {
+          logger.error("[peer-fetch] ICE restart failed:", err);
+          cancelIceTimers();
+          if (!settled) {
+            settled = true;
+            cleanup();
+            resolve(null);
+          }
+        }
+      })();
+    }
+
     pc.oniceconnectionstatechange = () => {
-      logger.log("[peer-fetch] ICE connection state:", pc.iceConnectionState);
+      const iceState = pc.iceConnectionState;
+      logger.log("[peer-fetch] ICE connection state:", iceState);
+
+      if (iceState === "disconnected") {
+        // Start grace timer — ICE may recover on its own
+        if (!iceDisconnectTimer && !settled) {
+          logger.log("[peer-fetch] ICE disconnected — starting", ICE_DISCONNECT_GRACE_MS + "ms grace timer");
+          iceDisconnectTimer = setTimeout(() => {
+            iceDisconnectTimer = null;
+            if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+              attemptIceRestart();
+            }
+          }, ICE_DISCONNECT_GRACE_MS);
+        }
+      } else if (iceState === "connected" || iceState === "completed") {
+        cancelIceTimers();
+        if (iceRestartAttempted) {
+          logger.log("[peer-fetch] ICE restart succeeded for", gatekeeperPubkey.slice(0, 8) + "…");
+          iceRestartAttempted = false;
+        }
+      } else if (iceState === "failed") {
+        cancelIceTimers();
+        attemptIceRestart();
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -344,6 +425,7 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
       if (!settled) {
         settled = true;
         clearTimeout(connectTimeout);
+        cancelIceTimers();
         cleanup();
         resolve(null);
       }
@@ -357,6 +439,7 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
       if (!settled) {
         settled = true;
         clearTimeout(connectTimeout);
+        cancelIceTimers();
         cleanup();
         resolve(null);
       }

@@ -40,7 +40,10 @@ export class PeerManager {
         entry.status = "connected";
         entry.connectedAt = Date.now();
         this.emit("peer-connected", pubkey);
-      } else if (state === "disconnected" || state === "failed" || state === "closed") {
+      } else if (state === "disconnected") {
+        // Mark as disconnected but keep in pool to allow ICE restart
+        entry.status = "disconnected";
+      } else if (state === "failed" || state === "closed") {
         entry.status = "disconnected";
         this.peers.delete(pubkey);
         this.emit("peer-disconnected", pubkey);

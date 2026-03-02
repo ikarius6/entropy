@@ -30,7 +30,7 @@
 - [x] Transmuxing client-side (mp4box.js) para compatibilidad de codecs MSE
 - [x] Chunk alignment con keyframes en upload (pre-procesamiento)
 - [x] Métricas de red y health checks (dashboard de extensión + web)
-- [ ] Reconexión automática de WebRTC y tolerancia a desconexiones
+- [x] Reconexión automática de WebRTC y tolerancia a desconexiones
 - [ ] Soporte Tor opcional en la extensión
 - [x] Auditoría de seguridad (rate limiting, message size validation, inactive DC timeout, CSP, SHA-256 en peer-fetch)
 - [x] Credit gating: bloqueo de contenido multimedia sin créditos suficientes
@@ -694,12 +694,10 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 │  Bloque 6: Reconexión WebRTC                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ○ 6.1  ICE restart logic in chunk-downloader.ts                │
-│  ○ 6.2  ICE restart in peer-fetch.ts                            │
-│  ○ 6.3  Accept iceRestart offers in signaling-listener.ts       │
-│  ○ 6.4  Tests                                                   │
-│                                                                 │
-│  ⚠️  PENDIENTE                                                   │
+│  ✅ 6.1  ICE restart logic in chunk-downloader.ts                │
+│  ✅ 6.2  ICE restart in peer-fetch.ts                            │
+│  ✅ 6.3  Accept iceRestart offers in signaling-listener.ts       │
+│  ✅ 6.4  Tests (6 ICE reconnection + 1 ICE restart listener)     │                                                                 │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │

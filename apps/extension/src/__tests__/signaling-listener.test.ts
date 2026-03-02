@@ -117,6 +117,61 @@ describe("signaling-listener", () => {
     expect(MockPeerConnection.instances).toHaveLength(0);
   });
 
+  it("reuses existing RTCPeerConnection for ICE restart offers", async () => {
+    const { startSignalingListener } = await import("../background/signaling-listener");
+
+    const onPeerConnected = vi.fn();
+
+    startSignalingListener({} as never, "my-pubkey", onPeerConnected);
+
+    const signaling = signalingInstances[0];
+
+    // First: send a normal offer to establish a connection
+    signaling.__callback?.({
+      type: "offer",
+      senderPubkey: "peer-a",
+      rootHash: "root-a",
+      payload: { type: "offer", sdp: "mock-offer" },
+      createdAt: 1
+    });
+
+    await flushAsync();
+
+    expect(MockPeerConnection.instances).toHaveLength(1);
+    const firstPeer = MockPeerConnection.instances[0];
+
+    // Simulate ICE disconnected state on the existing connection
+    Object.defineProperty(firstPeer, "iceConnectionState", { value: "disconnected", writable: true });
+    Object.defineProperty(firstPeer, "signalingState", { value: "stable", writable: true });
+
+    // Send another offer (ICE restart) — should NOT create a new RTCPeerConnection
+    // Need to wait for dedup window (5s) — but in test we advance time
+    // Actually, the dedup is based on Date.now() diff — we mock it
+    const originalNow = Date.now;
+    Date.now = () => originalNow() + 10_000; // Jump past dedup window
+
+    signaling.__callback?.({
+      type: "offer",
+      senderPubkey: "peer-a",
+      rootHash: "root-a",
+      payload: { type: "offer", sdp: "mock-ice-restart-offer" },
+      createdAt: 2
+    });
+
+    await flushAsync();
+
+    // Should still be 1 instance — the existing connection was reused
+    expect(MockPeerConnection.instances).toHaveLength(1);
+    // setRemoteDescription should have been called again on the same peer
+    expect(firstPeer.setRemoteDescription).toHaveBeenCalledTimes(2);
+    expect(firstPeer.createAnswer).toHaveBeenCalledTimes(2);
+    expect(signaling.sendAnswer).toHaveBeenCalledTimes(2);
+    // The existing peer should NOT have been closed
+    expect(firstPeer.close).not.toHaveBeenCalled();
+
+    Date.now = originalNow;
+  });
+
   it("applies incoming ice candidates to existing peer connections", async () => {
     const { startSignalingListener } = await import("../background/signaling-listener");
 

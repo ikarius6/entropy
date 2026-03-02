@@ -19,6 +19,10 @@ const DATA_CHANNEL_LABEL = "entropy";
 const REQUEST_TIMEOUT_MS = 15_000;
 const PEER_CONNECT_TIMEOUT_MS = 10_000;
 
+// ICE reconnection constants
+const ICE_DISCONNECT_GRACE_MS = 5_000;
+const ICE_RESTART_TIMEOUT_MS = 15_000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -81,6 +85,11 @@ export class ChunkDownloader {
   /** Track whether remote description has been set per peer, and buffer early ICE candidates */
   private remoteDescSet = new Set<string>();
   private pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
+
+  /** ICE reconnection timers */
+  private iceDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private iceRestartTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private iceRestartInProgress = new Set<string>();
 
   constructor(options: ChunkDownloadOptions) {
     this.chunkMap = options.chunkMap;
@@ -199,6 +208,13 @@ export class ChunkDownloader {
       this.timeoutHandle = null;
     }
 
+    // Clean up all ICE reconnection timers
+    for (const timer of this.iceDisconnectTimers.values()) clearTimeout(timer);
+    this.iceDisconnectTimers.clear();
+    for (const timer of this.iceRestartTimers.values()) clearTimeout(timer);
+    this.iceRestartTimers.clear();
+    this.iceRestartInProgress.clear();
+
     this.cleanupSignaling?.();
     this.cleanupSignaling = null;
 
@@ -247,6 +263,25 @@ export class ChunkDownloader {
           candidate: event.candidate.toJSON(),
           rootHash: this.chunkMap.rootHash,
         });
+      }
+    };
+
+    // ICE connection state monitoring for reconnection
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      if (state === "disconnected") {
+        this.startIceDisconnectTimer(peerPubkey, pc);
+      } else if (state === "connected" || state === "completed") {
+        this.cancelIceTimers(peerPubkey);
+        // If we were restarting, mark as recovered
+        if (this.iceRestartInProgress.has(peerPubkey)) {
+          this.iceRestartInProgress.delete(peerPubkey);
+          console.log(`[ChunkDownloader] ICE restart succeeded for ${peerPubkey.slice(0, 8)}…`);
+          this.scheduleNextRequests();
+        }
+      } else if (state === "failed") {
+        this.cancelIceTimers(peerPubkey);
+        this.attemptIceRestart(peerPubkey, pc);
       }
     };
 
@@ -491,5 +526,105 @@ export class ChunkDownloader {
       this.pendingChunks.unshift(index);
     }
     this.scheduleNextRequests();
+  }
+
+  // -----------------------------------------------------------------------
+  // ICE reconnection
+  // -----------------------------------------------------------------------
+
+  private startIceDisconnectTimer(peerPubkey: string, pc: RTCPeerConnection): void {
+    // Don't start a new timer if one is already running
+    if (this.iceDisconnectTimers.has(peerPubkey)) return;
+
+    console.log(`[ChunkDownloader] ICE disconnected for ${peerPubkey.slice(0, 8)}… — starting ${ICE_DISCONNECT_GRACE_MS}ms grace timer`);
+
+    const timer = setTimeout(() => {
+      this.iceDisconnectTimers.delete(peerPubkey);
+      // If still disconnected after grace period, attempt ICE restart
+      if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+        this.attemptIceRestart(peerPubkey, pc);
+      }
+    }, ICE_DISCONNECT_GRACE_MS);
+
+    this.iceDisconnectTimers.set(peerPubkey, timer);
+  }
+
+  private attemptIceRestart(peerPubkey: string, pc: RTCPeerConnection): void {
+    // Don't restart if already in progress or downloader was cancelled
+    if (this.iceRestartInProgress.has(peerPubkey) || !this.isRunning) return;
+
+    // Don't restart if the connection is already closed
+    if (pc.signalingState === "closed") {
+      this.handlePeerDisconnected(peerPubkey);
+      return;
+    }
+
+    this.iceRestartInProgress.add(peerPubkey);
+    console.log(`[ChunkDownloader] attempting ICE restart for ${peerPubkey.slice(0, 8)}…`);
+
+    // Allow re-setting remote description for the new answer
+    this.remoteDescSet.delete(peerPubkey);
+    this.pendingCandidates.delete(peerPubkey);
+
+    // Set a timeout for the ICE restart
+    const restartTimer = setTimeout(() => {
+      this.iceRestartTimers.delete(peerPubkey);
+      if (this.iceRestartInProgress.has(peerPubkey)) {
+        this.iceRestartInProgress.delete(peerPubkey);
+        console.warn(`[ChunkDownloader] ICE restart timed out for ${peerPubkey.slice(0, 8)}…`);
+        this.handlePeerDisconnected(peerPubkey);
+      }
+    }, ICE_RESTART_TIMEOUT_MS);
+
+    this.iceRestartTimers.set(peerPubkey, restartTimer);
+
+    // Perform ICE restart
+    void (async () => {
+      try {
+        pc.restartIce();
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+
+        this.signalingChannel.sendOffer({
+          targetPubkey: peerPubkey,
+          sdp: offer,
+          rootHash: this.chunkMap.rootHash,
+        });
+      } catch (err) {
+        console.error(`[ChunkDownloader] ICE restart failed for ${peerPubkey.slice(0, 8)}…:`, err);
+        this.cancelIceTimers(peerPubkey);
+        this.iceRestartInProgress.delete(peerPubkey);
+        this.handlePeerDisconnected(peerPubkey);
+      }
+    })();
+  }
+
+  private cancelIceTimers(peerPubkey: string): void {
+    const disconnectTimer = this.iceDisconnectTimers.get(peerPubkey);
+    if (disconnectTimer) {
+      clearTimeout(disconnectTimer);
+      this.iceDisconnectTimers.delete(peerPubkey);
+    }
+
+    const restartTimer = this.iceRestartTimers.get(peerPubkey);
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      this.iceRestartTimers.delete(peerPubkey);
+    }
+  }
+
+  private handlePeerDisconnected(peerPubkey: string): void {
+    console.warn(`[ChunkDownloader] peer ${peerPubkey.slice(0, 8)}… permanently disconnected`);
+
+    this.connectedPeers.delete(peerPubkey);
+    this.dataChannels.delete(peerPubkey);
+    this.peerManager.removePeer(peerPubkey);
+
+    // Re-queue any in-flight chunks assigned to this peer
+    for (const [index, info] of Array.from(this.inFlightChunks.entries())) {
+      if (info.peerId === peerPubkey) {
+        this.handleChunkError(index);
+      }
+    }
   }
 }

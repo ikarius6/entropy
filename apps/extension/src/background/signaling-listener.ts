@@ -81,8 +81,36 @@ export function startSignalingListener(
         }
         offerTimestamps.set(key, now);
 
+        // Detect ICE restart: reuse existing peer connection if present and not closed
+        const existingPeer = peers.get(key);
+        const isIceRestart = existingPeer
+          && existingPeer.signalingState !== "closed"
+          && (existingPeer.iceConnectionState === "disconnected"
+            || existingPeer.iceConnectionState === "failed"
+            || existingPeer.iceConnectionState === "connected"
+            || existingPeer.iceConnectionState === "completed");
+
+        if (isIceRestart && existingPeer) {
+          logger.log("[signaling-listener] ICE restart offer from", signal.senderPubkey.slice(0, 8) + "… — reusing existing RTCPeerConnection");
+
+          await existingPeer.setRemoteDescription(signal.payload);
+          const answer = await existingPeer.createAnswer();
+          await existingPeer.setLocalDescription(answer);
+
+          const localUfrag = extractUfrag(existingPeer.localDescription?.sdp);
+          logger.log("[signaling-listener] ICE restart answer created, localUfrag:", localUfrag);
+
+          channel.sendAnswer({
+            targetPubkey: signal.senderPubkey,
+            sdp: answer,
+            rootHash: signal.rootHash,
+          });
+
+          return;
+        }
+
         logger.log("[signaling-listener] processing offer from", signal.senderPubkey.slice(0, 8) + "…");
-        peers.get(key)?.close();
+        existingPeer?.close();
 
         const peer = new RTCPeerConnection(createRtcConfiguration());
         peers.set(key, peer);
