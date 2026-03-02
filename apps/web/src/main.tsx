@@ -8,6 +8,7 @@ import UploadPage from './pages/UploadPage';
 import WatchPage from './pages/WatchPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import HowItWorksPage from './pages/HowItWorksPage';
 import { ToastContainer } from './components/ui/Toast';
 
 createRoot(document.getElementById('root')!).render(
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/watch/:rootHash" element={<WatchPage />} />
           <Route path="/profile/:pubkey" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
         </Routes>
       </AppLayout>
       <ToastContainer />

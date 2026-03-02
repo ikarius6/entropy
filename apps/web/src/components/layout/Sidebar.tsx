@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, Upload, User, Settings as SettingsIcon } from "lucide-react";
+import { Home, Upload, User, Settings as SettingsIcon, HelpCircle } from "lucide-react";
 
 export function Sidebar() {
   const location = useLocation();
@@ -8,6 +8,7 @@ export function Sidebar() {
     { name: "Home", path: "/", icon: Home },
     { name: "Publish", path: "/publish", icon: Upload },
     { name: "Profile", path: "/profile/me", icon: User },
+    { name: "How It Works", path: "/how-it-works", icon: HelpCircle },
     { name: "Settings", path: "/settings", icon: SettingsIcon },
   ];
 
