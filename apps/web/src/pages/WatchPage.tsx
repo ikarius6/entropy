@@ -49,7 +49,7 @@ export default function WatchPage() {
     const sub = relayPool.subscribe(
       [
         { ids: [rootHash] }, // Try as a normal event ID first (e.g. text post)
-        { kinds: [KINDS.ENTROPY_CHUNK_MAP], limit: 200 } // Fetch recent chunk maps and filter for rootHash
+        { kinds: [KINDS.ENTROPY_CHUNK_MAP], limit: 500 } // Broad fetch — client-side x-hash match below
       ],
       (ev: NostrEvent) => {
         if (found) return;
@@ -82,7 +82,7 @@ export default function WatchPage() {
         }
       },
       () => {
-        if (!found) {
+        if (!found && !chunkMapCache[rootHash!]) {
           setError("Content not found. Make sure you are connected to the right relays.");
         }
       }

@@ -203,6 +203,16 @@ export class Relay {
         break;
       }
 
+      case "CLOSED": {
+        const [subId, message] = rest as [string, string];
+        logger.log(`[Relay] ${this.url} CLOSED sub=${subId}: ${message}`);
+        // Treat CLOSED as an implicit EOSE — the relay won't send more events
+        this.eoseListeners.get(subId)?.();
+        this.eventListeners.delete(subId);
+        this.eoseListeners.delete(subId);
+        break;
+      }
+
       default:
         logger.log(`[Relay] ${this.url} unknown message type: ${type}`);
         break;
@@ -261,7 +271,8 @@ export class RelayPool {
     }
   }
 
-  /** Subscribe to events across all relays. Returns an unsubscribe handle. */
+  /** Subscribe to events across all relays. Returns an unsubscribe handle.
+   *  The onEose callback fires only once — after ALL relays have sent EOSE. */
   subscribe(
     filters: NostrFilter[],
     onEvent: EventCallback,
@@ -271,13 +282,42 @@ export class RelayPool {
 
     this.subscriptions.set(subId, { filters, onEvent, onEose });
 
+    const relayCount = this.relays.size;
+    let eoseReceived = 0;
+    let eoseFired = false;
+
+    let eoseTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    const fireEose = () => {
+      if (!eoseFired) {
+        eoseFired = true;
+        if (eoseTimeout) clearTimeout(eoseTimeout);
+        onEose?.();
+      }
+    };
+
+    const aggregatedEose: EoseCallback | undefined = onEose
+      ? () => {
+          eoseReceived++;
+          if (eoseReceived >= relayCount) {
+            fireEose();
+          }
+        }
+      : undefined;
+
+    // Safety timeout: fire onEose after 15s even if some relays never respond
+    if (onEose && relayCount > 0) {
+      eoseTimeout = setTimeout(fireEose, 15_000);
+    }
+
     for (const relay of this.relays.values()) {
-      relay.subscribe(subId, filters, onEvent, onEose);
+      relay.subscribe(subId, filters, onEvent, aggregatedEose);
     }
 
     return {
       id: subId,
       unsubscribe: () => {
+        if (eoseTimeout) clearTimeout(eoseTimeout);
         this.subscriptions.delete(subId);
 
         for (const relay of this.relays.values()) {
