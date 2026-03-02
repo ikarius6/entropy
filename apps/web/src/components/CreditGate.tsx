@@ -247,7 +247,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
         </p>
 
         {/* Option 1 — Upload own content */}
-        <Link to="/upload" className="credit-gate__btn credit-gate__btn--seed">
+        <Link to="/publish" className="credit-gate__btn credit-gate__btn--seed">
           <Upload size={16} />
           Upload &amp; Publish Your Content
         </Link>

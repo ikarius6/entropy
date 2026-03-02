@@ -16,7 +16,7 @@ createRoot(document.getElementById('root')!).render(
       <AppLayout>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/publish" element={<UploadPage />} />
           <Route path="/watch/:rootHash" element={<WatchPage />} />
           <Route path="/profile/:pubkey" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />

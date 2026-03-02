@@ -6,7 +6,7 @@ export function Sidebar() {
 
   const navItems = [
     { name: "Home", path: "/", icon: Home },
-    { name: "Upload", path: "/upload", icon: Upload },
+    { name: "Publish", path: "/publish", icon: Upload },
     { name: "Profile", path: "/profile/me", icon: User },
     { name: "Settings", path: "/settings", icon: SettingsIcon },
   ];
