@@ -166,6 +166,9 @@ export interface CreditSummaryPayload {
   balance: number;
   entryCount: number;
   coldStorageEligible: boolean;
+  integrityValid: boolean;
+  trustScore: number;
+  receiptVerifiedEntries: number;
   history: Array<{
     id: string;
     peerPubkey: string;
@@ -535,6 +538,9 @@ export function isCreditSummaryPayload(value: unknown): value is CreditSummaryPa
     typeof value.balance === "number" &&
     typeof value.entryCount === "number" &&
     typeof value.coldStorageEligible === "boolean" &&
+    typeof value.integrityValid === "boolean" &&
+    typeof value.trustScore === "number" &&
+    typeof value.receiptVerifiedEntries === "number" &&
     hasValidHistory
   );
 }

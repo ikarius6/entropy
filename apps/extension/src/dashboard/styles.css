@@ -283,6 +283,54 @@ body {
   color: #9eead6;
 }
 
+.integrity-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.integrity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.integrity-row:last-child {
+  border-bottom: none;
+}
+
+.integrity-label {
+  color: #9eafc2;
+  font-size: 0.85rem;
+}
+
+.integrity-value {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #e0e0e0;
+}
+
+.integrity-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.integrity-badge--valid {
+  background: rgba(0, 230, 118, 0.15);
+  color: #69f0ae;
+}
+
+.integrity-badge--corrupted {
+  background: rgba(255, 82, 82, 0.18);
+  color: #ff5252;
+}
+
 .file-import-label {
   display: inline-block;
   border: 0;

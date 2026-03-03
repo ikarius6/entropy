@@ -190,19 +190,25 @@ function isLegitimateCredit(entry: CreditEntry): boolean {
 6. ✅ Entries legacy sin receipt → `receiptVerifiedEntries = 0`, `isRealReceiptSignature()` los filtra
 7. ✅ 6 tests nuevos para encode/decode de receipts + 5 tests para verificación de firmas
 
-### Fase C — Consecuencias (enforcement) — Pendiente
+### Fase C — Consecuencias (enforcement) ✅ IMPLEMENTADA
 
-1. Si ledger integrity falla → resetear créditos a 0
-2. Si % de entries verificados es bajo → reducir cold storage eligibility
-3. Exponer "credit score" (trustScore) basado en auditoría en dashboard y web settings
-4. Peers pueden pedir tu credit score antes de servirte chunks
+1. ✅ Si ledger integrity falla → `enforceIntegrity()` resetea créditos a 0 automáticamente
+2. ✅ Si integridad corrupta → `coldStorageEligible` se fuerza a `false`
+3. ✅ `CreditSummaryPayload` incluye `integrityValid`, `trustScore`, `receiptVerifiedEntries`
+4. ✅ Extension dashboard muestra sección "Credit Integrity" con badge valid/corrupted + trust score
+5. ✅ Extension popup muestra integrity + trust en texto
+6. ✅ Web app CreditPanel muestra integrity, trust score, receipt-verified uploads
+7. ✅ `isCreditSummaryPayload` type guard validado para los nuevos campos
 
 ---
 
 ## Estado actual
 
-- **190/190 tests** pasan en @entropy/core
+- **190/190 tests** pasan en @entropy/core (25 archivos)
 - **Typecheck** pasa en los 3 packages (core, extension, web)
 - Entries legacy (sin `integrityHash` ni receipt real) son backward-compatible
 - El flujo P2P ahora firma y envía receipts automáticamente
 - El fetcher espera hasta 500ms por el receipt antes de resolver sin él
+- Si el usuario manipula `creditLedgerEntries` en storage → ledger se resetea a 0
+- `coldStorageEligible` se bloquea si la cadena está corrupta
+- Trust score y receipt-verified visibles en popup, dashboard y web app

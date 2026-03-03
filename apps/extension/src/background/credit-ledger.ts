@@ -4,6 +4,7 @@ import {
   isEligibleForColdStorage,
   computeIntegrityHash,
   verifyIntegrityChain,
+  logger,
   type CreditEntry,
   type CreditEntryInput,
   type CreditSummaryPayload,
@@ -16,14 +17,28 @@ interface CreditStorageSchema {
 
 const STORAGE_KEY = "creditLedgerEntries";
 
-function toCreditSummaryPayload(entries: CreditEntry[]): CreditSummaryPayload {
+async function toCreditSummaryPayload(entries: CreditEntry[]): Promise<CreditSummaryPayload> {
   const ledger = createCreditLedger(entries);
   const summary = ledger.getSummary();
+
+  const integrity = await verifyIntegrityChain(entries);
+
+  const receiptVerified = entries.filter(
+    (e) => e.direction === "up" && e.receiptSignature.length === 128 && /^[0-9a-f]{128}$/.test(e.receiptSignature)
+  ).length;
+
+  const uploadEntries = entries.filter((e) => e.direction === "up").length;
+  const trustScore = entries.length > 0 && uploadEntries > 0
+    ? Math.round((receiptVerified / uploadEntries) * 100)
+    : (entries.length === 0 ? 100 : 0);
 
   return {
     ...summary,
     ratio: Number.isFinite(summary.ratio) ? summary.ratio : null,
-    coldStorageEligible: isEligibleForColdStorage(summary),
+    coldStorageEligible: integrity.valid ? isEligibleForColdStorage(summary) : false,
+    integrityValid: integrity.valid,
+    trustScore,
+    receiptVerifiedEntries: receiptVerified,
     history: ledger.getHistory(20).map((entry) => ({
       id: entry.id,
       peerPubkey: entry.peerPubkey,
@@ -67,7 +82,9 @@ async function stampIntegrityHash(entries: CreditEntry[]): Promise<CreditEntry[]
 }
 
 export async function recordUploadCredit(entry: CreditEntryInput): Promise<CreditSummaryPayload> {
-  const entries = await readCreditEntries();
+  let entries = await readCreditEntries();
+  entries = await enforceIntegrity(entries);
+
   const ledger = createCreditLedger(entries);
   ledger.recordUpload(entry);
 
@@ -78,7 +95,9 @@ export async function recordUploadCredit(entry: CreditEntryInput): Promise<Credi
 }
 
 export async function recordDownloadCredit(entry: CreditEntryInput): Promise<CreditSummaryPayload> {
-  const entries = await readCreditEntries();
+  let entries = await readCreditEntries();
+  entries = await enforceIntegrity(entries);
+
   const ledger = createCreditLedger(entries);
   ledger.recordDownload(entry);
 
@@ -97,6 +116,34 @@ export async function getLedgerEntries(): Promise<CreditEntry[]> {
   return readCreditEntries();
 }
 
+export async function resetLedger(): Promise<void> {
+  logger.warn("[credit-ledger] ⚠ RESETTING ledger — integrity chain was corrupted");
+  await writeCreditEntries([]);
+}
+
+async function enforceIntegrity(entries: CreditEntry[]): Promise<CreditEntry[]> {
+  if (entries.length === 0) {
+    return entries;
+  }
+
+  const integrity = await verifyIntegrityChain(entries);
+
+  if (!integrity.valid) {
+    logger.warn(
+      "[credit-ledger] ⚠ INTEGRITY VIOLATION detected at index",
+      integrity.firstCorruptedIndex,
+      "— resetting ledger (",
+      entries.length,
+      "entries discarded)"
+    );
+    await resetLedger();
+    return [];
+  }
+
+  return entries;
+}
+
 export async function getCreditSummary(): Promise<CreditSummaryPayload> {
-  return toCreditSummaryPayload(await readCreditEntries());
+  const entries = await readCreditEntries();
+  return toCreditSummaryPayload(entries);
 }

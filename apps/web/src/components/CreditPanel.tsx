@@ -37,6 +37,14 @@ export function CreditPanel() {
             <li>Downloaded: {formatMegabytes(summary.totalDownloaded)}</li>
             <li>Operations: {summary.entryCount}</li>
             <li>Cold storage eligible: {summary.coldStorageEligible ? "yes" : "no"}</li>
+            <li>
+              Integrity:{" "}
+              <span className={summary.integrityValid ? "integrity-ok" : "integrity-bad"}>
+                {summary.integrityValid ? "Valid" : "Corrupted"}
+              </span>
+            </li>
+            <li>Trust score: {summary.trustScore}%</li>
+            <li>Receipt-verified uploads: {summary.receiptVerifiedEntries}</li>
           </ul>
 
           <div className="credit-history">

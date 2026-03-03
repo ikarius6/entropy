@@ -115,6 +115,9 @@ describe("credit gating — malformed CREDIT_UPDATE handling", () => {
         balance: 100,
         entryCount: 1,
         coldStorageEligible: false,
+        integrityValid: true,
+        trustScore: 100,
+        receiptVerifiedEntries: 0,
         history: []
       })
     ).toBe(true);
@@ -475,6 +478,9 @@ describe("credit gating — SERVE_CHUNK message validation", () => {
           balance: 512,
           entryCount: 1,
           coldStorageEligible: false,
+          integrityValid: true,
+          trustScore: 100,
+          receiptVerifiedEntries: 0,
           history: []
         }
       })

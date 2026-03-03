@@ -14,6 +14,9 @@ function makeCreditSummary(
     balance: 100,
     entryCount: 3,
     coldStorageEligible: true,
+    integrityValid: true,
+    trustScore: 100,
+    receiptVerifiedEntries: 0,
     history: [],
     ...overrides
   };

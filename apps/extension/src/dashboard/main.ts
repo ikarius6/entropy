@@ -549,14 +549,38 @@ function formatCreditSummary(summary: CreditSummaryPayload): string[] {
   const ratioLabel =
     typeof summary.ratio === "number" && Number.isFinite(summary.ratio)
       ? summary.ratio.toFixed(2)
-      : "∞";
+      : "\u221e";
 
   return [
     `Credit balance: ${(summary.balance / (1024 * 1024)).toFixed(2)} MB`,
     `Ratio: ${ratioLabel}`,
     `Transfers: ${summary.entryCount}`,
-    `Cold storage eligible: ${summary.coldStorageEligible ? "yes" : "no"}`
+    `Cold storage eligible: ${summary.coldStorageEligible ? "yes" : "no"}`,
+    `Integrity: ${summary.integrityValid ? "valid" : "CORRUPTED"}`,
+    `Trust score: ${summary.trustScore}%`,
+    `Receipt-verified: ${summary.receiptVerifiedEntries}`
   ];
+}
+
+function renderIntegrityUI(summary: CreditSummaryPayload): void {
+  const integrityEl = document.getElementById("integrity-valid");
+  const trustEl = document.getElementById("trust-score");
+  const receiptEl = document.getElementById("receipt-verified");
+
+  if (integrityEl) {
+    integrityEl.textContent = summary.integrityValid ? "Valid" : "Corrupted";
+    integrityEl.className = summary.integrityValid
+      ? "integrity-badge integrity-badge--valid"
+      : "integrity-badge integrity-badge--corrupted";
+  }
+
+  if (trustEl) {
+    trustEl.textContent = `${summary.trustScore}%`;
+  }
+
+  if (receiptEl) {
+    receiptEl.textContent = String(summary.receiptVerifiedEntries);
+  }
 }
 
 function renderStatus(): string {
@@ -594,6 +618,9 @@ async function refresh(): Promise<void> {
     latestStatus = status;
     latestCredits = credits;
     statusElement.textContent = renderStatus();
+    if (credits) {
+      renderIntegrityUI(credits);
+    }
   } catch (caughtError) {
     const message = caughtError instanceof Error ? caughtError.message : "Unknown dashboard error.";
     statusElement.textContent = `Error: ${message}`;
@@ -721,6 +748,7 @@ const unsubscribeCreditUpdates = subscribeCreditUpdates((summary) => {
 
   latestCredits = summary;
   statusElement.textContent = renderStatus();
+  renderIntegrityUI(summary);
   void refreshInventory();
 });
 

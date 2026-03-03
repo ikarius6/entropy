@@ -23,7 +23,9 @@ function formatCredits(summary: CreditSummaryPayload): string[] {
   return [
     `Balance: ${(summary.balance / (1024 * 1024)).toFixed(2)} MB`,
     `Ratio: ${ratioLabel}`,
-    `Eligible cold storage: ${summary.coldStorageEligible ? "yes" : "no"}`
+    `Eligible cold storage: ${summary.coldStorageEligible ? "yes" : "no"}`,
+    `Integrity: ${summary.integrityValid ? "valid" : "CORRUPTED"}`,
+    `Trust: ${summary.trustScore}%`
   ];
 }
 

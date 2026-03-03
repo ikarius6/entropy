@@ -43,6 +43,9 @@ const VALID_CREDIT_SUMMARY = {
   balance: 512,
   entryCount: 1,
   coldStorageEligible: true,
+  integrityValid: true,
+  trustScore: 100,
+  receiptVerifiedEntries: 0,
   history: [
     {
       id: "credit-1",
