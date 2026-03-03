@@ -1,8 +1,24 @@
 import { Link, useLocation } from "react-router-dom";
 import { Home, Upload, User, Settings as SettingsIcon, HelpCircle } from "lucide-react";
+import { useCredits } from "../../hooks/useCredits";
+
+function formatCredits(bytes: number): { value: string; unit: string } {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return { value: (bytes / (1024 * 1024 * 1024)).toFixed(1), unit: "GB" };
+  }
+  if (bytes >= 1024 * 1024) {
+    return { value: (bytes / (1024 * 1024)).toFixed(1), unit: "MB" };
+  }
+  if (bytes >= 1024) {
+    return { value: (bytes / 1024).toFixed(1), unit: "KB" };
+  }
+  return { value: String(bytes), unit: "B" };
+}
 
 export function Sidebar() {
   const location = useLocation();
+  const { summary, isLoading } = useCredits();
+  const credits = formatCredits(summary?.balance ?? 0);
 
   const navItems = [
     { name: "Home", path: "/", icon: Home },
@@ -39,8 +55,14 @@ export function Sidebar() {
       <div className="mt-auto panel p-4 mb-4 bg-background/50">
         <div className="text-sm font-medium mb-2 text-white">Credits</div>
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-accent">1.2</span>
-          <span className="text-xs text-muted">GB</span>
+          {isLoading ? (
+            <span className="text-sm text-muted">Loading…</span>
+          ) : (
+            <>
+              <span className="text-2xl font-bold text-accent">{credits.value}</span>
+              <span className="text-xs text-muted">{credits.unit}</span>
+            </>
+          )}
         </div>
       </div>
     </aside>

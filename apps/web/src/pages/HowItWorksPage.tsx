@@ -19,6 +19,10 @@ import {
   XCircle,
   ArrowDown,
   ArrowRight,
+  Database,
+  Trash2,
+  Key,
+  Package,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -36,6 +40,7 @@ const TABS: Tab[] = [
   { id: "transfer", label: "Data Transfer", icon: <ArrowRightLeft size={18} /> },
   { id: "seeding", label: "Why Seed?", icon: <Coins size={18} /> },
   { id: "security", label: "Security", icon: <Shield size={18} /> },
+  { id: "storage", label: "Storage", icon: <Database size={18} /> },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -759,6 +764,284 @@ function SecurityTab() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  TAB 5: Storage                                                     */
+/* ------------------------------------------------------------------ */
+
+function StorageTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <SectionTitle>Local Storage</SectionTitle>
+        <SectionSub>
+          Entropy stores all data locally in your browser. Nothing is sent to external servers.
+          Three distinct storage layers work together to persist chunks, identity, credits, and
+          network state.
+        </SectionSub>
+      </div>
+
+      {/* Storage architecture diagram */}
+      <div className="panel p-6">
+        <h3 className="text-sm font-bold text-accent mb-5 flex items-center gap-2">
+          <Database size={14} /> Storage Architecture
+        </h3>
+
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-full rounded-2xl border border-border bg-white/[0.01] p-5">
+            <div className="text-[10px] font-bold text-muted uppercase tracking-widest mb-4 text-center">
+              Browser Storage Layers
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <DiagramBox label="IndexedDB (Dexie)" sub='"entropy-chunks" database' color="primary" />
+              <DiagramBox label="chrome.storage.local" sub="Identity · Credits · Settings" color="green" />
+              <DiagramBox label="Storage API" sub="Quota estimation & persistence" color="accent" />
+            </div>
+          </div>
+
+          <ConnectorArrow label="managed by" />
+
+          <div className="grid grid-cols-2 gap-3 w-full">
+            <DiagramBox label="IndexedDbChunkStore" sub="@entropy/core" color="primary" />
+            <DiagramBox label="QuotaManager" sub="LRU eviction · 2 GB limit" color="accent" />
+          </div>
+        </div>
+      </div>
+
+      {/* Layer 1: IndexedDB Dexie */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <HardDrive size={14} className="text-primary" /> IndexedDB — Chunk Storage (Dexie.js)
+        </h3>
+
+        <div className="panel p-5">
+          <p className="text-muted text-xs leading-relaxed mb-4">
+            The bulk of local storage is an <strong className="text-white">IndexedDB database</strong> called{" "}
+            <code className="text-primary bg-primary/10 px-1 rounded text-[10px]">entropy-chunks</code>,
+            managed through <strong className="text-white">Dexie.js</strong> — a lightweight IndexedDB wrapper.
+            This is where every file chunk (up to 5 MB each) is persisted as raw binary data.
+          </p>
+
+          {/* Table schema */}
+          <div className="bg-background/80 rounded-xl border border-border p-4 mb-4">
+            <div className="text-[10px] font-bold text-accent mb-3">chunks table schema</div>
+            <div className="grid grid-cols-1 gap-1.5 font-mono text-[11px]">
+              {[
+                { field: "hash", type: "string", desc: "SHA-256 hash — primary key", pk: true },
+                { field: "data", type: "ArrayBuffer", desc: "Raw chunk binary (≤5 MB)", pk: false },
+                { field: "rootHash", type: "string", desc: "Merkle root of parent file (indexed)", pk: false },
+                { field: "index", type: "number", desc: "Chunk position in file (indexed)", pk: false },
+                { field: "createdAt", type: "number", desc: "Timestamp when stored", pk: false },
+                { field: "lastAccessed", type: "number", desc: "Updated on every read (indexed, used for LRU)", pk: false },
+                { field: "pinned", type: "boolean", desc: "If true, exempt from LRU eviction (indexed)", pk: false },
+              ].map((row) => (
+                <div key={row.field} className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-white/[0.02] border border-border">
+                  <span className={`shrink-0 w-28 ${row.pk ? "text-primary font-bold" : "text-white"}`}>
+                    {row.pk && "🔑 "}{row.field}
+                  </span>
+                  <span className="shrink-0 w-24 text-accent/70">{row.type}</span>
+                  <span className="text-muted text-[10px]">{row.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-background/60 rounded-lg border border-border p-3">
+              <div className="flex items-start gap-2">
+                <Package size={13} className="text-primary shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-[10px] font-bold text-white mb-1">Why Dexie?</div>
+                  <p className="text-muted text-[10px] leading-relaxed">
+                    Dexie provides typed queries, indexed lookups, and automatic schema migrations
+                    over raw IndexedDB. It supports structured cloning of ArrayBuffer data without
+                    manual serialization.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-background/60 rounded-lg border border-border p-3">
+              <div className="flex items-start gap-2">
+                <Zap size={13} className="text-accent shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-[10px] font-bold text-white mb-1">Access Pattern</div>
+                  <p className="text-muted text-[10px] leading-relaxed">
+                    Chunks are looked up by hash (O(1)), listed by rootHash to reconstruct a file,
+                    and sorted by lastAccessed for LRU eviction. The pinned index protects
+                    important chunks from being evicted.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Layer 2: chrome.storage.local */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <Key size={14} className="text-emerald-400" /> chrome.storage.local — Extension State
+        </h3>
+
+        <div className="panel p-5">
+          <p className="text-muted text-xs leading-relaxed mb-4">
+            The browser extension uses{" "}
+            <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">chrome.storage.local</code>{" "}
+            (via <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">webextension-polyfill</code>)
+            to persist lightweight key-value data that must survive Service Worker restarts.
+            This is <strong className="text-white">not</strong> used for bulk chunk data — only small JSON-serializable state.
+          </p>
+
+          <div className="grid grid-cols-1 gap-3">
+            {[
+              {
+                key: "entropyIdentity",
+                desc: "Nostr keypair (pubkey + privkey). Generated on first launch or imported manually. The Service Worker caches this in memory and falls back to storage.local on cold start.",
+                color: "text-emerald-400" as const,
+                bg: "bg-emerald-500/10" as const,
+                border: "border-emerald-500/20" as const,
+                icon: <Key size={14} />,
+              },
+              {
+                key: "entropyCreditLedger",
+                desc: "Array of CreditEntry objects tracking Proof-of-Upstream receipts. Each entry records bytes transferred, the counterparty pubkey, timestamp, and whether it was earned or spent.",
+                color: "text-orange-400" as const,
+                bg: "bg-orange-500/10" as const,
+                border: "border-orange-500/20" as const,
+                icon: <Coins size={14} />,
+              },
+              {
+                key: "entropyNodeStatus",
+                desc: "Current node seeding state: active relay connections, signaling listener status, and chunk-server readiness. Pushed to the web app via NODE_STATUS_UPDATE messages.",
+                color: "text-primary" as const,
+                bg: "bg-primary/10" as const,
+                border: "border-primary/20" as const,
+                icon: <Wifi size={14} />,
+              },
+            ].map((item) => (
+              <div key={item.key} className={`flex items-start gap-3 p-4 rounded-xl ${item.bg} border ${item.border}`}>
+                <div className={`shrink-0 w-9 h-9 rounded-lg ${item.bg} border ${item.border} flex items-center justify-center ${item.color}`}>
+                  {item.icon}
+                </div>
+                <div>
+                  <code className={`text-xs font-bold ${item.color}`}>{item.key}</code>
+                  <p className="text-muted text-[10px] leading-relaxed mt-1">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 bg-background/60 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <Lock size={13} className="text-orange-400 shrink-0 mt-0.5" />
+              <p className="text-muted text-[10px] leading-relaxed">
+                <strong className="text-white">Security note:</strong> The private key stored in{" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentity</code>{" "}
+                never leaves the extension sandbox. The web app can only request the public key or ask
+                the extension to sign events — it never sees the raw private key.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Layer 3: Quota Management */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <HardDrive size={14} className="text-accent" /> Quota Management & Eviction
+        </h3>
+
+        <div className="panel p-5">
+          <p className="text-muted text-xs leading-relaxed mb-4">
+            The <strong className="text-white">QuotaManager</strong> monitors how much disk space Entropy
+            consumes and automatically evicts old chunks when limits are exceeded. It uses the browser's
+            <code className="text-accent bg-accent/10 px-1 rounded text-[10px] mx-1">navigator.storage.estimate()</code>
+            API for real usage tracking and enforces a configurable hard limit (default: <strong className="text-white">2 GB</strong>).
+          </p>
+
+          {/* Eviction flow */}
+          <div className="flex flex-col items-center gap-2 mb-4">
+            <DiagramBox label="Storage Near Limit?" sub="used + newChunk > limit" color="orange" className="w-full max-w-sm" />
+            <ConnectorArrow label="yes → evict" />
+            <DiagramBox label="LRU Eviction" sub="Sort by lastAccessed ASC, skip pinned" color="accent" className="w-full max-w-sm" />
+            <ConnectorArrow label="delete oldest" />
+            <DiagramBox label="Free Space Recovered" sub="Store new chunk" color="green" className="w-full max-w-sm" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-background/60 rounded-lg border border-border p-3 text-center">
+              <div className="text-lg font-bold text-primary">2 GB</div>
+              <div className="text-[10px] text-muted">Default hard limit</div>
+            </div>
+            <div className="bg-background/60 rounded-lg border border-border p-3 text-center">
+              <div className="text-lg font-bold text-accent">LRU</div>
+              <div className="text-[10px] text-muted">Eviction strategy</div>
+            </div>
+            <div className="bg-background/60 rounded-lg border border-border p-3 text-center">
+              <div className="text-lg font-bold text-emerald-400">Pinned</div>
+              <div className="text-[10px] text-muted">Protected from eviction</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Comparison table */}
+      <div className="panel p-5">
+        <h3 className="text-sm font-bold text-accent mb-4 flex items-center gap-2">
+          <ArrowRightLeft size={14} /> Storage Comparison
+        </h3>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 pr-4 text-muted font-medium">Feature</th>
+                <th className="text-left py-2 pr-4 text-primary font-medium">IndexedDB (Dexie)</th>
+                <th className="text-left py-2 text-emerald-400 font-medium">chrome.storage.local</th>
+              </tr>
+            </thead>
+            <tbody className="text-muted">
+              {[
+                ["Purpose", "Bulk chunk binary data", "Identity, credits, settings"],
+                ["Max Size", "~2 GB (quota managed)", "~10 MB (browser limit)"],
+                ["Data Format", "ArrayBuffer (structured clone)", "JSON-serializable objects"],
+                ["Indexed Queries", "Yes (hash, rootHash, lastAccessed, pinned)", "Key-value only"],
+                ["Persistence", "navigator.storage.persist()", "Always persistent"],
+                ["Access From", "Web app + Extension SW", "Extension only"],
+                ["Eviction", "LRU by QuotaManager", "Never auto-evicted"],
+              ].map(([feature, idb, storage]) => (
+                <tr key={feature} className="border-b border-border/50">
+                  <td className="py-2 pr-4 text-white font-medium">{feature}</td>
+                  <td className="py-2 pr-4">{idb}</td>
+                  <td className="py-2">{storage}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* DevTools tip */}
+      <div className="panel p-5 border-accent/20 bg-accent/[0.02]">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
+            <Eye size={16} className="text-accent" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-accent mb-1">Inspect Your Storage</h4>
+            <p className="text-muted text-xs leading-relaxed">
+              Open DevTools → <strong className="text-white">Application</strong> tab → <strong className="text-white">IndexedDB</strong> →{" "}
+              <code className="text-primary bg-primary/10 px-1 rounded text-[10px]">entropy-chunks</code> to browse stored
+              chunks. Check <strong className="text-white">Storage</strong> → <strong className="text-white">Local Storage</strong> under
+              the extension origin to see identity and credit data. The Settings page also shows a live quota
+              visualization powered by the QuotaManager.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -770,6 +1053,7 @@ export default function HowItWorksPage() {
     transfer: <DataTransferTab />,
     seeding: <WhySeedTab />,
     security: <SecurityTab />,
+    storage: <StorageTab />,
   };
 
   return (

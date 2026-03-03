@@ -28,12 +28,12 @@
 │  ┌─────────────────────────┐          ┌──────────────────────────────────┐  │
 │  │   @entropy/extension    │◄────────►│          @entropy/web            │  │
 │  │                         │ postMsg  │                                  │  │
-│  │  Service Worker         │          │  Feed (kind:1 + kind:7001)      │  │
-│  │  ├─ Relay Manager       │          │  Upload Pipeline                │  │
-│  │  ├─ Signaling Listener  │          │  Inline Media Player (MSE)      │  │
-│  │  ├─ Chunk Server        │          │  Nostr Profile (kind:0)         │  │
-│  │  ├─ Chunk Ingest        │          │  Settings & Quota Manager       │  │
-│  │  └─ Identity Store      │          │  Credit Panel                   │  │
+│  │  Service Worker         │          │  Feed (kind:1 + kind:7001)       │  │
+│  │  ├─ Relay Manager       │          │  Upload Pipeline                 │  │
+│  │  ├─ Signaling Listener  │          │  Inline Media Player (MSE)       │  │
+│  │  ├─ Chunk Server        │          │  Nostr Profile (kind:0)          │  │
+│  │  ├─ Chunk Ingest        │          │  Settings & Quota Manager        │  │
+│  │  └─ Identity Store      │          │  Credit Panel                    │  │
 │  │                         │          │                                  │  │
 │  │  Dashboard / Popup      │          │                                  │  │
 │  └────────────┬────────────┘          └───────────────┬──────────────────┘  │
@@ -52,16 +52,16 @@
 │                    │  Credit Ledger      │                                  │
 │                    │  QuotaManager       │                                  │
 │                    │  IndexedDB Store    │                                  │
-│                    └─────────┬──────────┘                                  │
+│                    └─────────┬──────────┘                                   │
 │                              │                                              │
 └──────────────────────────────┼──────────────────────────────────────────────┘
                                │
               ┌────────────────┼──────────────────┐
               ▼                ▼                  ▼
        ┌────────────┐  ┌────────────┐   ┌──────────────┐
-       │   Nostr     │  │  WebRTC    │   │  STUN/TURN   │
-       │   Relays    │  │  Peers     │   │  Servers     │
-       │ (Metadata)  │  │ (Data P2P) │   │ (ICE)        │
+       │   Nostr    │  │  WebRTC    │   │  STUN/TURN   │
+       │   Relays   │  │  Peers     │   │  Servers     │
+       │ (Metadata) │  │ (Data P2P) │   │ (ICE)        │
        └────────────┘  └────────────┘   └──────────────┘
 ```
 
@@ -206,7 +206,7 @@ The home feed subscribes to Nostr relays and displays both text notes and multim
  │     Image  → <img src={blobUrl}>                     │
  │     Audio  → <audio controls src={blobUrl}>          │
  │     Video  → <video preload="metadata"> (preview)    │
- │              Click ▶ → video.play() inline            │
+ │              Click ▶ → video.play() inline           │
  └──────────────────────────────────────────────────────┘
 ```
 
@@ -270,7 +270,7 @@ Two paths exist for loading media content:
  │                                                      │
  │  1. Read gatekeepers from chunkMap                   │
  │  2. For each gatekeeper:                             │
- │     SignalingChannel.onSignal(myPubkey, callback)     │
+ │     SignalingChannel.onSignal(myPubkey, callback)    │
  │     connectToPeer(peerPubkey):                       │
  │       a. new RTCPeerConnection(createRtcConfig())    │
  │       b. pc.createDataChannel("entropy")             │
@@ -282,13 +282,13 @@ Two paths exist for loading media content:
  │       f. DataChannel opens → ready                   │
  │                                                      │
  │  3. scheduleNextRequests():                          │
- │     Round-robin assign pending chunks to peers        │
+ │     Round-robin assign pending chunks to peers       │
  │     dc.send(encodeChunkRequest({                     │
- │       chunkHash, rootHash, requesterPubkey            │
+ │       chunkHash, rootHash, requesterPubkey           │
  │     }))                                              │
  │                                                      │
- │  4. dc.onmessage (via createChunkReceiver):           │
- │     Reassembles fragmented chunks (64KB fragments)    │
+ │  4. dc.onmessage (via createChunkReceiver):          │
+ │     Reassembles fragmented chunks (64KB fragments)   │
  │     → CHUNK_DATA: verify sha256 → store              │
  │     → CHUNK_ERROR: re-queue chunk                    │
  │                                                      │
@@ -396,7 +396,7 @@ WebRTC connections are established using **Nostr ephemeral events** (kind:20001)
          │  kind:20001 {                    │                              │
          │    type: "offer",                │                              │
          │    p: [seeder_pubkey],           │                              │
-         │    x: [root_hash],              │                              │
+         │    x: [root_hash],               │                              │
          │    content: SDP_offer            │                              │
          │  }                               │                              │
          │ ─────────────────────────────►   │                              │
@@ -418,10 +418,10 @@ WebRTC connections are established using **Nostr ephemeral events** (kind:20001)
          │ ◄══════════════ RTCDataChannel "entropy" opened ══════════════► │
          │                                  │                              │
          │  encodeChunkRequest(hash)        │                              │
-         │ ════════════════════════════════════════════════════════════════►│
+         │ ═══════════════════════════════════════════════════════════════►│
          │                                  │                              │ Lookup in IndexedDB
          │  CHUNK_DATA_HEADER + N×64KB      │                              │ sendChunkOverDataChannel
-         │◄════════════════════════════════════════════════════════════════ │
+         │◄════════════════════════════════════════════════════════════════│
          │                                  │                              │
          │  sha256Hex(data) === expected?   │                              │
          │  ✓ Store chunk                   │                              │
@@ -456,8 +456,8 @@ Chunks are exchanged over WebRTC DataChannels using a **compact binary protocol*
 
  CHUNK_DATA (type=0x02) — used for small chunks (≤64KB)
  ┌──────┬──────────────┬───────────┬─────────────────┐
- │ 0x02 │ chunk_hash   │ data_len  │ chunk_data       │
- │ 1B   │ 32B (SHA256) │ 4B (u32)  │ ≤64KB            │
+ │ 0x02 │ chunk_hash   │ data_len  │ chunk_data      │
+ │ 1B   │ 32B (SHA256) │ 4B (u32)  │ ≤64KB           │
  └──────┴──────────────┴───────────┴─────────────────┘
 
  CHUNK_DATA_HEADER (type=0x04) — used for large chunks (>64KB), followed by N fragments
@@ -513,21 +513,21 @@ Entropy uses a **bandwidth reciprocity system** to incentivize seeding and preve
  │                      CREDIT LIFECYCLE                           │
  │                                                                 │
  │  ┌───────────┐     ┌─────────────┐     ┌────────────────────┐  │
- │  │  Upload    │     │ Proof of    │     │  Credit Ledger     │  │
- │  │  chunk to  │────►│ Upstream    │────►│                    │  │
- │  │  peer B    │     │ (kind:7772) │     │  direction: "up"   │  │
+ │  │  Upload   │     │ Proof of    │     │  Credit Ledger     │  │
+ │  │  chunk to │────►│ Upstream    │────►│                    │  │
+ │  │  peer B   │     │ (kind:7772) │     │  direction: "up"   │  │
  │  └───────────┘     │             │     │  bytes: 5242880    │  │
- │                     │  Signed by  │     │  +5MB balance      │  │
- │                     │  receiver   │     └────────────────────┘  │
- │                     └─────────────┘                             │
- │                                                                 │
+ │                    │  Signed by  │     │  +5MB balance      │  │
+ │                    │  receiver   │     └────────────────────┘  │
+ │                    └─────────────┘                             │
+ │                                                                │
  │  ┌───────────┐     ┌─────────────┐     ┌────────────────────┐  │
- │  │  Download  │     │ Must have   │     │  Credit Ledger     │  │
+ │  │  Download │     │ Must have   │     │  Credit Ledger     │  │
  │  │  chunk    │◄────│ positive    │◄────│                    │  │
- │  │  from peer│     │ balance     │     │  direction: "down"  │  │
+ │  │  from peer│     │ balance     │     │  direction: "down" │  │
  │  └───────────┘     └─────────────┘     │  bytes: 5242880    │  │
- │                                         │  -5MB balance      │  │
- │                                         └────────────────────┘  │
+ │                                        │  -5MB balance      │  │
+ │                                        └────────────────────┘  │
  └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -586,22 +586,22 @@ Users with high upload ratios are eligible for **cold storage custody** — stor
  ┌────────────────────────────────────────────────────────┐
  │  Cold Storage Eligibility                              │
  │                                                        │
- │  ratio ≥ 2.0 AND entryCount > 0 AND uploaded > 0     │
- │     → isEligibleForColdStorage() = true               │
+ │  ratio ≥ 2.0 AND entryCount > 0 AND uploaded > 0       │
+ │     → isEligibleForColdStorage() = true                │
  │                                                        │
- │  Assigned cold chunks:                                │
- │  - ColdChunkAssignment {                              │
- │      chunkHash, rootHash,                             │
- │      assignedAt, expiresAt,                           │
- │      premiumCredits                                   │
- │    }                                                  │
+ │  Assigned cold chunks:                                 │
+ │  - ColdChunkAssignment {                               │
+ │      chunkHash, rootHash,                              │
+ │      assignedAt, expiresAt,                            │
+ │      premiumCredits                                    │
+ │    }                                                   │
  │                                                        │
  │  premiumCredits = days × replicationFactor             │
  │                   × premiumMultiplier                  │
  │                                                        │
- │  Benefits:                                            │
- │  - Priority bandwidth for popular content             │
- │  - Higher download speed tier                         │
+ │  Benefits:                                             │
+ │  - Priority bandwidth for popular content              │
+ │  - Higher download speed tier                          │
  └────────────────────────────────────────────────────────┘
 ```
 
@@ -625,18 +625,18 @@ Users with high upload ratios are eligible for **cold storage custody** — stor
 ### IndexedDB Schema (Dexie.js)
 
 ```
- ┌─────────────────────────────────────────────────────────┐
- │  IndexedDB: "entropy-chunks"                            │
- │                                                         │
+ ┌────────────────────────────────────────────────────────┐
+ │  IndexedDB: "entropy-chunks"                           │
+ │                                                        │
  │  chunks table:                                         │
  │  ┌─────────┬────────────┬──────────┬───────┬─────────┐ │
  │  │ hash    │ data       │ rootHash │ index │ pinned  │ │
- │  │ (PK)   │ Uint8Array │ string   │ num   │ boolean │ │
+ │  │ (PK)    │ Uint8Array │ string   │ num   │ boolean │ │
  │  │ SHA-256 │ ≤5MB       │          │       │         │ │
  │  ├─────────┼────────────┼──────────┼───────┼─────────┤ │
- │  │ lastAccessed: number (timestamp for LRU)           │ │
- │  └────────────────────────────────────────────────────┘ │
- └─────────────────────────────────────────────────────────┘
+ │  │ lastAccessed: number (timestamp for LRU)          │ │
+ │  └───────────────────────────────────────────────────┘ │
+ └────────────────────────────────────────────────────────┘
 ```
 
 ### Quota Manager Flow
@@ -680,12 +680,12 @@ Users with high upload ratios are eligible for **cold storage custody** — stor
  ┌──────────────────────────────────┐
  │ useNostrIdentity hook            │
  │                                  │
- │ 1. Try extension bridge:        │
+ │ 1. Try extension bridge:         │
  │    getExtensionPublicKey()       │
  │    → postMessage GET_PUBLIC_KEY  │
  │    → returns pubkey or null      │
  │                                  │
- │ 2. Fallback to NIP-07:          │
+ │ 2. Fallback to NIP-07:           │
  │    window.nostr.getPublicKey()   │
  │    → returns pubkey              │
  │                                  │
@@ -724,8 +724,8 @@ Users with high upload ratios are eligible for **cold storage custody** — stor
 ## Summary: Complete Upload → View Lifecycle
 
 ```
- ┌─────────┐   chunk    ┌───────────┐  kind:7001  ┌─────────┐
- │  User A │──────────►│ Extension │────────────►│  Nostr  │
+ ┌─────────┐   chunk    ┌───────────┐  kind:7001   ┌─────────┐
+ │  User A │──────────► │ Extension │────────────► │  Nostr  │
  │  (Web)  │  + store   │   (SW)    │  publish     │  Relays │
  └─────────┘  + seed    └─────┬─────┘              └────┬────┘
                               │                         │
