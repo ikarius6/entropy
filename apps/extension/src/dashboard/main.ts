@@ -13,6 +13,7 @@ import {
   removeRuntimeRelay,
   requestColdStorageAssignments,
   requestCreditSummary,
+  requestExportIdentity,
   requestNodeMetrics,
   requestNodeSettings,
   requestNodeStatus,
@@ -36,6 +37,8 @@ const relayUrlInput = document.getElementById("relay-url-input");
 const addRelayButton = document.getElementById("add-relay");
 const relayListElement = document.getElementById("relay-list");
 const relayStatusElement = document.getElementById("relay-status");
+const exportIdentityButton = document.getElementById("export-identity");
+const importIdentityFileInput = document.getElementById("import-identity-file");
 const seedingToggle = document.getElementById("seeding-toggle");
 const seedingStatusElement = document.getElementById("seeding-status");
 const coldStorageStatusElement = document.getElementById("cold-storage-status");
@@ -612,6 +615,72 @@ if (loadPubkeyButton instanceof HTMLButtonElement) {
 if (importKeypairButton instanceof HTMLButtonElement) {
   importKeypairButton.addEventListener("click", () => {
     void importKeypairFromInput();
+  });
+}
+
+async function exportIdentityToFile(): Promise<void> {
+  setKeyStatus("Exporting identity...");
+
+  try {
+    const identity = await requestExportIdentity();
+    const json = JSON.stringify({
+      pubkey: identity.pubkey,
+      privkey: identity.privkey,
+      exportedAt: new Date().toISOString()
+    }, null, 2);
+
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `entropy-identity-${identity.pubkey.slice(0, 8)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+
+    setKeyStatus(`Public key: ${identity.pubkey} (exported)`);
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown export error.";
+    setKeyStatus(`Export failed: ${message}`);
+  }
+}
+
+async function importIdentityFromFile(file: File): Promise<void> {
+  setKeyStatus("Importing identity from file...");
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text) as { privkey?: string };
+
+    if (typeof parsed.privkey !== "string" || parsed.privkey.length === 0) {
+      setKeyStatus("Invalid identity file: missing private key.");
+      return;
+    }
+
+    const payload = await importRuntimeKeypair({ privkey: parsed.privkey });
+    latestPubkey = payload.pubkey;
+    setKeyStatus(`Public key: ${payload.pubkey} (imported from file)`);
+    await refresh();
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Unknown import error.";
+    setKeyStatus(`Import from file failed: ${message}`);
+  }
+}
+
+if (exportIdentityButton instanceof HTMLButtonElement) {
+  exportIdentityButton.addEventListener("click", () => {
+    void exportIdentityToFile();
+  });
+}
+
+if (importIdentityFileInput instanceof HTMLInputElement) {
+  importIdentityFileInput.addEventListener("change", () => {
+    const file = importIdentityFileInput.files?.[0];
+    if (file) {
+      void importIdentityFromFile(file);
+      importIdentityFileInput.value = "";
+    }
   });
 }
 

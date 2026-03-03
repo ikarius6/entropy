@@ -101,6 +101,11 @@ export async function getPublicKey(): Promise<string> {
   return identity.pubkey;
 }
 
+export async function exportIdentity(): Promise<NostrKeypair> {
+  const identity = await getOrCreateKeypair();
+  return cloneIdentity(identity);
+}
+
 export async function signNostrEvent(draft: NostrEventDraft): Promise<NostrEvent> {
   const identity = await getOrCreateKeypair();
   return signEvent(draft, identity.privkey);

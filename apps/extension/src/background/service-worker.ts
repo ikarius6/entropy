@@ -26,12 +26,13 @@ import {
   type NodeSettingsPayload,
   type NodeStatusPayload,
   type PublicKeyPayload,
+  type ExportIdentityPayload,
   type SignedEventPayload,
   type ChunkDataPayload
 } from "../shared/messaging";
 import { hasDelegatedChunks, storeChunkPayload } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
-import { getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
+import { exportIdentity, getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
 import { startP2PSeeding, fetchChunkP2P } from "./p2p-bridge";
 import type { PeerChunkResult } from "./p2p-bridge";
 
@@ -146,6 +147,13 @@ function pubkeyResponse(
   payload: PublicKeyPayload
 ): EntropyRuntimeResponse {
   return { ok: true, requestId, type, payload };
+}
+
+function exportIdentityResponse(
+  requestId: string,
+  payload: ExportIdentityPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type: "EXPORT_IDENTITY", payload };
 }
 
 function nodeSettingsResponse(
@@ -646,6 +654,11 @@ browser.runtime.onMessage.addListener(
           case "GET_PUBLIC_KEY": {
             const pubkey = await getPublicKey();
             return pubkeyResponse(message.requestId, message.type, { pubkey });
+          }
+
+          case "EXPORT_IDENTITY": {
+            const identity = await exportIdentity();
+            return exportIdentityResponse(message.requestId, identity);
           }
 
           case "GET_CREDIT_SUMMARY": {

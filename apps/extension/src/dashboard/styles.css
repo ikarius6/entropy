@@ -283,6 +283,20 @@ body {
   color: #9eead6;
 }
 
+.file-import-label {
+  display: inline-block;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #66b8ff, #8dffd9);
+  color: #081123;
+  font-size: inherit;
+  line-height: normal;
+  text-align: center;
+}
+
 button {
   border: 0;
   border-radius: 999px;

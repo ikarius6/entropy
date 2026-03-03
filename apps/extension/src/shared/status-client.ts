@@ -3,6 +3,7 @@ import browser from "webextension-polyfill";
 import {
   isColdStorageStatusPayload,
   isCreditSummaryPayload,
+  isExportIdentityPayload,
   isNodeMetricsPayload,
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
@@ -13,6 +14,7 @@ import {
   isNodeStatusPayload,
   type CreditSummaryPayload,
   type ColdStorageStatusPayload,
+  type ExportIdentityPayload,
   type ImportKeypairPayload,
   type NodeMetricsPayload,
   type ReleaseColdAssignmentPayload,
@@ -133,6 +135,34 @@ export async function importRuntimeKeypair(payload: ImportKeypairPayload): Promi
 
   if (!response.ok || !isPublicKeyPayload(response.payload)) {
     throw new Error(response.ok ? "Missing import-keypair payload." : response.error);
+  }
+
+  return response.payload;
+}
+
+export async function requestExportIdentity(): Promise<ExportIdentityPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "EXPORT_IDENTITY"
+  });
+
+  if (!isEntropyRuntimeResponse(response)) {
+    throw new Error("Invalid runtime response payload received.");
+  }
+
+  if (response.requestId !== requestId) {
+    throw new Error("Mismatched extension export-identity response correlation id.");
+  }
+
+  if (response.type !== "EXPORT_IDENTITY") {
+    throw new Error("Unexpected runtime response type for export-identity request.");
+  }
+
+  if (!response.ok || !isExportIdentityPayload(response.payload)) {
+    throw new Error(response.ok ? "Missing export-identity payload." : response.error);
   }
 
   return response.payload;

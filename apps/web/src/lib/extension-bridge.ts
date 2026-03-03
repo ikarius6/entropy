@@ -3,6 +3,7 @@ import {
   ENTROPY_WEB_SOURCE,
   isCreditSummaryPayload,
   isColdStorageStatusPayload,
+  isExportIdentityPayload,
   isNodeMetricsPayload,
   isCheckLocalChunksResultPayload,
   isEntropyExtensionResponseEvent,
@@ -14,6 +15,7 @@ import {
   type CreditSummaryPayload,
   type CheckLocalChunksResultPayload,
   type DelegateSeedingPayload,
+  type ExportIdentityPayload,
   type ImportKeypairPayload,
   type EntropyRuntimeMessage,
   type NodeSettingsPayload,
@@ -34,6 +36,7 @@ export type {
   ColdStorageStatusPayload,
   CreditSummaryPayload,
   DelegateSeedingPayload,
+  ExportIdentityPayload,
   ImportKeypairPayload,
   NodeSettingsPayload,
   NodeStatusPayload,
@@ -59,6 +62,7 @@ function buildNoPayloadMessage(
     | "GET_NODE_SETTINGS"
     | "GET_COLD_STORAGE_ASSIGNMENTS"
     | "GET_NODE_METRICS"
+    | "EXPORT_IDENTITY"
 ): EntropyRuntimeMessage {
   return { source: ENTROPY_WEB_SOURCE, requestId, type };
 }
@@ -233,6 +237,11 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<NodeMetricsPayload>;
 export function sendExtensionRequest(
+  type: "EXPORT_IDENTITY",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<ExportIdentityPayload>;
+export function sendExtensionRequest(
   type: "RELEASE_COLD_ASSIGNMENT",
   payload: ReleaseColdAssignmentPayload,
   timeoutMs?: number
@@ -248,7 +257,7 @@ export function sendExtensionRequest(
     | SetSeedingActivePayload
     | ReleaseColdAssignmentPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -355,6 +364,14 @@ export function sendExtensionRequest(
     );
   }
 
+  if (type === "EXPORT_IDENTITY") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isExportIdentityPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
   return sendBridgeMessage(
     buildNoPayloadMessage(requestId, type as "GET_NODE_STATUS" | "HEARTBEAT" | "GET_CREDIT_SUMMARY" | "GET_PUBLIC_KEY" | "GET_NODE_SETTINGS"),
     (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
@@ -404,6 +421,10 @@ export function releaseColdAssignment(payload: ReleaseColdAssignmentPayload): Pr
 
 export function getNodeMetrics(): Promise<NodeMetricsPayload> {
   return sendExtensionRequest("GET_NODE_METRICS");
+}
+
+export function exportIdentity(): Promise<ExportIdentityPayload> {
+  return sendExtensionRequest("EXPORT_IDENTITY");
 }
 
 export function checkLocalChunks(hashes: string[], timeoutMs = 3000): Promise<CheckLocalChunksResultPayload> {

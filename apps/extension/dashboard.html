@@ -21,6 +21,11 @@
           <input id="import-privkey" type="password" placeholder="64-char hex private key" />
           <button id="import-keypair" type="button">Import</button>
         </div>
+        <div class="settings-row" style="margin-top: 0.5rem;">
+          <button id="export-identity" type="button">Export Identity</button>
+          <label class="file-import-label" for="import-identity-file">Import from File</label>
+          <input id="import-identity-file" type="file" accept=".json" style="display:none" />
+        </div>
         <p id="key-status">Public key: loading...</p>
       </section>
 

@@ -55,6 +55,11 @@ export interface ImportKeypairPayload {
   privkey: string;
 }
 
+export interface ExportIdentityPayload {
+  pubkey: string;
+  privkey: string;
+}
+
 export interface GetChunkPayload {
   hash: string;
   rootHash?: string;
@@ -189,6 +194,7 @@ export type EntropyRuntimePayload =
   | CreditSummaryPayload
   | NodeMetricsPayload
   | PublicKeyPayload
+  | ExportIdentityPayload
   | NodeSettingsPayload
   | SignedEventPayload
   | ChunkDataPayload
@@ -295,6 +301,11 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "CHECK_LOCAL_CHUNKS";
       payload: CheckLocalChunksPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "EXPORT_IDENTITY";
     };
 
 export type EntropyRuntimeResponse =
@@ -321,6 +332,12 @@ export type EntropyRuntimeResponse =
       requestId: string;
       type: "IMPORT_KEYPAIR" | "GET_PUBLIC_KEY";
       payload: PublicKeyPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
+      type: "EXPORT_IDENTITY";
+      payload: ExportIdentityPayload;
     }
   | {
       ok: true;
@@ -413,7 +430,8 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "GET_COLD_STORAGE_ASSIGNMENTS" ||
     value === "RELEASE_COLD_ASSIGNMENT" ||
     value === "GET_NODE_METRICS" ||
-    value === "CHECK_LOCAL_CHUNKS"
+    value === "CHECK_LOCAL_CHUNKS" ||
+    value === "EXPORT_IDENTITY"
   );
 }
 
@@ -627,6 +645,19 @@ export function isPublicKeyPayload(value: unknown): value is PublicKeyPayload {
   return typeof value.pubkey === "string" && value.pubkey.length > 0;
 }
 
+export function isExportIdentityPayload(value: unknown): value is ExportIdentityPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.pubkey === "string" &&
+    value.pubkey.length > 0 &&
+    typeof value.privkey === "string" &&
+    value.privkey.length > 0
+  );
+}
+
 export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntimeMessage {
   if (
     !isRecord(value) ||
@@ -690,6 +721,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
     return isPublicKeyPayload(payload);
   }
 
+  if (requestType === "EXPORT_IDENTITY") {
+    return isExportIdentityPayload(payload);
+  }
+
   if (requestType === "GET_CHUNK") {
     // null means chunk not found — valid response
     return payload === null || payload === undefined || isRecord(payload);
@@ -730,6 +765,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
 
     if (value.type === "IMPORT_KEYPAIR" || value.type === "GET_PUBLIC_KEY") {
       return isPublicKeyPayload(value.payload);
+    }
+
+    if (value.type === "EXPORT_IDENTITY") {
+      return isExportIdentityPayload(value.payload);
     }
 
     if (

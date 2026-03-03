@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useQuotaManager } from "../hooks/useQuotaManager";
 import { useToast } from "../components/ui/Toast";
 import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil } from "lucide-react";
+import { exportIdentity, importKeypair } from "../lib/extension-bridge";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload } from "lucide-react";
 
 export default function SettingsPage() {
   const { pubkey, relayUrls, initRelays } = useEntropyStore();
@@ -16,6 +17,8 @@ export default function SettingsPage() {
   
   const [relaysText, setRelaysText] = useState(relayUrls.join("\n"));
   const [quotaGB, setQuotaGB] = useState(quotaBytes / (1024 * 1024 * 1024));
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveRelays = async () => {
     try {
@@ -43,6 +46,55 @@ export default function SettingsPage() {
       success("Cache cleared", `Freed ${freedMB} MB of local storage.`);
     } catch (err) {
       error("Failed to clear cache", err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleExportIdentity = async () => {
+    setIdentityBusy(true);
+    try {
+      const identity = await exportIdentity();
+      const json = JSON.stringify({
+        pubkey: identity.pubkey,
+        privkey: identity.privkey,
+        exportedAt: new Date().toISOString()
+      }, null, 2);
+
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `entropy-identity-${identity.pubkey.slice(0, 8)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      success("Identity exported", "Your identity file has been downloaded. Keep it safe!");
+    } catch (err) {
+      error("Export failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      setIdentityBusy(false);
+    }
+  };
+
+  const handleImportIdentity = async (file: File) => {
+    setIdentityBusy(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as { privkey?: string };
+
+      if (typeof parsed.privkey !== "string" || parsed.privkey.length === 0) {
+        error("Invalid file", "The selected file does not contain a valid Entropy identity.");
+        return;
+      }
+
+      const result = await importKeypair({ privkey: parsed.privkey });
+      success("Identity imported", `Switched to pubkey ${result.pubkey.slice(0, 16)}…`);
+    } catch (err) {
+      error("Import failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      setIdentityBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -125,6 +177,44 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {pubkey && (
+          <div className="border-t border-border pt-4 mt-2">
+            <h3 className="text-sm font-semibold text-muted mb-3">Migrate Identity</h3>
+            <p className="text-xs text-muted mb-3">
+              Export your identity to a JSON file to migrate it to another browser or computer.
+              Keep the exported file safe — it contains your private key.
+            </p>
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={handleExportIdentity}
+                disabled={identityBusy}
+                className="flex items-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+              >
+                <Download size={16} />
+                Export Identity
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={identityBusy}
+                className="flex items-center gap-2 bg-white/10 text-white hover:bg-white/20 border border-white/10 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+              >
+                <Upload size={16} />
+                Import from File
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportIdentity(file);
+                }}
+              />
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Network / Relays Section */}
