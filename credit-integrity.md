@@ -212,3 +212,37 @@ function isLegitimateCredit(entry: CreditEntry): boolean {
 - Si el usuario manipula `creditLedgerEntries` en storage → ledger se resetea a 0
 - `coldStorageEligible` se bloquea si la cadena está corrupta
 - Trust score y receipt-verified visibles en popup, dashboard y web app
+
+---
+
+## Pendiente: Migración de créditos entre navegadores
+
+Actualmente los créditos se pierden al migrar identidad a otro navegador. El export/import de identidad solo incluye el keypair, no el ledger (`creditLedgerEntries` en `browser.storage.local`).
+
+### Opción A — Export/import del ledger junto con la identidad
+
+**Esfuerzo:** Bajo (extender el export/import existente)
+
+- Al exportar identidad, incluir `creditLedgerEntries` en el JSON
+- Al importar, escribir entries en storage y verificar con `verifyIntegrityChain()`
+- Si la cadena está intacta → aceptar; si no → descartar (previene inyección de créditos falsos)
+- Entries con `receiptSignature` real (Schnorr 128-hex) son criptográficamente verificables post-migración
+
+**Riesgo:** El usuario puede copiar el JSON a múltiples navegadores y "clonar" créditos. La hash chain detecta edición pero no duplicación.
+
+**Mitigación parcial:** Los peer-signed receipts permiten que peers detecten si dos nodos distintos presentan los mismos receipts (futura Fase D de reputación distribuida).
+
+### Opción B — Backup del ledger como evento Nostr (on-chain)
+
+**Esfuerzo:** Medio-alto (nuevo kind Nostr + lógica de sincronización)
+
+- El usuario firma y publica un resumen compacto de su ledger en relays Nostr (kind específico)
+- Al migrar: importar identidad → buscar último evento de backup en relays → restaurar ledger verificando firma del propio usuario
+- No requiere manejar archivos manualmente
+- El backup es firmado por el usuario y verificable por terceros
+
+**Riesgo:** El mismo problema de duplicación aplica. Un usuario podría restaurar el mismo backup en N navegadores.
+
+### Recomendación
+
+Empezar por **Opción A** (trivial de implementar). La Opción B es más elegante pero requiere diseño de un nuevo kind Nostr + sync. El problema de duplicación en ambos casos se resuelve definitivamente con reputación distribuida (Fase D futura).
