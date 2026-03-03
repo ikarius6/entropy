@@ -8,8 +8,10 @@ import {
   computeIntegrityHash,
   computeIntegrityChain,
   verifyIntegrityChain,
-  auditCredits
+  auditCredits,
+  type AuditOptions
 } from "../credits/credit-integrity";
+import type { ReceiptEventLike } from "../credits/proof-of-upstream";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -477,5 +479,91 @@ describe("auditCredits", () => {
 
     expect(result.suspiciousEntries).toBe(1);
     expect(result.auditedEntries[0].status).toBe("suspicious");
+  });
+
+  // -------------------------------------------------------------------------
+  // Receipt signature verification (Capa 3)
+  // -------------------------------------------------------------------------
+
+  it("counts receiptVerifiedEntries when verifySignature is provided and sig is valid", async () => {
+    const chunkHash = "aaaa".repeat(16);
+    const rootHash = "bbbb".repeat(16);
+    const realSig = "ab".repeat(64); // 128-char hex = valid Schnorr signature format
+
+    const entries = await computeIntegrityChain([
+      makeEntry({ id: "e1", direction: "up", chunkHash, rootHash, bytes: 1024, receiptSignature: realSig })
+    ]);
+
+    const store = createChunkStore([makeStoredChunk(chunkHash, rootHash, 1024)]);
+    const alwaysValid = (_event: ReceiptEventLike) => true;
+    const result = await auditCredits(entries, store, { verifySignature: alwaysValid });
+
+    expect(result.receiptVerifiedEntries).toBe(1);
+    expect(result.auditedEntries[0].reason).toContain("receipt signature verified");
+  });
+
+  it("receiptVerifiedEntries is 0 when signature verification fails", async () => {
+    const chunkHash = "aaaa".repeat(16);
+    const rootHash = "bbbb".repeat(16);
+    const realSig = "ab".repeat(64);
+
+    const entries = await computeIntegrityChain([
+      makeEntry({ id: "e1", direction: "up", chunkHash, rootHash, bytes: 1024, receiptSignature: realSig })
+    ]);
+
+    const store = createChunkStore([makeStoredChunk(chunkHash, rootHash, 1024)]);
+    const alwaysInvalid = (_event: ReceiptEventLike) => false;
+    const result = await auditCredits(entries, store, { verifySignature: alwaysInvalid });
+
+    expect(result.receiptVerifiedEntries).toBe(0);
+    expect(result.auditedEntries[0].status).toBe("verified"); // still verified by chunk
+    expect(result.auditedEntries[0].reason).not.toContain("receipt");
+  });
+
+  it("receiptVerifiedEntries is 0 for legacy receiptSignatures (non-hex)", async () => {
+    const chunkHash = "aaaa".repeat(16);
+    const rootHash = "bbbb".repeat(16);
+
+    const entries = await computeIntegrityChain([
+      makeEntry({ id: "e1", direction: "up", chunkHash, rootHash, bytes: 1024, receiptSignature: "p2p-fetch" })
+    ]);
+
+    const store = createChunkStore([makeStoredChunk(chunkHash, rootHash, 1024)]);
+    const alwaysValid = (_event: ReceiptEventLike) => true;
+    const result = await auditCredits(entries, store, { verifySignature: alwaysValid });
+
+    expect(result.receiptVerifiedEntries).toBe(0); // legacy sig, not a real receipt
+  });
+
+  it("receiptVerifiedEntries is 0 when no verifySignature option provided", async () => {
+    const chunkHash = "aaaa".repeat(16);
+    const rootHash = "bbbb".repeat(16);
+    const realSig = "ab".repeat(64);
+
+    const entries = await computeIntegrityChain([
+      makeEntry({ id: "e1", direction: "up", chunkHash, rootHash, bytes: 1024, receiptSignature: realSig })
+    ]);
+
+    const store = createChunkStore([makeStoredChunk(chunkHash, rootHash, 1024)]);
+    const result = await auditCredits(entries, store); // no verifySignature
+
+    expect(result.receiptVerifiedEntries).toBe(0);
+  });
+
+  it("handles verifySignature that throws without crashing", async () => {
+    const chunkHash = "aaaa".repeat(16);
+    const rootHash = "bbbb".repeat(16);
+    const realSig = "ab".repeat(64);
+
+    const entries = await computeIntegrityChain([
+      makeEntry({ id: "e1", direction: "up", chunkHash, rootHash, bytes: 1024, receiptSignature: realSig })
+    ]);
+
+    const store = createChunkStore([makeStoredChunk(chunkHash, rootHash, 1024)]);
+    const throwingVerifier = (_event: ReceiptEventLike): boolean => { throw new Error("boom"); };
+    const result = await auditCredits(entries, store, { verifySignature: throwingVerifier });
+
+    expect(result.receiptVerifiedEntries).toBe(0);
+    expect(result.verifiedEntries).toBe(1); // still verified by chunk
   });
 });

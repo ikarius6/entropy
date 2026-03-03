@@ -7,7 +7,8 @@ import {
   logger,
   type RelayPool,
   type SignEventFn,
-  type ChunkRequestMessage
+  type ChunkRequestMessage,
+  type TransferReceiptEvent
 } from "@entropy/core";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,9 @@ export interface PeerChunkResult {
   rootHash: string;
   data: ArrayBuffer;
   peerPubkey: string;
+  receiptSignature?: string;
+  receiptEventId?: string;
+  receiptPubkey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,8 +344,38 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
       }, REQUEST_TIMEOUT_MS);
     };
 
-    // Handle incoming chunk data
+    // Handle incoming chunk data + transfer receipt
     const receiver = createChunkReceiver();
+    let pendingReceipt: TransferReceiptEvent | null = null;
+    let chunkDataBuffer: ArrayBuffer | null = null;
+    let receiptTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    function resolveWithResult(): void {
+      if (settled || !chunkDataBuffer) return;
+      settled = true;
+      clearTimeout(connectTimeout);
+      if (receiptTimeout) { clearTimeout(receiptTimeout); receiptTimeout = null; }
+
+      const result: PeerChunkResult = {
+        hash: chunkHash,
+        rootHash,
+        data: chunkDataBuffer,
+        peerPubkey: gatekeeperPubkey
+      };
+
+      if (pendingReceipt) {
+        result.receiptSignature = pendingReceipt.sig;
+        result.receiptEventId = pendingReceipt.id;
+        result.receiptPubkey = pendingReceipt.pubkey;
+        logger.log("[peer-fetch] \u2705 chunk resolved with signed receipt");
+      } else {
+        logger.log("[peer-fetch] chunk resolved without receipt");
+      }
+
+      cleanup();
+      resolve(result);
+    }
+
     dc.onmessage = (event: MessageEvent) => {
       if (settled) return;
       if (!(event.data instanceof ArrayBuffer)) return;
@@ -349,6 +383,15 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
       try {
         const message = receiver.receive(event.data);
         if (!message) return;
+
+        if (message.type === "TRANSFER_RECEIPT" && message.chunkHash === chunkHash) {
+          logger.log("[peer-fetch] received transfer receipt for", chunkHash.slice(0, 12) + "\u2026");
+          pendingReceipt = message.receipt;
+          if (chunkDataBuffer) {
+            resolveWithResult();
+          }
+          return;
+        }
 
         if (message.type === "CHUNK_DATA" && message.chunkHash === chunkHash) {
           void sha256Hex(new Uint8Array(message.data))
@@ -358,11 +401,11 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
               if (actualHash !== chunkHash) {
                 logger.warn(
                   "[peer-fetch] hash mismatch from peer",
-                  gatekeeperPubkey.slice(0, 8) + "…",
+                  gatekeeperPubkey.slice(0, 8) + "\u2026",
                   "expected:",
-                  chunkHash.slice(0, 12) + "…",
+                  chunkHash.slice(0, 12) + "\u2026",
                   "actual:",
-                  actualHash.slice(0, 12) + "…"
+                  actualHash.slice(0, 12) + "\u2026"
                 );
 
                 void Promise.resolve(onPeerFailedVerification?.(gatekeeperPubkey)).catch((callbackErr) => {
@@ -376,9 +419,7 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
                 return;
               }
 
-              settled = true;
-              clearTimeout(connectTimeout);
-              logger.log("[peer-fetch] received chunk", chunkHash.slice(0, 12) + "…", message.data.byteLength, "bytes");
+              logger.log("[peer-fetch] received chunk", chunkHash.slice(0, 12) + "\u2026", message.data.byteLength, "bytes");
 
               void Promise.resolve(onPeerTransferSuccess?.(gatekeeperPubkey, message.data.byteLength)).catch(
                 (callbackErr) => {
@@ -386,13 +427,19 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
                 }
               );
 
-              cleanup();
-              resolve({
-                hash: chunkHash,
-                rootHash,
-                data: message.data,
-                peerPubkey: gatekeeperPubkey
-              });
+              chunkDataBuffer = message.data;
+
+              if (pendingReceipt) {
+                resolveWithResult();
+              } else {
+                // Wait briefly for receipt before resolving without it
+                receiptTimeout = setTimeout(() => {
+                  receiptTimeout = null;
+                  if (!settled) {
+                    resolveWithResult();
+                  }
+                }, 500);
+              }
             })
             .catch((hashErr) => {
               if (settled) return;

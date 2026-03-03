@@ -8,6 +8,7 @@ const MESSAGE_TYPE_CHUNK_DATA_HEADER = 4;
 
 export const MESSAGE_TYPE_CUSTODY_CHALLENGE = 0x05;
 export const MESSAGE_TYPE_CUSTODY_PROOF = 0x06;
+export const MESSAGE_TYPE_TRANSFER_RECEIPT = 0x07;
 
 const HASH_BYTES = 32;
 const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES + 2;
@@ -16,6 +17,7 @@ const ERROR_BYTES = 1 + HASH_BYTES + 1;
 const CHUNK_DATA_HEADER_BYTES = 1 + HASH_BYTES + 4;
 const CUSTODY_CHALLENGE_BYTES = 1 + HASH_BYTES + 4 + 4;
 const CUSTODY_PROOF_BYTES = 1 + HASH_BYTES + HASH_BYTES;
+const TRANSFER_RECEIPT_MIN_BYTES = 1 + HASH_BYTES + 4;
 
 const ERROR_REASON_CODES = {
   NOT_FOUND: 0,
@@ -67,12 +69,29 @@ export type CustodyProofMessage = {
   sliceHash: string;
 };
 
+export interface TransferReceiptEvent {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  tags: string[][];
+  content: string;
+  sig: string;
+}
+
+export type TransferReceiptMessage = {
+  type: "TRANSFER_RECEIPT";
+  chunkHash: string;
+  receipt: TransferReceiptEvent;
+};
+
 export type ChunkTransferMessage =
   | ChunkRequestMessage
   | ChunkResponseMessage
   | ChunkErrorMessage
   | CustodyChallengeMessage
-  | CustodyProofMessage;
+  | CustodyProofMessage
+  | TransferReceiptMessage;
 
 function normalizeHash(hash: string, label: string): string {
   const normalized = hash.trim().toLowerCase();
@@ -256,6 +275,69 @@ export function decodeCustodyProof(buffer: ArrayBuffer): CustodyProofMessage {
   };
 }
 
+export function encodeTransferReceipt(message: TransferReceiptMessage): ArrayBuffer {
+  const json = JSON.stringify(message.receipt);
+  const jsonBytes = new TextEncoder().encode(json);
+  const output = new Uint8Array(TRANSFER_RECEIPT_MIN_BYTES + jsonBytes.byteLength);
+  const view = new DataView(output.buffer);
+
+  output[0] = MESSAGE_TYPE_TRANSFER_RECEIPT;
+
+  let offset = 1;
+  offset = writeHash(output, offset, message.chunkHash, "chunkHash");
+
+  view.setUint32(offset, jsonBytes.byteLength, false);
+  offset += 4;
+  output.set(jsonBytes, offset);
+
+  return output.buffer;
+}
+
+export function decodeTransferReceipt(buffer: ArrayBuffer): TransferReceiptMessage {
+  const input = new Uint8Array(buffer);
+
+  if (input.byteLength < TRANSFER_RECEIPT_MIN_BYTES) {
+    throw new Error("Transfer receipt message is truncated.");
+  }
+
+  if (input[0] !== MESSAGE_TYPE_TRANSFER_RECEIPT) {
+    throw new Error(`Expected transfer receipt message type ${MESSAGE_TYPE_TRANSFER_RECEIPT}.`);
+  }
+
+  let offset = 1;
+  const chunkHashResult = readHash(input, offset);
+  offset = chunkHashResult.nextOffset;
+
+  const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
+  const jsonLength = view.getUint32(offset, false);
+  offset += 4;
+
+  const endOffset = offset + jsonLength;
+
+  if (endOffset > input.byteLength) {
+    throw new Error("Transfer receipt message has an invalid JSON payload length.");
+  }
+
+  const jsonStr = new TextDecoder().decode(input.subarray(offset, endOffset));
+  const receipt = JSON.parse(jsonStr) as TransferReceiptEvent;
+
+  if (
+    typeof receipt.id !== "string" ||
+    typeof receipt.pubkey !== "string" ||
+    typeof receipt.sig !== "string" ||
+    typeof receipt.kind !== "number" ||
+    !Array.isArray(receipt.tags)
+  ) {
+    throw new Error("Transfer receipt JSON is malformed.");
+  }
+
+  return {
+    type: "TRANSFER_RECEIPT",
+    chunkHash: chunkHashResult.hash,
+    receipt
+  };
+}
+
 export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMessage {
   const input = new Uint8Array(buffer);
 
@@ -355,6 +437,10 @@ export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMe
 
   if (type === MESSAGE_TYPE_CUSTODY_PROOF) {
     return decodeCustodyProof(buffer);
+  }
+
+  if (type === MESSAGE_TYPE_TRANSFER_RECEIPT) {
+    return decodeTransferReceipt(buffer);
   }
 
   throw new Error(`Unknown chunk transfer message type: ${type}.`);

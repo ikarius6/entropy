@@ -1,6 +1,11 @@
 import { sha256Hex } from "../crypto/hash";
 import type { CreditEntry } from "./ledger";
 import type { ChunkStore } from "../storage/chunk-store";
+import {
+  ENTROPY_UPSTREAM_RECEIPT_KIND,
+  type ReceiptEventLike,
+  type ReceiptSignatureVerifier
+} from "./proof-of-upstream";
 
 // ---------------------------------------------------------------------------
 // Hash-chain integrity (Capa 1)
@@ -115,13 +120,46 @@ export interface CreditAuditResult {
   verifiedEntries: number;
   unverifiableEntries: number;
   suspiciousEntries: number;
+  receiptVerifiedEntries: number;
   auditedEntries: AuditedEntry[];
   trustScore: number;
 }
 
+export interface AuditOptions {
+  verifySignature?: ReceiptSignatureVerifier;
+}
+
+function isRealReceiptSignature(sig: string): boolean {
+  return sig.length === 128 && /^[0-9a-f]{128}$/.test(sig);
+}
+
+function buildReceiptEventForVerification(
+  entry: CreditEntry
+): ReceiptEventLike | null {
+  if (!isRealReceiptSignature(entry.receiptSignature)) {
+    return null;
+  }
+
+  return {
+    id: "",
+    pubkey: entry.peerPubkey,
+    created_at: entry.timestamp,
+    kind: ENTROPY_UPSTREAM_RECEIPT_KIND,
+    content: "",
+    tags: [
+      ["p", entry.peerPubkey],
+      ["x", entry.chunkHash],
+      ["bytes", String(entry.bytes)],
+      ["receipt", String(entry.timestamp)]
+    ],
+    sig: entry.receiptSignature
+  };
+}
+
 export async function auditCredits(
   entries: CreditEntry[],
-  chunkStore: ChunkStore
+  chunkStore: ChunkStore,
+  options: AuditOptions = {}
 ): Promise<CreditAuditResult> {
   const integrity = await verifyIntegrityChain(entries);
 
@@ -129,6 +167,7 @@ export async function auditCredits(
   let verifiedCount = 0;
   let unverifiableCount = 0;
   let suspiciousCount = 0;
+  let receiptVerifiedCount = 0;
 
   for (const entry of entries) {
     if (entry.direction === "down") {
@@ -191,10 +230,30 @@ export async function auditCredits(
       continue;
     }
 
+    // Receipt signature verification (Capa 3)
+    let receiptValid = false;
+    if (options.verifySignature) {
+      const receiptEvent = buildReceiptEventForVerification(entry);
+      if (receiptEvent) {
+        try {
+          receiptValid = options.verifySignature(receiptEvent);
+          if (receiptValid) {
+            receiptVerifiedCount++;
+          }
+        } catch {
+          receiptValid = false;
+        }
+      }
+    }
+
+    const reason = receiptValid
+      ? "Chunk exists, size matches, and receipt signature verified."
+      : "Chunk exists and size matches declared bytes.";
+
     auditedEntries.push({
       entry,
       status: "verified",
-      reason: "Chunk exists and size matches declared bytes."
+      reason
     });
     verifiedCount++;
   }
@@ -210,6 +269,7 @@ export async function auditCredits(
     verifiedEntries: verifiedCount,
     unverifiableEntries: unverifiableCount,
     suspiciousEntries: suspiciousCount,
+    receiptVerifiedEntries: receiptVerifiedCount,
     auditedEntries,
     trustScore
   };

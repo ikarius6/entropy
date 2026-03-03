@@ -607,8 +607,8 @@ browser.runtime.onMessage.addListener(
                     bytes: peerResult.data.byteLength,
                     chunkHash: peerResult.hash,
                     rootHash: peerResult.rootHash,
-                    receiptSignature: "p2p-fetch",
-                    timestamp: Date.now(),
+                    receiptSignature: peerResult.receiptSignature ?? "p2p-fetch",
+                    timestamp: Math.floor(Date.now() / 1000),
                   });
                 } catch (creditErr) {
                   logger.warn("[GET_CHUNK] failed to record download credit:", creditErr);

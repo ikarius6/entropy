@@ -105,7 +105,9 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
             options.onChunkServed?.(chunkHash, peerPubkey, bytes);
           },
           {
-            authorizeRequest: options.authorizeChunkRequest
+            authorizeRequest: options.authorizeChunkRequest,
+            signEvent: options.signEvent,
+            myPubkey: options.myPubkey
           }
         );
       },

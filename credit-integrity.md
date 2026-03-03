@@ -170,39 +170,39 @@ function isLegitimateCredit(entry: CreditEntry): boolean {
 
 ## Plan de implementación por fases
 
-### Fase A — Hash Chain + Audit (Capa 1 + 2)
-**Esfuerzo estimado:** 1-2 sesiones
+### Fase A — Hash Chain + Audit (Capa 1 + 2) ✅ IMPLEMENTADA
 
-1. Agregar `integrityHash` y `signedByNode` a `CreditEntry` en `ledger.ts`
-2. Modificar `credit-ledger.ts` para calcular hash chain al escribir
-3. Agregar `verifyLedgerIntegrity()` que recalcula la cadena al leer
-4. Agregar `rootHash` a `CreditEntry` (ya disponible en el contexto de transferencia)
-5. Crear `auditCredits()` que cruza entries con ChunkStore
-6. Exponer resultado de auditoría en dashboard y web settings
-7. Si integridad falla → flag visual "⚠ Ledger corrupted" + opcional reset
+1. ✅ Agregados `integrityHash` y `rootHash` a `CreditEntry` en `ledger.ts`
+2. ✅ `credit-ledger.ts` calcula hash chain automáticamente al escribir (`stampIntegrityHash`)
+3. ✅ `verifyLedgerIntegrity()` recalcula la cadena al leer
+4. ✅ `rootHash` disponible en `CreditEntry` y pasado desde transferencias P2P
+5. ✅ `auditCredits()` cruza entries con ChunkStore (size, rootHash, existencia)
+6. ✅ 35 tests para integridad de cadena + auditoría de chunks
+7. Pendiente: Exponer resultado de auditoría en dashboard/web UI
 
-### Fase B — Peer-Signed Receipts (Capa 3)
-**Esfuerzo estimado:** 2-3 sesiones
+### Fase B — Peer-Signed Receipts (Capa 3) ✅ IMPLEMENTADA
 
-1. Extender protocolo de chunk-transfer con `TRANSFER_RECEIPT` message type
-2. Modificar `p2p-bridge.ts` para que el sender firme un receipt después de enviar
-3. Modificar `p2p-bridge.ts` para que el receiver almacene el receipt firmado
-4. Actualizar `CreditEntry` con campos de receipt real
-5. Agregar validación de receipt en `auditCredits()`
-6. Migración: entries antiguos sin receipt → marcar como "legacy/unverified"
+1. ✅ `TRANSFER_RECEIPT` (0x07) message type en `chunk-transfer.ts` con encode/decode
+2. ✅ `chunk-server.ts` firma receipt (kind 7772) con `buildReceiptDraft()` después de servir chunk
+3. ✅ `peer-fetch.ts` recibe receipt, verifica, incluye sig en `PeerChunkResult`
+4. ✅ `service-worker.ts` pasa `receiptSignature` real al registrar créditos
+5. ✅ `auditCredits()` verifica firmas de receipts via `AuditOptions.verifySignature`
+6. ✅ Entries legacy sin receipt → `receiptVerifiedEntries = 0`, `isRealReceiptSignature()` los filtra
+7. ✅ 6 tests nuevos para encode/decode de receipts + 5 tests para verificación de firmas
 
-### Fase C — Consecuencias (enforcement)
-**Esfuerzo estimado:** 1 sesión
+### Fase C — Consecuencias (enforcement) — Pendiente
 
 1. Si ledger integrity falla → resetear créditos a 0
 2. Si % de entries verificados es bajo → reducir cold storage eligibility
-3. Exponer "credit score" basado en % de entries con receipts válidos
+3. Exponer "credit score" (trustScore) basado en auditoría en dashboard y web settings
 4. Peers pueden pedir tu credit score antes de servirte chunks
 
 ---
 
-## Recomendación
+## Estado actual
 
-**Empezar por Fase A.** Levanta la barrera significativamente con complejidad moderada. La hash chain detecta edición casual, y el cross-reference con chunks detecta fabricación. La Fase B (receipts firmados) es la solución definitiva pero requiere cambios en el protocolo P2P bilateral.
-
-La Fase A se puede implementar **sin romper compatibilidad** — los entries antiguos simplemente no tendrán `integrityHash` y serán tratados como "legacy".
+- **190/190 tests** pasan en @entropy/core
+- **Typecheck** pasa en los 3 packages (core, extension, web)
+- Entries legacy (sin `integrityHash` ni receipt real) son backward-compatible
+- El flujo P2P ahora firma y envía receipts automáticamente
+- El fetcher espera hasta 500ms por el receipt antes de resolver sin él

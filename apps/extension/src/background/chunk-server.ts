@@ -2,12 +2,16 @@ import {
   decodeChunkTransferMessage,
   encodeCustodyProof,
   encodeChunkError,
+  encodeTransferReceipt,
   sendChunkOverDataChannel,
+  buildReceiptDraft,
+  ENTROPY_UPSTREAM_RECEIPT_KIND,
   sha256Hex,
   logger,
   type CustodyChallengeMessage,
   type ChunkRequestMessage,
-  type ChunkStore
+  type ChunkStore,
+  type SignEventFn
 } from "@entropy/core";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +61,8 @@ export interface ChunkServerContext {
     rootHash: string;
     requestedBytes: number;
   }) => boolean | Promise<boolean>;
+  signEvent?: SignEventFn;
+  myPubkey?: string;
 }
 
 function isArrayBufferView(value: unknown): value is ArrayBufferView {
@@ -258,6 +264,41 @@ export function handleDataChannel(
         logger.log("[chunk-server] sending chunk", chunk.hash.slice(0, 12) + "…",
           chunk.data.byteLength, "bytes via data channel");
         sendChunkOverDataChannel(channel, chunk);
+
+        // Sign and send transfer receipt after chunk data
+        if (context.signEvent && context.myPubkey) {
+          try {
+            const receiptDraft = buildReceiptDraft({
+              chunkHash: chunk.hash,
+              senderPubkey: context.myPubkey,
+              receiverPubkey: peerPubkey,
+              bytes: chunk.data.byteLength,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+
+            const signedReceipt = await context.signEvent(receiptDraft);
+
+            if (channel.readyState === "open") {
+              channel.send(encodeTransferReceipt({
+                type: "TRANSFER_RECEIPT",
+                chunkHash: chunk.hash,
+                receipt: {
+                  id: signedReceipt.id,
+                  pubkey: signedReceipt.pubkey,
+                  created_at: signedReceipt.created_at,
+                  kind: signedReceipt.kind,
+                  tags: signedReceipt.tags,
+                  content: signedReceipt.content,
+                  sig: signedReceipt.sig
+                }
+              }));
+              logger.log("[chunk-server] ✅ transfer receipt sent for", chunk.hash.slice(0, 12) + "…");
+            }
+          } catch (receiptErr) {
+            logger.warn("[chunk-server] failed to sign/send transfer receipt:", receiptErr);
+          }
+        }
+
         await onChunkServed(chunk.hash, chunk.data.byteLength);
         logger.log("[chunk-server] ✅ chunk served successfully");
       } catch (sendErr) {

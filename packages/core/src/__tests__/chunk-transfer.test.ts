@@ -13,8 +13,11 @@ import {
   encodeChunkResponse,
   encodeCustodyChallenge,
   encodeCustodyProof,
+  encodeTransferReceipt,
+  decodeTransferReceipt,
   createChunkReceiver,
-  sendChunkOverDataChannel
+  sendChunkOverDataChannel,
+  type TransferReceiptEvent
 } from "../transport/chunk-transfer";
 
 const CHUNK_HASH = "ab".repeat(32);
@@ -342,5 +345,98 @@ describe("chunk transfer", () => {
     if (result!.type === "CHUNK_ERROR") {
       expect(result!.reason).toBe("NOT_FOUND");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transfer Receipt
+// ---------------------------------------------------------------------------
+
+describe("transfer receipt encode/decode", () => {
+  const RECEIPT: TransferReceiptEvent = {
+    id: "abc123",
+    pubkey: "deadbeef".repeat(8),
+    created_at: 1_700_000_000,
+    kind: 7772,
+    tags: [
+      ["p", "sender-pubkey"],
+      ["x", CHUNK_HASH],
+      ["bytes", "1024"],
+      ["receipt", "1700000000"]
+    ],
+    content: "",
+    sig: "ff".repeat(64)
+  };
+
+  it("round-trips a transfer receipt through encode/decode", () => {
+    const encoded = encodeTransferReceipt({
+      type: "TRANSFER_RECEIPT",
+      chunkHash: CHUNK_HASH,
+      receipt: RECEIPT
+    });
+
+    const decoded = decodeTransferReceipt(encoded);
+
+    expect(decoded.type).toBe("TRANSFER_RECEIPT");
+    expect(decoded.chunkHash).toBe(CHUNK_HASH);
+    expect(decoded.receipt.id).toBe(RECEIPT.id);
+    expect(decoded.receipt.pubkey).toBe(RECEIPT.pubkey);
+    expect(decoded.receipt.sig).toBe(RECEIPT.sig);
+    expect(decoded.receipt.kind).toBe(7772);
+    expect(decoded.receipt.tags).toEqual(RECEIPT.tags);
+  });
+
+  it("is recognized by decodeChunkTransferMessage", () => {
+    const encoded = encodeTransferReceipt({
+      type: "TRANSFER_RECEIPT",
+      chunkHash: CHUNK_HASH,
+      receipt: RECEIPT
+    });
+
+    const decoded = decodeChunkTransferMessage(encoded);
+
+    expect(decoded.type).toBe("TRANSFER_RECEIPT");
+    if (decoded.type === "TRANSFER_RECEIPT") {
+      expect(decoded.chunkHash).toBe(CHUNK_HASH);
+      expect(decoded.receipt.sig).toBe(RECEIPT.sig);
+    }
+  });
+
+  it("throws on truncated buffer", () => {
+    expect(() => decodeTransferReceipt(new ArrayBuffer(5))).toThrow("truncated");
+  });
+
+  it("throws on wrong message type byte", () => {
+    const buf = new Uint8Array(100);
+    buf[0] = 0x01; // CHUNK_REQUEST type
+    expect(() => decodeTransferReceipt(buf.buffer)).toThrow("Expected transfer receipt");
+  });
+
+  it("throws on malformed JSON", () => {
+    const output = new Uint8Array(1 + 32 + 4 + 5);
+    const view = new DataView(output.buffer);
+    output[0] = 0x07;
+    // Write a valid hash
+    for (let i = 0; i < 32; i++) output[1 + i] = 0xab;
+    // Write JSON length
+    view.setUint32(33, 5, false);
+    // Write invalid JSON
+    const badJson = new TextEncoder().encode("{bad}");
+    output.set(badJson, 37);
+
+    expect(() => decodeTransferReceipt(output.buffer)).toThrow();
+  });
+
+  it("is handled by ChunkReceiver", () => {
+    const receiver = createChunkReceiver();
+    const encoded = encodeTransferReceipt({
+      type: "TRANSFER_RECEIPT",
+      chunkHash: CHUNK_HASH,
+      receipt: RECEIPT
+    });
+
+    const result = receiver.receive(encoded);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("TRANSFER_RECEIPT");
   });
 });
