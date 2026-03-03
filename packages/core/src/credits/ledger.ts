@@ -4,8 +4,10 @@ export interface CreditEntry {
   direction: "up" | "down";
   bytes: number;
   chunkHash: string;
+  rootHash?: string;
   receiptSignature: string;
   timestamp: number;
+  integrityHash?: string;
 }
 
 export interface LedgerSummary {
@@ -69,6 +71,7 @@ function mapEntry(direction: "up" | "down", entry: CreditEntryInput): CreditEntr
     peerPubkey: entry.peerPubkey,
     bytes: entry.bytes,
     chunkHash: entry.chunkHash,
+    rootHash: entry.rootHash,
     receiptSignature: entry.receiptSignature,
     timestamp: entry.timestamp
   };

@@ -20,6 +20,7 @@ export * from "./credits/proof-of-upstream";
 export * from "./credits/verify-receipt";
 export * from "./credits/ledger";
 export * from "./credits/cold-storage";
+export * from "./credits/credit-integrity";
 export * from "./credits/peer-reputation";
 export * from "./storage/chunk-store";
 export * from "./storage/db";

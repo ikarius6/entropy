@@ -606,6 +606,7 @@ browser.runtime.onMessage.addListener(
                     peerPubkey: peerResult.peerPubkey,
                     bytes: peerResult.data.byteLength,
                     chunkHash: peerResult.hash,
+                    rootHash: peerResult.rootHash,
                     receiptSignature: "p2p-fetch",
                     timestamp: Date.now(),
                   });
