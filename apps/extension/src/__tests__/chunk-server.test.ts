@@ -6,13 +6,27 @@ const encodeChunkErrorMock = vi.fn(() => new ArrayBuffer(2));
 const sendChunkOverDataChannelMock = vi.fn();
 const sha256HexMock = vi.fn(async () => "aa".repeat(32));
 
+const encodeTransferReceiptMock = vi.fn(() => new ArrayBuffer(4));
+const buildReceiptDraftMock = vi.fn(() => ({ kind: 9735, tags: [], content: "", created_at: 0 }));
+const encodeTagUpdateMock = vi.fn(() => new ArrayBuffer(4));
+const decodeTagUpdateMock = vi.fn(() => ({ type: "TAG_UPDATE", rootHash: "root", tags: [] }));
+const isTagUpdateMessageMock = vi.fn(() => false);
+const mergeContentTagsMock = vi.fn((_local: unknown[], incoming: unknown[]) => incoming);
+
 vi.mock("@entropy/core", () => ({
   decodeChunkTransferMessage: decodeChunkTransferMessageMock,
   encodeCustodyProof: encodeCustodyProofMock,
   encodeChunkError: encodeChunkErrorMock,
+  encodeTransferReceipt: encodeTransferReceiptMock,
   sendChunkOverDataChannel: sendChunkOverDataChannelMock,
+  buildReceiptDraft: buildReceiptDraftMock,
+  ENTROPY_UPSTREAM_RECEIPT_KIND: 9735,
   sha256Hex: sha256HexMock,
-  logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  encodeTagUpdate: encodeTagUpdateMock,
+  decodeTagUpdate: decodeTagUpdateMock,
+  isTagUpdateMessage: isTagUpdateMessageMock,
+  mergeContentTags: mergeContentTagsMock
 }));
 
 class MockDataChannel {

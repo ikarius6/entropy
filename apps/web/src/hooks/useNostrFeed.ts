@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useContactList } from "./useContactList";
 import { KINDS } from "../lib/constants";
-import { ENTROPY_TAG, parseEntropyChunkMapTags } from "@entropy/core";
-import type { NostrEvent } from "@entropy/core";
+import { ENTROPY_TAG, parseEntropyChunkMapTags, scoreContentRelevance } from "@entropy/core";
+import type { NostrEvent, ContentTag, UserTagPreference } from "@entropy/core";
 import type { FeedItem } from "../types/nostr";
+
+export type FeedSortMode = "chronological" | "for_you" | "explore";
 
 interface UseNostrFeedOptions {
   authors?: string[];
@@ -12,6 +14,10 @@ interface UseNostrFeedOptions {
   limit?: number;
   /** When false, drops the #t entropy tag filter so plain Nostr events show up. Default: true */
   entropyOnly?: boolean;
+  /** User tag preferences for relevance scoring. Only used when feedMode is "for_you". */
+  userPrefs?: UserTagPreference[];
+  /** Feed sort mode. Default: "chronological" */
+  feedMode?: FeedSortMode;
 }
 
 // Virtual seconds added to followed-user posts so they sort above same-time
@@ -36,11 +42,30 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const feedMode = options.feedMode ?? "chronological";
+  const userPrefs = options.userPrefs ?? [];
+
   // Accumulate events keyed by id; each entry carries a sort score.
-  const accRef = useRef<Map<string, { item: FeedItem; score: number }>>(new Map());
+  const accRef = useRef<Map<string, { item: FeedItem; score: number; contentTags: ContentTag[] }>>(new Map());
 
   const flush = () => {
-    const sorted = Array.from(accRef.current.values())
+    let entries = Array.from(accRef.current.values());
+
+    if (feedMode === "for_you" && userPrefs.length > 0) {
+      // Re-score with tag relevance
+      entries = entries.map((e) => {
+        const relevance = scoreContentRelevance(e.contentTags, userPrefs);
+        return { ...e, score: e.score + relevance * 1000 };
+      });
+    } else if (feedMode === "explore") {
+      // Boost by max tag counter (popular content first)
+      entries = entries.map((e) => {
+        const maxCounter = e.contentTags.reduce((m, t) => Math.max(m, t.counter), 0);
+        return { ...e, score: e.score + maxCounter * 100 };
+      });
+    }
+
+    const sorted = entries
       .sort((a, b) => b.score - a.score)
       .map((v) => v.item);
     setItems(sorted);
@@ -61,22 +86,25 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       tags: event.tags,
     };
 
+    let contentTags: ContentTag[] = [];
+
     if (event.kind === KINDS.ENTROPY_CHUNK_MAP) {
       try {
         item.chunkMap = parseEntropyChunkMapTags(event.tags);
         console.log("[feed] parsed chunkMap:", {
-          rootHash: item.chunkMap.rootHash.slice(0, 12) + "…",
+          rootHash: item.chunkMap.rootHash.slice(0, 12) + "\u2026",
           chunks: item.chunkMap.chunks.length,
           mimeType: item.chunkMap.mimeType,
           size: item.chunkMap.size,
         });
         cacheChunkMap(item.chunkMap);
+        contentTags = item.chunkMap.entropyTags ?? [];
       } catch (e) {
         console.warn("[feed] failed to parse chunk map for", event.id, e);
       }
     }
 
-    accRef.current.set(event.id, { item, score });
+    accRef.current.set(event.id, { item, score, contentTags });
   };
 
   useEffect(() => {

@@ -8,10 +8,15 @@ import {
   ENTROPY_UPSTREAM_RECEIPT_KIND,
   sha256Hex,
   logger,
+  encodeTagUpdate,
+  decodeTagUpdate,
+  isTagUpdateMessage,
+  mergeContentTags,
   type CustodyChallengeMessage,
   type ChunkRequestMessage,
   type ChunkStore,
-  type SignEventFn
+  type SignEventFn,
+  type TagStore
 } from "@entropy/core";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +68,7 @@ export interface ChunkServerContext {
   }) => boolean | Promise<boolean>;
   signEvent?: SignEventFn;
   myPubkey?: string;
+  tagStore?: TagStore;
 }
 
 function isArrayBufferView(value: unknown): value is ArrayBufferView {
@@ -200,6 +206,26 @@ export function handleDataChannel(
           return;
         }
 
+        // Check if this is a TAG_UPDATE message (type 0x08) before standard decode
+        if (isTagUpdateMessage(buffer)) {
+          try {
+            const tagMsg = decodeTagUpdate(buffer);
+            logger.log("[chunk-server] received TAG_UPDATE for", tagMsg.rootHash.slice(0, 12) + "…",
+              "with", tagMsg.tags.length, "tags");
+
+            if (context.tagStore) {
+              const localTags = await context.tagStore.getContentTags(tagMsg.rootHash);
+              const merged = mergeContentTags(localTags, tagMsg.tags);
+              await context.tagStore.setContentTags(tagMsg.rootHash, merged);
+              logger.log("[chunk-server] merged tags for", tagMsg.rootHash.slice(0, 12) + "…",
+                "→", merged.length, "tags");
+            }
+          } catch (tagErr) {
+            logger.warn("[chunk-server] failed to process TAG_UPDATE:", tagErr);
+          }
+          return;
+        }
+
         const decoded = decodeChunkTransferMessage(buffer);
         logger.log("[chunk-server] decoded message type:", decoded.type);
 
@@ -296,6 +322,24 @@ export function handleDataChannel(
             }
           } catch (receiptErr) {
             logger.warn("[chunk-server] failed to sign/send transfer receipt:", receiptErr);
+          }
+        }
+
+        // Send TAG_UPDATE for this content's tags after serving chunk
+        if (context.tagStore && channel.readyState === "open") {
+          try {
+            const contentTags = await context.tagStore.getContentTags(chunk.rootHash);
+            if (contentTags.length > 0) {
+              channel.send(encodeTagUpdate({
+                type: "TAG_UPDATE",
+                rootHash: chunk.rootHash,
+                tags: contentTags
+              }));
+              logger.log("[chunk-server] TAG_UPDATE sent for", chunk.rootHash.slice(0, 12) + "…",
+                "(", contentTags.length, "tags)");
+            }
+          } catch (tagErr) {
+            logger.warn("[chunk-server] failed to send TAG_UPDATE:", tagErr);
           }
         }
 

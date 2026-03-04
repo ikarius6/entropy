@@ -2,6 +2,12 @@ export const ENTROPY_CHUNK_MAP_KIND = 7001;
 
 export type NostrTag = string[];
 
+export interface EntropyContentTag {
+  name: string;
+  counter: number;
+  updatedAt: number;
+}
+
 export interface EntropyChunkMap {
   rootHash: string;
   chunks: string[];
@@ -10,6 +16,7 @@ export interface EntropyChunkMap {
   mimeType?: string;
   title?: string;
   gatekeepers?: string[];
+  entropyTags?: EntropyContentTag[];
 }
 
 const FALLBACK_CHUNK_SIZE = 5 * 1024 * 1024;
@@ -40,6 +47,10 @@ export function buildEntropyChunkMapTags(chunkMap: EntropyChunkMap): NostrTag[] 
     tags.push(["gatekeeper", gatekeeper]);
   }
 
+  for (const eTag of chunkMap.entropyTags ?? []) {
+    tags.push(["entropy-tag", eTag.name, String(eTag.counter), String(eTag.updatedAt)]);
+  }
+
   return tags;
 }
 
@@ -51,6 +62,7 @@ export function parseEntropyChunkMapTags(tags: NostrTag[]): EntropyChunkMap {
   let title: string | undefined;
   const chunks: Array<{ index: number; hash: string }> = [];
   const gatekeepers: string[] = [];
+  const entropyTags: EntropyContentTag[] = [];
 
   for (const tag of tags) {
     const [name, value, third] = tag;
@@ -84,6 +96,15 @@ export function parseEntropyChunkMapTags(tags: NostrTag[]): EntropyChunkMap {
           gatekeepers.push(value);
         }
         break;
+      case "entropy-tag":
+        if (value) {
+          entropyTags.push({
+            name: value,
+            counter: Number(third ?? 1),
+            updatedAt: Number(tag[3] ?? 0)
+          });
+        }
+        break;
       default:
         break;
     }
@@ -104,6 +125,7 @@ export function parseEntropyChunkMapTags(tags: NostrTag[]): EntropyChunkMap {
     chunkSize: Number.isFinite(chunkSize) ? chunkSize : FALLBACK_CHUNK_SIZE,
     mimeType,
     title,
-    gatekeepers
+    gatekeepers,
+    entropyTags: entropyTags.length > 0 ? entropyTags : undefined
   };
 }

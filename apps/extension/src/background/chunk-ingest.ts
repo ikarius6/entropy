@@ -1,4 +1,11 @@
-import type { ChunkStore, StoreChunkPayload, StoredChunk } from "@entropy/core";
+import {
+  mergeContentTags,
+  type ChunkStore,
+  type StoreChunkPayload,
+  type StoredChunk,
+  type TagStore,
+  type ContentTag
+} from "@entropy/core";
 
 function numberArrayToBuffer(data: number[]): ArrayBuffer {
   return new Uint8Array(data).buffer;
@@ -40,4 +47,36 @@ export async function hasDelegatedChunks(
     ok: missing.length === 0,
     missing
   };
+}
+
+export async function mergeIncomingTags(
+  tagStore: TagStore,
+  rootHash: string,
+  remoteTags: ContentTag[]
+): Promise<ContentTag[]> {
+  const localTags = await tagStore.getContentTags(rootHash);
+  const merged = mergeContentTags(localTags, remoteTags);
+  await tagStore.setContentTags(rootHash, merged);
+  return merged;
+}
+
+export async function addContentTagFromUser(
+  tagStore: TagStore,
+  rootHash: string,
+  tagName: string
+): Promise<{ added: boolean; tags: ContentTag[] }> {
+  const alreadyTagged = await tagStore.hasTaggedContent(rootHash);
+
+  if (alreadyTagged) {
+    const tags = await tagStore.getContentTags(rootHash);
+    return { added: false, tags };
+  }
+
+  const { addContentTag } = await import("@entropy/core");
+  const currentTags = await tagStore.getContentTags(rootHash);
+  const updated = addContentTag(currentTags, tagName);
+  await tagStore.setContentTags(rootHash, updated);
+  await tagStore.recordTagAction(rootHash, tagName);
+
+  return { added: true, tags: updated };
 }

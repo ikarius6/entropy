@@ -4,9 +4,11 @@ import {
   chunkFileWithKeyframeAlignment,
   isVideoMimeType,
   buildEntropyChunkMapEvent,
+  normalizeTagName,
+  validateTagName,
 } from "@entropy/core";
 import type { EntropyChunkMap } from "@entropy/core";
-import { storeChunk, delegateSeeding } from "../lib/extension-bridge";
+import { storeChunk, delegateSeeding, tagContent } from "../lib/extension-bridge";
 import { useEntropyStore } from "../stores/entropy-store";
 
 export type UploadStage =
@@ -52,7 +54,7 @@ export function useUploadPipeline() {
   const { pubkey, relayPool } = useEntropyStore();
   const [progress, setProgress] = useState<UploadProgress>(IDLE_PROGRESS);
 
-  const start = async (file: File, title: string, description: string) => {
+  const start = async (file: File, title: string, description: string, initialTag?: string) => {
     try {
       setProgress({ ...IDLE_PROGRESS, stage: "chunking", error: null });
 
@@ -90,6 +92,15 @@ export function useUploadPipeline() {
 
       // 3. Delegate seeding to extension
       setProgress(p => ({ ...p, stage: "delegating" }));
+      // Build initial entropy-tags from the user-provided tag (if valid)
+      const entropyTags = (() => {
+        if (!initialTag) return undefined;
+        const validation = validateTagName(initialTag);
+        if (!validation.valid || !validation.normalized) return undefined;
+        const now = Math.floor(Date.now() / 1000);
+        return [{ name: validation.normalized, counter: 1, updatedAt: now }];
+      })();
+
       const chunkMap: EntropyChunkMap = {
         rootHash: result.rootHash,
         chunks: result.chunkHashes,
@@ -98,6 +109,7 @@ export function useUploadPipeline() {
         mimeType: result.mimeType,
         title: title || file.name,
         gatekeepers: pubkey ? [pubkey] : [],
+        entropyTags,
       };
       console.log("[upload] delegating seeding for rootHash:", result.rootHash);
       await delegateSeeding({
@@ -130,6 +142,17 @@ export function useUploadPipeline() {
         console.log("[upload] published to relay pool");
       } else {
         console.warn("[upload] no relayPool connected — event signed but not published to relays");
+      }
+
+      // Tag content in extension for local persistence and P2P propagation
+      if (initialTag) {
+        try {
+          const normalized = normalizeTagName(initialTag);
+          await tagContent(result.rootHash, normalized);
+          console.log("[upload] tagged content:", normalized);
+        } catch (tagErr) {
+          console.warn("[upload] failed to tag content:", tagErr);
+        }
       }
 
       setProgress(p => ({ ...p, stage: "done" }));

@@ -3,7 +3,7 @@ import { UploadPipeline } from "../components/upload/UploadPipeline";
 import { DragDropZone } from "../components/upload/DragDropZone";
 import { useUploadPipeline } from "../hooks/useUploadPipeline";
 import { useTextPost } from "../hooks/useTextPost";
-import { FileText, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileText, Upload, Loader2, CheckCircle2, AlertCircle, Tag } from "lucide-react";
 
 type Mode = "text" | "file";
 
@@ -12,6 +12,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [tag, setTag] = useState("");
 
   const pipeline = useUploadPipeline();
   const textPost = useTextPost();
@@ -26,7 +27,7 @@ export default function UploadPage() {
 
   const handlePublish = async () => {
     if (mode === "file" && file) {
-      await pipeline.start(file, title, description);
+      await pipeline.start(file, title, description, tag.trim() || undefined);
     } else if (mode === "text") {
       await textPost.publish(description);
     }
@@ -36,6 +37,7 @@ export default function UploadPage() {
     setFile(null);
     setTitle("");
     setDescription("");
+    setTag("");
     pipeline.cancel();
     textPost.reset();
   };
@@ -94,6 +96,22 @@ export default function UploadPage() {
                 className="bg-background/50 border border-border rounded-md px-3 py-2 text-white outline-none focus:border-primary/50 transition-colors"
                 placeholder="Give your content a title"
               />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-muted flex items-center gap-1.5">
+                <Tag size={13} />
+                Tag (optional)
+              </label>
+              <input
+                type="text"
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                maxLength={20}
+                className="bg-background/50 border border-border rounded-md px-3 py-2 text-white outline-none focus:border-primary/50 transition-colors"
+                placeholder="e.g. música, gaming, tutorial"
+              />
+              <p className="text-xs text-muted/60">One tag for content discovery (20 characters max)</p>
             </div>
 
             <div className="flex flex-col gap-2">

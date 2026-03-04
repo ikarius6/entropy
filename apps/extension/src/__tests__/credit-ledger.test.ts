@@ -315,6 +315,55 @@ describe("extension credit-ledger", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Regression: duplicate recordDownloadCredit for the same chunk causes double deduction
+  // ---------------------------------------------------------------------------
+
+  it("REGRESSION: calling recordDownloadCredit twice for the same chunk deducts twice (ledger is append-only)", async () => {
+    // This test documents that the ledger itself does NOT deduplicate entries.
+    // The caller (service-worker GET_CHUNK handler) is responsible for calling
+    // recordDownloadCredit only once per unique P2P fetch, which is enforced by
+    // executing it inside the deduplicated inflightP2PFetches promise.
+    const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
+
+    // Seed 2 MB of credits
+    await recordUploadCredit({
+      peerPubkey: "peer-seeder",
+      bytes: 2_000_000,
+      chunkHash: "seed-chunk",
+      receiptSignature: "sig-seed",
+      timestamp: 1
+    });
+
+    const before = await getCreditSummary();
+    expect(before.balance).toBe(2_000_000);
+
+    // Simulate the bug: two concurrent download credits for the same chunk (~900 KB)
+    const chunkSize = 900_000;
+    await recordDownloadCredit({
+      peerPubkey: "peer-provider",
+      bytes: chunkSize,
+      chunkHash: "content-chunk-abc",
+      receiptSignature: "p2p-fetch",
+      timestamp: 2
+    });
+
+    await recordDownloadCredit({
+      peerPubkey: "peer-provider",
+      bytes: chunkSize,
+      chunkHash: "content-chunk-abc",
+      receiptSignature: "p2p-fetch",
+      timestamp: 2
+    });
+
+    const after = await getCreditSummary();
+
+    // Without deduplication at the caller, balance drops by 2x the chunk size
+    expect(after.totalDownloaded).toBe(chunkSize * 2);
+    expect(after.balance).toBe(2_000_000 - chunkSize * 2);
+    expect(after.entryCount).toBe(3); // 1 upload + 2 downloads
+  });
+
+  // ---------------------------------------------------------------------------
   // Regression: DELEGATE_SEEDING must never self-award upload credits
   // ---------------------------------------------------------------------------
 

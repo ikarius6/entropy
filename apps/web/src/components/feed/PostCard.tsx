@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
-import type { EntropyChunkMap } from "@entropy/core";
+import type { EntropyChunkMap, ContentTag, UserSignalType } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
 import { useNostrProfile } from "../../hooks/useNostrProfile";
 import { useChunkBlob } from "../../hooks/useChunkBlob";
@@ -37,7 +37,12 @@ async function sharePost(item: FeedItem) {
   await navigator.clipboard.writeText(url);
 }
 
-export function PostCard({ item }: { item: FeedItem }) {
+interface PostCardProps {
+  item: FeedItem;
+  onSignal?: (contentTags: ContentTag[], signal: UserSignalType) => void;
+}
+
+export function PostCard({ item, onSignal }: PostCardProps) {
   const { profile } = useNostrProfile(item.pubkey);
   const timeAgo = Math.floor(Date.now() / 1000) - item.created_at;
 
@@ -72,8 +77,20 @@ export function PostCard({ item }: { item: FeedItem }) {
     if (!showReplies) setShowComposer(false);
   };
 
+  // Extract content tags from the chunk map (if any) for signal emission
+  const contentTags: ContentTag[] = isMedia && item.chunkMap
+    ? (item.chunkMap as EntropyChunkMap).entropyTags ?? []
+    : [];
+
+  const emitSignal = (signal: UserSignalType) => {
+    if (onSignal && contentTags.length > 0) {
+      onSignal(contentTags, signal);
+    }
+  };
+
   const handleShare = async () => {
     await sharePost(item);
+    emitSignal("share");
     setShareFeedback(true);
     setTimeout(() => setShareFeedback(false), 2000);
   };
@@ -131,7 +148,7 @@ export function PostCard({ item }: { item: FeedItem }) {
 
         {/* ❤️ Like */}
         <button
-          onClick={() => react("❤️")}
+          onClick={() => { react("❤️"); emitSignal("like"); }}
           disabled={isReacting}
           title={myReaction ? `You reacted ${myReaction}` : "Like"}
           className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg transition-all ${
@@ -188,6 +205,17 @@ export function PostCard({ item }: { item: FeedItem }) {
         {/* Media-specific download */}
         {isMedia && item.chunkMap && (
           <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={item.chunkMap} />
+        )}
+
+        {/* Not interested */}
+        {contentTags.length > 0 && (
+          <button
+            onClick={() => emitSignal("not_interested")}
+            title="Not interested in this type of content"
+            className="flex items-center gap-1.5 text-sm text-muted hover:text-orange-400 hover:bg-orange-400/10 px-2.5 py-1.5 rounded-lg transition-all"
+          >
+            <EyeOff size={15} />
+          </button>
         )}
 
         {/* Share */}

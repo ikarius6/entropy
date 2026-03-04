@@ -427,28 +427,29 @@ userTagActions: '&rootHash'
 
 ## 11. Fases de Implementación
 
-### Fase A — Core Tag Engine
-- [ ] `tag-validation.ts` — normalización y validación
-- [ ] `content-tags.ts` — merge, cap 30, política de reemplazo
-- [ ] `user-preferences.ts` — señales, cap 100, evicción
-- [ ] `tag-scoring.ts` — scoring de contenido
-- [ ] `tag-store.ts` — persistencia IndexedDB
-- [ ] Tests unitarios para todos los módulos
+### Fase A — Core Tag Engine ✅
+- [x] `tag-validation.ts` — normalización y validación
+- [x] `content-tags.ts` — merge, cap 30, política de reemplazo
+- [x] `user-preferences.ts` — señales, cap 100, evicción
+- [x] `tag-scoring.ts` — scoring de contenido
+- [x] `tag-store.ts` — persistencia IndexedDB
+- [x] Tests unitarios para todos los módulos (54 tests)
 
-### Fase B — Transporte P2P
-- [ ] `tag-transfer.ts` — encode/decode binario TAG_UPDATE
-- [ ] Integrar envío de TAG_UPDATE en `chunk-server.ts`
-- [ ] Integrar recepción de TAG_UPDATE en `chunk-ingest.ts`
-- [ ] Merge de tags recibidos con tags locales
-- [ ] Tests de integración del flujo P2P
+### Fase B — Transporte P2P ✅
+- [x] `tag-transfer.ts` — encode/decode binario TAG_UPDATE
+- [x] Integrar envío de TAG_UPDATE en `chunk-server.ts`
+- [x] Integrar recepción de TAG_UPDATE en `chunk-ingest.ts`
+- [x] Merge de tags recibidos con tags locales
+- [x] `TAG_CONTENT` bridge message + service-worker handler
+- [x] `entropy-tag` en `nip-entropy.ts` (build/parse kind:7001)
 
-### Fase C — Web App Integration
-- [ ] Campo de tag opcional en upload pipeline
-- [ ] Tag al completar seed en la web
-- [ ] `useTagPreferences` hook
-- [ ] Integrar scoring en `useNostrFeed`
-- [ ] Acciones de Like/Share/Not-interested → actualizar preferencias
-- [ ] Selector de modo de feed en Settings
+### Fase C — Web App Integration ✅
+- [x] Campo de tag opcional en upload pipeline (`UploadPage.tsx`)
+- [x] Tag al completar seed en la web (`useUploadPipeline.ts` → `tagContent()`)
+- [x] `useTagPreferences` hook (localStorage persistence)
+- [x] Integrar scoring en `useNostrFeed` (for_you / explore modes)
+- [x] Acciones de Like/Share/Not-interested → actualizar preferencias (`PostCard.tsx`)
+- [x] Selector de modo de feed: Latest / For You / Explore (`Feed.tsx`)
 - [ ] Tests E2E del flujo completo
 
 ### Fase D — Refinamiento

@@ -3,6 +3,10 @@ import { getChunk } from "../lib/extension-bridge";
 import { assembleChunks } from "@entropy/core";
 import type { EntropyChunkMap } from "@entropy/core";
 
+// Module-level deduplication: prevents duplicate GET_CHUNK requests when
+// React StrictMode (dev) re-fires the effect for the same rootHash.
+const inflightBlobLoads = new Map<string, Promise<ArrayBuffer[]>>();
+
 export type ChunkBlobStatus = "idle" | "loading" | "ready" | "error";
 
 export interface UseChunkBlobResult {
@@ -27,6 +31,7 @@ export function useChunkBlob(chunkMap: EntropyChunkMap | null): UseChunkBlobResu
 
     let cancelled = false;
     let createdUrl: string | null = null;
+    const rootHash = chunkMap.rootHash;
 
     async function load() {
       if (!chunkMap) return;
@@ -35,29 +40,42 @@ export function useChunkBlob(chunkMap: EntropyChunkMap | null): UseChunkBlobResu
       setProgress(0);
 
       try {
-        const total = chunkMap.chunks.length;
-        const buffers: ArrayBuffer[] = new Array(total);
-        console.log(`[useChunkBlob] loading ${total} chunk(s) for rootHash=${chunkMap.rootHash.slice(0,12)}… mime=${chunkMap.mimeType}`);
-        console.log(`[useChunkBlob] gatekeepers:`, chunkMap.gatekeepers);
+        // Deduplicate: reuse in-flight fetch for the same rootHash
+        let shared = inflightBlobLoads.get(rootHash);
+        if (!shared) {
+          const cm = chunkMap; // capture for closure
+          shared = (async () => {
+            const total = cm.chunks.length;
+            const buffers: ArrayBuffer[] = new Array(total);
+            console.log(`[useChunkBlob] loading ${total} chunk(s) for rootHash=${cm.rootHash.slice(0,12)}… mime=${cm.mimeType}`);
+            console.log(`[useChunkBlob] gatekeepers:`, cm.gatekeepers);
 
-        for (let i = 0; i < total; i++) {
-          if (cancelled) return;
-          const hash = chunkMap.chunks[i];
-          const payload = { hash, rootHash: chunkMap.rootHash, gatekeepers: chunkMap.gatekeepers };
-          console.log(`[useChunkBlob] GET_CHUNK ${i + 1}/${total} payload:`, JSON.stringify(payload).slice(0, 200));
-          const result = await getChunk(payload, 30_000);
-          console.log(`[useChunkBlob] result for chunk ${i}:`, result ? `ok, ${result.data.length} bytes` : 'null (not in store)');
+            for (let i = 0; i < total; i++) {
+              const hash = cm.chunks[i];
+              const payload = { hash, rootHash: cm.rootHash, gatekeepers: cm.gatekeepers };
+              console.log(`[useChunkBlob] GET_CHUNK ${i + 1}/${total} payload:`, JSON.stringify(payload).slice(0, 200));
+              const result = await getChunk(payload, 30_000);
+              console.log(`[useChunkBlob] result for chunk ${i}:`, result ? `ok, ${result.data.length} bytes` : 'null (not in store)');
 
-          if (!result) {
-            throw new Error(`Chunk ${i} (${hash.slice(0, 8)}…) not found in local store.`);
-          }
+              if (!result) {
+                throw new Error(`Chunk ${i} (${hash.slice(0, 8)}…) not found in local store.`);
+              }
 
-          buffers[result.index] = new Uint8Array(result.data).buffer;
-          setProgress((i + 1) / total);
+              buffers[result.index] = new Uint8Array(result.data).buffer;
+            }
+
+            return buffers;
+          })();
+          inflightBlobLoads.set(rootHash, shared);
+        } else {
+          console.log(`[useChunkBlob] reusing in-flight load for rootHash=${rootHash.slice(0,12)}…`);
         }
+
+        const buffers = await shared;
 
         if (cancelled) return;
 
+        setProgress(1);
         const blob = assembleChunks(buffers, chunkMap.mimeType || "application/octet-stream");
         createdUrl = URL.createObjectURL(blob);
         setBlobUrl(createdUrl);
@@ -67,6 +85,8 @@ export function useChunkBlob(chunkMap: EntropyChunkMap | null): UseChunkBlobResu
           setError(err instanceof Error ? err.message : String(err));
           setStatus("error");
         }
+      } finally {
+        inflightBlobLoads.delete(rootHash);
       }
     }
 

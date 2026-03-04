@@ -11,6 +11,7 @@ import {
   isPublicKeyPayload,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
+  isTagContentResultPayload,
   type ColdStorageStatusPayload,
   type CreditSummaryPayload,
   type CheckLocalChunksResultPayload,
@@ -28,7 +29,9 @@ import {
   type StoreChunkPayload,
   type ServeChunkPayload,
   type GetChunkPayload,
-  type ChunkDataPayload
+  type ChunkDataPayload,
+  type TagContentPayload,
+  type TagContentResultPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
@@ -50,7 +53,7 @@ export type {
   ChunkDataPayload
 };
 
-export type { ColdStorageAssignmentPayload, NodeMetricsPayload } from "@entropy/core";
+export type { ColdStorageAssignmentPayload, NodeMetricsPayload, TagContentPayload, TagContentResultPayload } from "@entropy/core";
 
 function buildNoPayloadMessage(
   requestId: string,
@@ -247,6 +250,11 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<ColdStorageStatusPayload>;
 export function sendExtensionRequest(
+  type: "TAG_CONTENT",
+  payload: TagContentPayload,
+  timeoutMs?: number
+): Promise<TagContentResultPayload>;
+export function sendExtensionRequest(
   type: ExtensionRequestType,
   payload?:
     | DelegateSeedingPayload
@@ -255,9 +263,10 @@ export function sendExtensionRequest(
     | ImportKeypairPayload
     | RelayUrlPayload
     | SetSeedingActivePayload
-    | ReleaseColdAssignmentPayload,
+    | ReleaseColdAssignmentPayload
+    | TagContentPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | TagContentResultPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -372,6 +381,21 @@ export function sendExtensionRequest(
     );
   }
 
+  if (type === "TAG_CONTENT") {
+    const tagPayload = payload as TagContentPayload;
+    const tagMsg: EntropyRuntimeMessage = {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type: "TAG_CONTENT",
+      payload: tagPayload
+    };
+    return sendBridgeMessage(
+      tagMsg,
+      (p) => (isTagContentResultPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
   return sendBridgeMessage(
     buildNoPayloadMessage(requestId, type as "GET_NODE_STATUS" | "HEARTBEAT" | "GET_CREDIT_SUMMARY" | "GET_PUBLIC_KEY" | "GET_NODE_SETTINGS"),
     (p) => (p === undefined || isNodeStatusPayload(p) ? (p as NodeStatusPayload | undefined) : null),
@@ -425,6 +449,10 @@ export function getNodeMetrics(): Promise<NodeMetricsPayload> {
 
 export function exportIdentity(): Promise<ExportIdentityPayload> {
   return sendExtensionRequest("EXPORT_IDENTITY");
+}
+
+export function tagContent(rootHash: string, tag: string): Promise<TagContentResultPayload> {
+  return sendExtensionRequest("TAG_CONTENT", { rootHash, tag });
 }
 
 export function checkLocalChunks(hashes: string[], timeoutMs = 3000): Promise<CheckLocalChunksResultPayload> {

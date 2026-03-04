@@ -150,6 +150,16 @@ export interface ReleaseColdAssignmentPayload {
   chunkHash: string;
 }
 
+export interface TagContentPayload {
+  rootHash: string;
+  tag: string;
+}
+
+export interface TagContentResultPayload {
+  added: boolean;
+  tags: Array<{ name: string; counter: number; updatedAt: number }>;
+}
+
 export interface CreditHistoryItem {
   id: string;
   peerPubkey: string;
@@ -201,7 +211,8 @@ export type EntropyRuntimePayload =
   | NodeSettingsPayload
   | SignedEventPayload
   | ChunkDataPayload
-  | CheckLocalChunksResultPayload;
+  | CheckLocalChunksResultPayload
+  | TagContentResultPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -309,6 +320,12 @@ export type EntropyRuntimeMessage =
       source: typeof ENTROPY_WEB_SOURCE;
       requestId: string;
       type: "EXPORT_IDENTITY";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "TAG_CONTENT";
+      payload: TagContentPayload;
     };
 
 export type EntropyRuntimeResponse =
@@ -379,6 +396,12 @@ export type EntropyRuntimeResponse =
       payload: CheckLocalChunksResultPayload;
     }
   | {
+      ok: true;
+      requestId: string;
+      type: "TAG_CONTENT";
+      payload: TagContentResultPayload;
+    }
+  | {
       ok: false;
       requestId: string;
       type: EntropyRuntimeMessage["type"];
@@ -434,7 +457,8 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "RELEASE_COLD_ASSIGNMENT" ||
     value === "GET_NODE_METRICS" ||
     value === "CHECK_LOCAL_CHUNKS" ||
-    value === "EXPORT_IDENTITY"
+    value === "EXPORT_IDENTITY" ||
+    value === "TAG_CONTENT"
   );
 }
 
@@ -603,6 +627,34 @@ function isReleaseColdAssignmentPayload(value: unknown): value is ReleaseColdAss
   return typeof value.chunkHash === "string" && value.chunkHash.length > 0;
 }
 
+function isTagContentPayload(value: unknown): value is TagContentPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.rootHash === "string" &&
+    value.rootHash.length > 0 &&
+    typeof value.tag === "string" &&
+    value.tag.length > 0
+  );
+}
+
+export function isTagContentResultPayload(value: unknown): value is TagContentResultPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.added === "boolean" &&
+    Array.isArray(value.tags) &&
+    value.tags.every((t) => {
+      if (!isRecord(t)) return false;
+      return typeof t.name === "string" && typeof t.counter === "number" && typeof t.updatedAt === "number";
+    })
+  );
+}
+
 function isCheckLocalChunksPayload(value: unknown): value is CheckLocalChunksPayload {
   if (!isRecord(value)) {
     return false;
@@ -706,6 +758,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isCheckLocalChunksPayload(value.payload);
   }
 
+  if (value.type === "TAG_CONTENT") {
+    return isTagContentPayload(value.payload);
+  }
+
   return true;
 }
 
@@ -746,6 +802,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
 
   if (requestType === "CHECK_LOCAL_CHUNKS") {
     return isCheckLocalChunksResultPayload(payload);
+  }
+
+  if (requestType === "TAG_CONTENT") {
+    return isTagContentResultPayload(payload);
   }
 
   if (requestType === "SIGN_EVENT") {
@@ -792,6 +852,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
 
     if (value.type === "CHECK_LOCAL_CHUNKS") {
       return isCheckLocalChunksResultPayload(value.payload);
+    }
+
+    if (value.type === "TAG_CONTENT") {
+      return isTagContentResultPayload(value.payload);
     }
 
     return value.payload === undefined || isNodeStatusPayload(value.payload);

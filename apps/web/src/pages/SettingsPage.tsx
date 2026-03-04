@@ -1,12 +1,14 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useQuotaManager } from "../hooks/useQuotaManager";
+import { useTagPreferences } from "../hooks/useTagPreferences";
 import { useToast } from "../components/ui/Toast";
 import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { exportIdentity, importKeypair } from "../lib/extension-bridge";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload } from "lucide-react";
+import { sortPreferencesByRelevance } from "@entropy/core";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown } from "lucide-react";
 
 export default function SettingsPage() {
   const { pubkey, relayUrls, initRelays } = useEntropyStore();
@@ -98,7 +100,27 @@ export default function SettingsPage() {
     }
   };
 
+  const { preferences, recordSignal } = useTagPreferences();
+  const sortedPrefs = useMemo(() => sortPreferencesByRelevance(preferences), [preferences]);
+  const maxAbsScore = useMemo(
+    () => sortedPrefs.reduce((m, p) => Math.max(m, Math.abs(p.score)), 1),
+    [sortedPrefs]
+  );
+
+  const handleResetPreferences = () => {
+    localStorage.removeItem("entropy-tag-preferences");
+    window.location.reload();
+  };
+
   const formatGB = (bytes: number) => (bytes / (1024 * 1024 * 1024)).toFixed(2);
+
+  const formatAge = (updatedAt: number) => {
+    const seconds = Math.floor(Date.now() / 1000) - updatedAt;
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full pb-10">
@@ -244,6 +266,92 @@ export default function SettingsPage() {
             Save Relays
           </button>
         </div>
+      </section>
+
+      {/* Your Algorithm Section */}
+      <section className="panel flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center gap-3">
+            <Sparkles className="text-primary" />
+            <h2 className="text-xl font-bold">Your Algorithm</h2>
+          </div>
+          {sortedPrefs.length > 0 && (
+            <button
+              onClick={handleResetPreferences}
+              className="flex items-center gap-1.5 text-xs text-muted hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-red-400/10"
+            >
+              <RotateCcw size={12} />
+              Reset
+            </button>
+          )}
+        </div>
+
+        <p className="text-sm text-muted">
+          These are the hidden tags Entropy has learned from your activity. Positive scores boost content in your "For You" feed, negative scores suppress it.
+        </p>
+
+        {sortedPrefs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+            <Sparkles size={28} className="text-muted/40" />
+            <p className="text-muted text-sm">No preferences yet.</p>
+            <p className="text-muted/60 text-xs max-w-sm">
+              Like, share, or mark content as "not interested" to start building your personal algorithm.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {sortedPrefs.map((pref) => {
+              const isPositive = pref.score > 0;
+              const isNegative = pref.score < 0;
+              const barWidth = Math.min(100, (Math.abs(pref.score) / maxAbsScore) * 100);
+
+              return (
+                <div
+                  key={pref.name}
+                  className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-colors group"
+                >
+                  {/* Sentiment icon */}
+                  <div className={`shrink-0 ${
+                    isPositive ? "text-green-400" : isNegative ? "text-red-400" : "text-muted/40"
+                  }`}>
+                    {isPositive ? <ThumbsUp size={14} /> : isNegative ? <ThumbsDown size={14} /> : <span className="w-3.5 h-3.5 block rounded-full bg-current opacity-30" />}
+                  </div>
+
+                  {/* Tag name */}
+                  <span className="text-sm font-medium text-white min-w-[100px] truncate">
+                    {pref.name}
+                  </span>
+
+                  {/* Score bar */}
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          isPositive ? "bg-green-500/70" : isNegative ? "bg-red-500/70" : "bg-white/20"
+                        }`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-mono w-8 text-right tabular-nums ${
+                      isPositive ? "text-green-400" : isNegative ? "text-red-400" : "text-muted"
+                    }`}>
+                      {isPositive ? "+" : ""}{pref.score}
+                    </span>
+                  </div>
+
+                  {/* Age */}
+                  <span className="text-[10px] text-muted/50 w-14 text-right shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {formatAge(pref.updatedAt)}
+                  </span>
+                </div>
+              );
+            })}
+
+            <div className="text-xs text-muted/40 text-right pt-2 pr-3">
+              {sortedPrefs.length} tag{sortedPrefs.length !== 1 ? "s" : ""} learned
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Storage & Quota Section */}

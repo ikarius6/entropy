@@ -6,6 +6,7 @@ import {
   ENTROPY_SIGNALING_KIND_MIN,
   createIndexedDbChunkStore,
   createIndexedDbPeerReputationStore,
+  createTagStore,
   isEntropySignalingKind,
   verifyEventSignature,
   wireReceiptVerifier,
@@ -28,9 +29,10 @@ import {
   type PublicKeyPayload,
   type ExportIdentityPayload,
   type SignedEventPayload,
-  type ChunkDataPayload
+  type ChunkDataPayload,
+  type TagContentResultPayload
 } from "../shared/messaging";
-import { hasDelegatedChunks, storeChunkPayload } from "./chunk-ingest";
+import { hasDelegatedChunks, storeChunkPayload, addContentTagFromUser } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { exportIdentity, getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
 import { startP2PSeeding, fetchChunkP2P } from "./p2p-bridge";
@@ -65,6 +67,7 @@ const SEEDER_ANNOUNCEMENT_INTERVAL_MS = 15 * 60 * 1000;
 
 const chunkStore = createIndexedDbChunkStore();
 const peerReputationStore = createIndexedDbPeerReputationStore();
+const tagStore = createTagStore();
 const startedAt = Date.now();
 const coldStorageManager = createColdStorageManager({
   chunkStore,
@@ -577,7 +580,34 @@ browser.runtime.onMessage.addListener(
                         }
                       }
                     });
-                    if (peerResult) return peerResult;
+                    if (peerResult) {
+                      // Store chunk and record credit ONCE inside the deduplicated promise
+                      // (prevents double-charge when multiple callers await the same fetch)
+                      await chunkStore.storeChunk({
+                        hash: peerResult.hash,
+                        rootHash: peerResult.rootHash,
+                        index: 0,
+                        data: peerResult.data,
+                        createdAt: Date.now(),
+                        lastAccessed: Date.now(),
+                        pinned: false
+                      });
+
+                      try {
+                        await recordDownloadCredit({
+                          peerPubkey: peerResult.peerPubkey,
+                          bytes: peerResult.data.byteLength,
+                          chunkHash: peerResult.hash,
+                          rootHash: peerResult.rootHash,
+                          receiptSignature: peerResult.receiptSignature ?? "p2p-fetch",
+                          timestamp: Math.floor(Date.now() / 1000),
+                        });
+                      } catch (creditErr) {
+                        logger.warn("[GET_CHUNK] failed to record download credit:", creditErr);
+                      }
+
+                      return peerResult;
+                    }
                   } catch (err) {
                     logger.warn(`[GET_CHUNK] peer fetch from ${gk.slice(0, 8)}… failed:`, err);
                   }
@@ -590,30 +620,6 @@ browser.runtime.onMessage.addListener(
             try {
               const peerResult = await p2pPromise;
               if (peerResult) {
-                await chunkStore.storeChunk({
-                  hash: peerResult.hash,
-                  rootHash: peerResult.rootHash,
-                  index: 0,
-                  data: peerResult.data,
-                  createdAt: Date.now(),
-                  lastAccessed: Date.now(),
-                  pinned: false
-                });
-
-                // Record download credit — debit balance for P2P consumption
-                try {
-                  await recordDownloadCredit({
-                    peerPubkey: peerResult.peerPubkey,
-                    bytes: peerResult.data.byteLength,
-                    chunkHash: peerResult.hash,
-                    rootHash: peerResult.rootHash,
-                    receiptSignature: peerResult.receiptSignature ?? "p2p-fetch",
-                    timestamp: Math.floor(Date.now() / 1000),
-                  });
-                } catch (creditErr) {
-                  logger.warn("[GET_CHUNK] failed to record download credit:", creditErr);
-                }
-
                 return chunkDataResponse(message.requestId, {
                   hash: peerResult.hash,
                   rootHash: peerResult.rootHash,
@@ -814,6 +820,29 @@ browser.runtime.onMessage.addListener(
               payload: { total: hashes.length, local: localCount, localBytes }
             };
             return checkResult;
+          }
+
+          case "TAG_CONTENT": {
+            const tagResult = await addContentTagFromUser(
+              tagStore,
+              message.payload.rootHash,
+              message.payload.tag
+            );
+
+            const tagResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "TAG_CONTENT",
+              payload: {
+                added: tagResult.added,
+                tags: tagResult.tags.map((t) => ({
+                  name: t.name,
+                  counter: t.counter,
+                  updatedAt: t.updatedAt
+                }))
+              }
+            };
+            return tagResponse;
           }
 
         }
