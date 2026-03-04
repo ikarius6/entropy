@@ -145,7 +145,25 @@ export class Relay {
   closeSubscription(subId: string): void {
     this.eventListeners.delete(subId);
     this.eoseListeners.delete(subId);
-    this.send(JSON.stringify(["CLOSE", subId]));
+
+    // Purge any queued REQ for this subId that hasn't been sent yet.
+    // Without this, the relay would receive REQ→CLOSE in sequence, and events
+    // arriving between those two messages would have no local listener
+    // (hasListener=false race condition).
+    this.pendingMessages = this.pendingMessages.filter((msg) => {
+      try {
+        const parsed = JSON.parse(msg) as unknown[];
+        return !(parsed[0] === "REQ" && parsed[1] === subId);
+      } catch {
+        return true;
+      }
+    });
+
+    // Only send CLOSE if the connection is open (the REQ was already sent)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send(JSON.stringify(["CLOSE", subId]));
+    }
+    // If not open, the REQ was purged above so no CLOSE is needed
   }
 
   // -----------------------------------------------------------------------

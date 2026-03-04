@@ -75,7 +75,7 @@ export function useCreditGate(arg: number | CreditGateOptions): CreditGateState 
     setLocalCheckDone(false);
     let cancelled = false;
 
-    checkLocalChunks(hashes)
+    checkLocalChunks(hashes, 10_000)
       .then((result) => {
         if (cancelled) return;
         setLocalBytes(result.local === result.total ? result.localBytes : null);
@@ -83,7 +83,11 @@ export function useCreditGate(arg: number | CreditGateOptions): CreditGateState 
       })
       .catch(() => {
         if (cancelled) return;
-        setLocalBytes(null);
+        // Optimistic: if the local-check fails (timeout / SW busy), assume local
+        // so the credit gate does not block content that is already cached.
+        // useChunkBlob will surface a real error if the chunk is truly missing.
+        console.warn("[useCreditGate] checkLocalChunks failed/timed out — assuming local");
+        setLocalBytes(contentSizeBytes);
         setLocalCheckDone(true);
       });
 
