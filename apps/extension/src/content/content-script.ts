@@ -30,7 +30,9 @@ import {
 })();
 
 function postResponseToPage(payload: EntropyExtensionResponseEvent): void {
-  window.postMessage(payload, "*");
+  // Restrict to the current page origin — prevents cross-origin scripts from
+  // intercepting extension responses (including keypair exports).
+  window.postMessage(payload, window.location.origin);
 }
 
 function buildResponseEvent(
@@ -56,7 +58,12 @@ const ENTROPY_NIP07_REQUEST = "ENTROPY_NIP07_REQUEST";
 const ENTROPY_NIP07_RESPONSE = "ENTROPY_NIP07_RESPONSE";
 
 window.addEventListener("message", async (event: MessageEvent) => {
-  if (event.source !== window || !event.data || event.data.type !== ENTROPY_NIP07_REQUEST) {
+  if (
+    event.source !== window ||
+    event.origin !== window.location.origin ||
+    !event.data ||
+    event.data.type !== ENTROPY_NIP07_REQUEST
+  ) {
     return;
   }
 
@@ -88,10 +95,10 @@ window.addEventListener("message", async (event: MessageEvent) => {
       throw new Error(`Unknown NIP-07 method: ${method}`);
     }
 
-    window.postMessage({ type: ENTROPY_NIP07_RESPONSE, id, result }, "*");
+    window.postMessage({ type: ENTROPY_NIP07_RESPONSE, id, result }, window.location.origin);
   } catch (err) {
     const error = err instanceof Error ? err.message : "NIP-07 relay error";
-    window.postMessage({ type: ENTROPY_NIP07_RESPONSE, id, error }, "*");
+    window.postMessage({ type: ENTROPY_NIP07_RESPONSE, id, error }, window.location.origin);
   }
 });
 
@@ -100,7 +107,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("message", async (event: MessageEvent) => {
-  if (event.source !== window) {
+  if (event.source !== window || event.origin !== window.location.origin) {
     return;
   }
 
@@ -129,7 +136,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
 
 browser.runtime.onMessage.addListener((message: unknown) => {
   if (isEntropyRuntimePushMessage(message)) {
-    window.postMessage(message, "*");
+    window.postMessage(message, window.location.origin);
     return;
   }
 
@@ -139,6 +146,6 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       type: "EXTENSION_EVENT",
       payload: message
     },
-    "*"
+    window.location.origin
   );
 });

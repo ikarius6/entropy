@@ -145,7 +145,12 @@ function sendBridgeMessage<T>(
     }
 
     function handleBridgeResponse(event: MessageEvent): void {
-      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") {
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        !event.data ||
+        event.data.type !== "EXTENSION_RESPONSE"
+      ) {
         return;
       }
 
@@ -175,7 +180,7 @@ function sendBridgeMessage<T>(
     }
 
     window.addEventListener("message", handleBridgeResponse);
-    window.postMessage(message, "*");
+    window.postMessage(message, window.location.origin);
   });
 }
 
@@ -482,7 +487,12 @@ export function getChunk(payload: GetChunkPayload, timeoutMs = 5000): Promise<Ch
     }, timeoutMs);
 
     function handleResponse(event: MessageEvent): void {
-      if (event.source !== window || !event.data || event.data.type !== "EXTENSION_RESPONSE") return;
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        !event.data ||
+        event.data.type !== "EXTENSION_RESPONSE"
+      ) return;
       if (!isEntropyExtensionResponseEvent(event.data)) return;
       if (event.data.requestId !== requestId || event.data.requestType !== "GET_CHUNK") return;
 
@@ -502,7 +512,7 @@ export function getChunk(payload: GetChunkPayload, timeoutMs = 5000): Promise<Ch
 
     window.addEventListener("message", handleResponse);
     console.log("[getChunk] sending GET_CHUNK for hash:", payload.hash.slice(0, 12) + "…");
-    window.postMessage(message, "*");
+    window.postMessage(message, window.location.origin);
   });
 }
 
@@ -510,7 +520,11 @@ export function subscribeToNodeStatusUpdates(
   onUpdate: (status: NodeStatusPayload) => void
 ): () => void {
   function handleRuntimePush(event: MessageEvent): void {
-    if (event.source !== window || !isEntropyRuntimePushMessage(event.data)) {
+    if (
+      event.source !== window ||
+      event.origin !== window.location.origin ||
+      !isEntropyRuntimePushMessage(event.data)
+    ) {
       return;
     }
 
@@ -532,7 +546,11 @@ export function subscribeToCreditUpdates(
   onUpdate: (summary: CreditSummaryPayload) => void
 ): () => void {
   function handleRuntimePush(event: MessageEvent): void {
-    if (event.source !== window || !isEntropyRuntimePushMessage(event.data)) {
+    if (
+      event.source !== window ||
+      event.origin !== window.location.origin ||
+      !isEntropyRuntimePushMessage(event.data)
+    ) {
       return;
     }
 
