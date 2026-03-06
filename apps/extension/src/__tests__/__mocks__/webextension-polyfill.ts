@@ -33,13 +33,29 @@ if (!g.__webextPolyfillMock) {
   const s = new Map<string, unknown>();
   g.__webextPolyfillMock = {
     storage: s,
-    storageGet: vi.fn(async (key: string) => ({ [key]: s.get(key) })),
+    storageGet: vi.fn(async (keys: string | string[]) => {
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      const result: Record<string, unknown> = {};
+      for (const k of keyList) {
+        result[k] = s.get(k);
+      }
+      return result;
+    }),
     storageSet: vi.fn(async (value: Record<string, unknown>) => {
       for (const [k, v] of Object.entries(value)) {
-        s.set(k, v);
+        if (v === undefined) {
+          s.delete(k);
+        } else {
+          s.set(k, v);
+        }
       }
     }),
-    storageRemove: vi.fn(async (key: string) => { s.delete(key); }),
+    storageRemove: vi.fn(async (key: string | string[]) => {
+      const keys = Array.isArray(key) ? key : [key];
+      for (const k of keys) {
+        s.delete(k);
+      }
+    }),
     storageClear: vi.fn(async () => { s.clear(); }),
     runtimeSendMessage: vi.fn(async () => undefined),
     runtimeOnMessageAddListener: vi.fn(),
@@ -104,6 +120,13 @@ export function __resetMockStorage(): void {
  */
 export function __setMockStorageValue(key: string, value: unknown): void {
   m.storage.set(key, value);
+}
+
+/**
+ * Read a raw value from mock storage (for test assertions).
+ */
+export function __getMockStorageValue(key: string): unknown {
+  return m.storage.get(key);
 }
 
 export default browser;

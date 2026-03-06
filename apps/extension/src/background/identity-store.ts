@@ -3,75 +3,139 @@ import {
   generateKeypair,
   pubkeyFromPrivkey,
   signEvent,
+  vaultEncrypt,
+  vaultDecrypt,
+  isVaultEntry,
   type NostrEvent,
   type NostrEventDraft,
-  type NostrKeypair
+  type NostrKeypair,
+  type VaultEntry
 } from "@entropy/core";
 
-interface IdentityStorageSchema {
-  entropyIdentity?: NostrKeypair;
+// ---------------------------------------------------------------------------
+// Storage keys
+// ---------------------------------------------------------------------------
+
+/** Legacy key — plain-text keypair (v1). Migrated away on first read. */
+const LEGACY_KEY = "entropyIdentity";
+
+/** Current key — AES-256-GCM encrypted private key (v2). */
+const VAULT_KEY = "entropyIdentityV2";
+
+/** Stored alongside the ciphertext; contains the pubkey in plain text so we
+ *  never need to decrypt just to display "which identity is active". */
+const PUBKEY_KEY = "entropyPubkey";
+
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
+
+interface LegacyStorageSchema {
+  [LEGACY_KEY]?: { pubkey?: string; privkey?: string };
 }
 
-const STORAGE_KEY = "entropyIdentity";
+interface VaultStorageSchema {
+  [VAULT_KEY]?: VaultEntry;
+  [PUBKEY_KEY]?: string;
+}
+
+// ---------------------------------------------------------------------------
+// In-memory cache (lives for the lifetime of the Service Worker instance)
+// ---------------------------------------------------------------------------
 
 let cachedIdentity: NostrKeypair | null = null;
 
 function cloneIdentity(identity: NostrKeypair): NostrKeypair {
-  return {
-    pubkey: identity.pubkey,
-    privkey: identity.privkey
-  };
+  return { pubkey: identity.pubkey, privkey: identity.privkey };
 }
 
-function parseStoredIdentity(value: unknown): NostrKeypair | null {
-  if (!value || typeof value !== "object") {
-    return null;
+// ---------------------------------------------------------------------------
+// Persist (encrypt) → local storage
+// ---------------------------------------------------------------------------
+
+async function persistIdentity(identity: NostrKeypair): Promise<void> {
+  cachedIdentity = cloneIdentity(identity);
+
+  const entry = await vaultEncrypt(identity.privkey);
+
+  await browser.storage.local.set({
+    [VAULT_KEY]: entry,
+    [PUBKEY_KEY]: identity.pubkey,
+    // Remove the old plaintext key if it still exists.
+    [LEGACY_KEY]: undefined
+  } as Record<string, unknown>);
+
+  // chrome.storage.local.set ignores `undefined` values; explicitly remove the
+  // legacy key to avoid it lingering in storage.
+  await browser.storage.local.remove(LEGACY_KEY);
+}
+
+// ---------------------------------------------------------------------------
+// Read (decrypt) from local storage — with v1→v2 migration
+// ---------------------------------------------------------------------------
+
+async function readStoredIdentity(): Promise<NostrKeypair | null> {
+  // Fast path: in-memory cache avoids a storage round-trip on every call.
+  if (cachedIdentity) {
+    return cloneIdentity(cachedIdentity);
   }
 
-  const candidate = value as Partial<NostrKeypair>;
+  const vaultResult = (await browser.storage.local.get([VAULT_KEY, PUBKEY_KEY])) as VaultStorageSchema;
+  const entry = vaultResult[VAULT_KEY];
 
-  if (typeof candidate.privkey !== "string" || typeof candidate.pubkey !== "string") {
+  if (isVaultEntry(entry)) {
+    // Happy path: v2 encrypted identity already exists.
+    const storedPubkey = vaultResult[PUBKEY_KEY];
+
+    try {
+      const privkey = await vaultDecrypt(entry);
+      const derivedPubkey = pubkeyFromPrivkey(privkey);
+
+      // Guard: derived pubkey must match what we stored unencrypted.
+      if (storedPubkey && derivedPubkey !== storedPubkey) {
+        // Storage inconsistency — treat as corrupt and return null.
+        return null;
+      }
+
+      const identity: NostrKeypair = { pubkey: derivedPubkey, privkey };
+      cachedIdentity = identity;
+      return cloneIdentity(identity);
+    } catch {
+      // Decryption failure (corrupt / tampered entry) — return null so the
+      // caller can generate a fresh keypair.
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Migration path: v1 plaintext identity found → encrypt and upgrade.
+  // ---------------------------------------------------------------------------
+  const legacyResult = (await browser.storage.local.get(LEGACY_KEY)) as LegacyStorageSchema;
+  const legacy = legacyResult[LEGACY_KEY];
+
+  if (!legacy || typeof legacy.privkey !== "string" || typeof legacy.pubkey !== "string") {
     return null;
   }
 
   try {
-    const derived = pubkeyFromPrivkey(candidate.privkey);
-
-    if (derived !== candidate.pubkey) {
+    const derivedPubkey = pubkeyFromPrivkey(legacy.privkey);
+    if (derivedPubkey !== legacy.pubkey) {
+      // Corrupt legacy entry.
       return null;
     }
 
-    return {
-      pubkey: candidate.pubkey,
-      privkey: candidate.privkey
-    };
+    const migrated: NostrKeypair = { pubkey: legacy.pubkey, privkey: legacy.privkey };
+    // Re-persist using the encrypted format (also deletes LEGACY_KEY).
+    await persistIdentity(migrated);
+    return cloneIdentity(migrated);
   } catch {
     return null;
   }
 }
 
-async function readStoredIdentity(): Promise<NostrKeypair | null> {
-  if (cachedIdentity) {
-    return cloneIdentity(cachedIdentity);
-  }
-
-  const result = (await browser.storage.local.get(STORAGE_KEY)) as IdentityStorageSchema;
-  const parsed = parseStoredIdentity(result[STORAGE_KEY]);
-
-  if (!parsed) {
-    return null;
-  }
-
-  cachedIdentity = parsed;
-  return cloneIdentity(parsed);
-}
-
-async function persistIdentity(identity: NostrKeypair): Promise<void> {
-  cachedIdentity = cloneIdentity(identity);
-  await browser.storage.local.set({
-    [STORAGE_KEY]: cloneIdentity(identity)
-  });
-}
+// ---------------------------------------------------------------------------
+// Public API — identical signatures to the old implementation
+// ---------------------------------------------------------------------------
 
 export async function getOrCreateKeypair(): Promise<NostrKeypair> {
   const current = await readStoredIdentity();
@@ -87,12 +151,9 @@ export async function getOrCreateKeypair(): Promise<NostrKeypair> {
 
 export async function importKeypair(privkey: string): Promise<{ pubkey: string }> {
   const pubkey = pubkeyFromPrivkey(privkey);
-
-  await persistIdentity({
-    pubkey,
-    privkey
-  });
-
+  // Invalidate in-memory cache so next read goes through the vaulted store.
+  cachedIdentity = null;
+  await persistIdentity({ pubkey, privkey });
   return { pubkey };
 }
 

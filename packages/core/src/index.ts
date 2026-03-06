@@ -3,6 +3,7 @@ export * from "./chunking/assembler";
 export * from "./chunking/merkle";
 export * from "./chunking/keyframe-aligner";
 export * from "./crypto/hash";
+export * from "./crypto/vault";
 export * from "./nostr/nip-entropy";
 export * from "./nostr/events";
 export * from "./nostr/signaling";
