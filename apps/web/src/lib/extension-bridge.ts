@@ -31,7 +31,9 @@ import {
   type GetChunkPayload,
   type ChunkDataPayload,
   type TagContentPayload,
-  type TagContentResultPayload
+  type TagContentResultPayload,
+  type SignAllowlistPayload,
+  type SignOriginPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
@@ -53,7 +55,7 @@ export type {
   ChunkDataPayload
 };
 
-export type { ColdStorageAssignmentPayload, NodeMetricsPayload, TagContentPayload, TagContentResultPayload } from "@entropy/core";
+export type { ColdStorageAssignmentPayload, NodeMetricsPayload, TagContentPayload, TagContentResultPayload, SignAllowlistPayload, SignOriginPayload } from "@entropy/core";
 
 function buildNoPayloadMessage(
   requestId: string,
@@ -66,6 +68,7 @@ function buildNoPayloadMessage(
     | "GET_COLD_STORAGE_ASSIGNMENTS"
     | "GET_NODE_METRICS"
     | "EXPORT_IDENTITY"
+    | "GET_SIGN_ALLOWLIST"
 ): EntropyRuntimeMessage {
   return { source: ENTROPY_WEB_SOURCE, requestId, type };
 }
@@ -566,4 +569,34 @@ export function subscribeToCreditUpdates(
   return () => {
     window.removeEventListener("message", handleRuntimePush);
   };
+}
+// ---------------------------------------------------------------------------
+// NIP-07 Sign Allowlist
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ALLOWLIST_TIMEOUT_MS = 5_000;
+
+function validateAllowlistPayload(v: unknown): SignAllowlistPayload | null {
+  if (v !== null && typeof v === "object" && Array.isArray((v as SignAllowlistPayload).origins)) {
+    return v as SignAllowlistPayload;
+  }
+  return null;
+}
+
+export function getSignAllowlist(): Promise<SignAllowlistPayload> {
+  const requestId = createEntropyRequestId("sign-allowlist");
+  const message = buildNoPayloadMessage(requestId, "GET_SIGN_ALLOWLIST");
+  return sendBridgeMessage<SignAllowlistPayload>(message, validateAllowlistPayload, DEFAULT_ALLOWLIST_TIMEOUT_MS);
+}
+
+export function addSignOrigin(origin: string): Promise<SignAllowlistPayload> {
+  const requestId = createEntropyRequestId("sign-allowlist");
+  const message: EntropyRuntimeMessage = { source: ENTROPY_WEB_SOURCE, requestId, type: "ADD_SIGN_ORIGIN", payload: { origin } };
+  return sendBridgeMessage<SignAllowlistPayload>(message, validateAllowlistPayload, DEFAULT_ALLOWLIST_TIMEOUT_MS);
+}
+
+export function removeSignOrigin(origin: string): Promise<SignAllowlistPayload> {
+  const requestId = createEntropyRequestId("sign-allowlist");
+  const message: EntropyRuntimeMessage = { source: ENTROPY_WEB_SOURCE, requestId, type: "REMOVE_SIGN_ORIGIN", payload: { origin } };
+  return sendBridgeMessage<SignAllowlistPayload>(message, validateAllowlistPayload, DEFAULT_ALLOWLIST_TIMEOUT_MS);
 }

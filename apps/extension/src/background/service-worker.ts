@@ -35,6 +35,7 @@ import {
 import { hasDelegatedChunks, storeChunkPayload, addContentTagFromUser } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { exportIdentity, getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
+import { getSignAllowlist, addSignOrigin, removeSignOrigin, seedSignAllowlist } from "./sign-allowlist";
 import { startP2PSeeding, fetchChunkP2P } from "./p2p-bridge";
 import type { PeerChunkResult } from "./p2p-bridge";
 
@@ -845,6 +846,39 @@ browser.runtime.onMessage.addListener(
             return tagResponse;
           }
 
+          case "GET_SIGN_ALLOWLIST": {
+            const origins = await getSignAllowlist();
+            const allowlistResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "GET_SIGN_ALLOWLIST",
+              payload: { origins }
+            };
+            return allowlistResponse;
+          }
+
+          case "ADD_SIGN_ORIGIN": {
+            const origins = await addSignOrigin(message.payload.origin);
+            const addResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "ADD_SIGN_ORIGIN",
+              payload: { origins }
+            };
+            return addResponse;
+          }
+
+          case "REMOVE_SIGN_ORIGIN": {
+            const origins = await removeSignOrigin(message.payload.origin);
+            const removeResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "REMOVE_SIGN_ORIGIN",
+              payload: { origins }
+            };
+            return removeResponse;
+          }
+
         }
       } catch (caughtError) {
         const messageText =
@@ -854,5 +888,21 @@ browser.runtime.onMessage.addListener(
     })();
   }
 );
+
+// ---------------------------------------------------------------------------
+// Seed the default NIP-07 signing allowlist.
+// Called on every SW startup (not just onInstalled) so that the defaults are
+// always in place before the first UI request arrives.  The guard inside
+// seedSignAllowlist() is a no-op when the key already exists.
+// ---------------------------------------------------------------------------
+
+browser.runtime.onInstalled.addListener(() => {
+  void seedSignAllowlist();
+});
+
+// Also seed on every cold SW startup (handles the case where onInstalled
+// has already fired but storage was cleared, or the SW restarted before
+// the UI got a chance to read the list).
+void seedSignAllowlist();
 
 scheduleBootstrap();

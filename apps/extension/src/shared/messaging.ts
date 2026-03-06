@@ -38,5 +38,7 @@ export {
   type ChunkDataPayload,
   type TagContentPayload,
   type TagContentResultPayload,
-  isTagContentResultPayload
+  isTagContentResultPayload,
+  type SignAllowlistPayload,
+  type SignOriginPayload
 } from "@entropy/core";

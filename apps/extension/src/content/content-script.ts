@@ -80,6 +80,29 @@ window.addEventListener("message", async (event: MessageEvent) => {
       result = (response.payload as { pubkey: string }).pubkey;
 
     } else if (method === "signEvent") {
+      // --- Origin allowlist enforcement ---
+      // Ask the service worker whether this page is allowed to sign.
+      const allowlistRequestId = createEntropyRequestId("nip07-allowlist");
+      const allowlistMsg = {
+        source: ENTROPY_WEB_SOURCE,
+        requestId: allowlistRequestId,
+        type: "GET_SIGN_ALLOWLIST" as const
+      };
+      const allowlistResponse = (await browser.runtime.sendMessage(allowlistMsg)) as EntropyRuntimeResponse;
+
+      if (!allowlistResponse.ok) {
+        throw new Error("Failed to retrieve sign allowlist");
+      }
+
+      const { origins } = allowlistResponse.payload as { origins: string[] };
+
+      if (!origins.includes(window.location.origin)) {
+        throw new Error(
+          `Origin "${window.location.origin}" is not authorized to sign Nostr events. ` +
+          `Add it in the Entropy extension settings.`
+        );
+      }
+
       const requestId = createEntropyRequestId("nip07");
       const msg = {
         source: ENTROPY_WEB_SOURCE,

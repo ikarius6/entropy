@@ -155,6 +155,15 @@ export interface TagContentPayload {
   tag: string;
 }
 
+// NIP-07 origin allowlist — controls which page origins can call signEvent.
+export interface SignAllowlistPayload {
+  origins: string[];
+}
+
+export interface SignOriginPayload {
+  origin: string;
+}
+
 export interface TagContentResultPayload {
   added: boolean;
   tags: Array<{ name: string; counter: number; updatedAt: number }>;
@@ -212,7 +221,8 @@ export type EntropyRuntimePayload =
   | SignedEventPayload
   | ChunkDataPayload
   | CheckLocalChunksResultPayload
-  | TagContentResultPayload;
+  | TagContentResultPayload
+  | SignAllowlistPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -326,6 +336,23 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "TAG_CONTENT";
       payload: TagContentPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_SIGN_ALLOWLIST";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "ADD_SIGN_ORIGIN";
+      payload: SignOriginPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "REMOVE_SIGN_ORIGIN";
+      payload: SignOriginPayload;
     };
 
 export type EntropyRuntimeResponse =
@@ -402,6 +429,12 @@ export type EntropyRuntimeResponse =
       payload: TagContentResultPayload;
     }
   | {
+      ok: true;
+      requestId: string;
+      type: "GET_SIGN_ALLOWLIST" | "ADD_SIGN_ORIGIN" | "REMOVE_SIGN_ORIGIN";
+      payload: SignAllowlistPayload;
+    }
+  | {
       ok: false;
       requestId: string;
       type: EntropyRuntimeMessage["type"];
@@ -458,7 +491,10 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "GET_NODE_METRICS" ||
     value === "CHECK_LOCAL_CHUNKS" ||
     value === "EXPORT_IDENTITY" ||
-    value === "TAG_CONTENT"
+    value === "TAG_CONTENT" ||
+    value === "GET_SIGN_ALLOWLIST" ||
+    value === "ADD_SIGN_ORIGIN" ||
+    value === "REMOVE_SIGN_ORIGIN"
   );
 }
 
@@ -762,6 +798,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isTagContentPayload(value.payload);
   }
 
+  if (value.type === "ADD_SIGN_ORIGIN" || value.type === "REMOVE_SIGN_ORIGIN") {
+    return isRecord(value.payload) && typeof (value.payload as Record<string, unknown>).origin === "string";
+  }
+
   return true;
 }
 
@@ -810,6 +850,14 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
 
   if (requestType === "SIGN_EVENT") {
     return isRecord(payload) && typeof payload.id === "string" && typeof payload.sig === "string";
+  }
+
+  if (
+    requestType === "GET_SIGN_ALLOWLIST" ||
+    requestType === "ADD_SIGN_ORIGIN" ||
+    requestType === "REMOVE_SIGN_ORIGIN"
+  ) {
+    return isRecord(payload) && Array.isArray((payload as Record<string, unknown>).origins);
   }
 
   return isNodeStatusPayload(payload);

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useQuotaManager } from "../hooks/useQuotaManager";
@@ -8,7 +8,8 @@ import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { exportIdentity, importKeypair } from "../lib/extension-bridge";
 import { sortPreferencesByRelevance } from "@entropy/core";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X } from "lucide-react";
+import { getSignAllowlist, addSignOrigin, removeSignOrigin } from "../lib/extension-bridge";
 
 export default function SettingsPage() {
   const { pubkey, relayUrls, initRelays } = useEntropyStore();
@@ -21,6 +22,23 @@ export default function SettingsPage() {
   const [quotaGB, setQuotaGB] = useState(quotaBytes / (1024 * 1024 * 1024));
   const [identityBusy, setIdentityBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // NIP-07 allowlist state
+  const [allowlist, setAllowlist] = useState<string[]>([]);
+  const [allowlistLoaded, setAllowlistLoaded] = useState(false);
+  const [newOrigin, setNewOrigin] = useState("");
+  const [allowlistBusy, setAllowlistBusy] = useState(false);
+
+  // Load allowlist once on mount
+  useEffect(() => {
+    getSignAllowlist()
+      .then((payload) => {
+        setAllowlist(payload.origins);
+        setAllowlistLoaded(true);
+      })
+      .catch(() => setAllowlistLoaded(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveRelays = async () => {
     try {
@@ -110,6 +128,41 @@ export default function SettingsPage() {
   const handleResetPreferences = () => {
     localStorage.removeItem("entropy-tag-preferences");
     window.location.reload();
+  };
+
+  const handleAddOrigin = async () => {
+    const trimmed = newOrigin.trim();
+    if (!trimmed) return;
+    try {
+      new URL(trimmed); // validates it is a real URL origin
+    } catch {
+      error("Invalid origin", "Enter a valid URL origin, e.g. https://myapp.com");
+      return;
+    }
+    setAllowlistBusy(true);
+    try {
+      const result = await addSignOrigin(trimmed);
+      setAllowlist(result.origins);
+      setNewOrigin("");
+      success("Origin added", `${trimmed} can now sign Nostr events.`);
+    } catch (err) {
+      error("Failed to add origin", err instanceof Error ? err.message : String(err));
+    } finally {
+      setAllowlistBusy(false);
+    }
+  };
+
+  const handleRemoveOrigin = async (origin: string) => {
+    setAllowlistBusy(true);
+    try {
+      const result = await removeSignOrigin(origin);
+      setAllowlist(result.origins);
+      success("Origin removed", `${origin} can no longer sign events.`);
+    } catch (err) {
+      error("Failed to remove origin", err instanceof Error ? err.message : String(err));
+    } finally {
+      setAllowlistBusy(false);
+    }
   };
 
   const formatGB = (bytes: number) => (bytes / (1024 * 1024 * 1024)).toFixed(2);
@@ -428,6 +481,66 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+      {/* NIP-07 Trusted Origins */}
+      <section className="panel flex flex-col gap-4">
+        <div className="flex items-center gap-3 border-b border-border pb-3">
+          <Globe className="text-primary" />
+          <div>
+            <h2 className="text-xl font-bold">Trusted Origins (NIP-07 Signing)</h2>
+            <p className="text-xs text-muted mt-0.5">
+              Only pages from these origins can call <code>window.nostr.signEvent()</code>.
+            </p>
+          </div>
+        </div>
+
+        {!allowlistLoaded ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <>
+            <ul className="flex flex-col gap-2">
+              {allowlist.length === 0 && (
+                <li className="text-sm text-muted/60 italic">No origins authorized yet.</li>
+              )}
+              {allowlist.map((origin) => (
+                <li
+                  key={origin}
+                  className="flex items-center justify-between gap-3 bg-white/5 border border-white/10 px-4 py-2.5 rounded-lg"
+                >
+                  <code className="text-sm text-accent break-all">{origin}</code>
+                  <button
+                    onClick={() => handleRemoveOrigin(origin)}
+                    disabled={allowlistBusy}
+                    className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted hover:text-red-400 transition-colors disabled:opacity-40"
+                    title="Remove"
+                  >
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex gap-2 mt-1">
+              <input
+                type="url"
+                placeholder="https://myapp.com"
+                value={newOrigin}
+                onChange={(e) => setNewOrigin(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddOrigin()}
+                className="flex-1 bg-background/50 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono"
+              />
+              <button
+                onClick={handleAddOrigin}
+                disabled={allowlistBusy || !newOrigin.trim()}
+                className="flex items-center gap-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+              >
+                <Plus size={15} />
+                Add
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+
     </div>
   );
 }
