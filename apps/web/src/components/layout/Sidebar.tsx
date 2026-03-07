@@ -3,16 +3,19 @@ import { Home, Upload, User, Settings as SettingsIcon, HelpCircle } from "lucide
 import { useCredits } from "../../hooks/useCredits";
 
 function formatCredits(bytes: number): { value: string; unit: string } {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return { value: (bytes / (1024 * 1024 * 1024)).toFixed(1), unit: "GB" };
+  // Clamp to zero – race conditions can briefly produce a negative balance;
+  // showing "-99999 B" is confusing and alarming to users.
+  const b = Math.max(0, bytes);
+  if (b >= 1024 * 1024 * 1024) {
+    return { value: (b / (1024 * 1024 * 1024)).toFixed(1), unit: "GB" };
   }
-  if (bytes >= 1024 * 1024) {
-    return { value: (bytes / (1024 * 1024)).toFixed(1), unit: "MB" };
+  if (b >= 1024 * 1024) {
+    return { value: (b / (1024 * 1024)).toFixed(1), unit: "MB" };
   }
-  if (bytes >= 1024) {
-    return { value: (bytes / 1024).toFixed(1), unit: "KB" };
+  if (b >= 1024) {
+    return { value: (b / 1024).toFixed(1), unit: "KB" };
   }
-  return { value: String(bytes), unit: "B" };
+  return { value: String(b), unit: "B" };
 }
 
 export function Sidebar() {
@@ -29,7 +32,7 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 flex flex-col gap-6 pt-4 pr-6 border-r border-border min-h-[calc(100vh-5rem)]">
+    <aside className="w-64 flex flex-col gap-6 pt-4 pr-6 border-r border-border sticky top-[5rem] h-[calc(100vh-5rem)] overflow-y-auto">
       <nav className="flex flex-col gap-2">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || 
