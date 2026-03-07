@@ -644,7 +644,13 @@ function isRelayUrlPayload(value: unknown): value is RelayUrlPayload {
     return false;
   }
 
-  return typeof value.url === "string" && value.url.trim().length > 0;
+  if (typeof value.url !== "string" || value.url.trim().length === 0) {
+    return false;
+  }
+
+  // Enforce ws(s):// protocol at the bridge level — defense-in-depth before
+  // the background script's stricter normalizeRelayUrl runs.
+  return /^wss?:\/\//i.test(value.url.trim());
 }
 
 function isSetSeedingActivePayload(value: unknown): value is SetSeedingActivePayload {

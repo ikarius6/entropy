@@ -19,14 +19,49 @@ export const DEFAULT_RELAY_URLS = [
 let relayPool: RelayPool | null = null;
 let currentRelayUrls: string[] = [];
 
-function normalizeRelayUrl(url: string): string {
-  const normalized = url.trim().replace(/\/+$/, "");
+export const MAX_RELAY_COUNT = 10;
 
-  if (!/^wss?:\/\//i.test(normalized)) {
-    throw new Error("Relay URL must start with ws:// or wss://.");
+const MAX_RELAY_URL_LENGTH = 512;
+
+/** Hostnames that must never be accepted as relay targets. */
+const BLOCKED_HOSTNAME_RE =
+  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|::1|0\.0\.0\.0)$/i;
+
+/** Control characters that cannot appear in a safe URL. */
+const CONTROL_CHAR_RE = /[\x00-\x1f]/;
+
+function normalizeRelayUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "");
+
+  if (trimmed.length > MAX_RELAY_URL_LENGTH) {
+    throw new Error(`Relay URL exceeds maximum length of ${MAX_RELAY_URL_LENGTH} characters.`);
   }
 
-  return normalized;
+  if (CONTROL_CHAR_RE.test(trimmed)) {
+    throw new Error("Relay URL contains invalid control characters.");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("Relay URL is not a valid URL.");
+  }
+
+  if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+    throw new Error("Relay URL must use the ws:// or wss:// protocol.");
+  }
+
+  if (!parsed.hostname) {
+    throw new Error("Relay URL must have a non-empty hostname.");
+  }
+
+  if (BLOCKED_HOSTNAME_RE.test(parsed.hostname)) {
+    throw new Error(`Relay URL hostname "${parsed.hostname}" is not allowed.`);
+  }
+
+  // Return a normalized form: protocol + hostname + port (if non-default) + pathname
+  return trimmed;
 }
 
 function normalizeRelayUrls(urls: string[]): string[] {
@@ -104,8 +139,17 @@ export function getRelayPool(): RelayPool {
 
 export async function addRelay(url: string): Promise<void> {
   const current = await getRelayUrls();
-  const next = normalizeRelayUrls([...current, url]);
+  const normalized = normalizeRelayUrl(url); // throws if invalid
 
+  if (current.includes(normalized)) {
+    return; // already present — idempotent
+  }
+
+  if (current.length >= MAX_RELAY_COUNT) {
+    throw new Error(`Cannot add relay: maximum of ${MAX_RELAY_COUNT} relays allowed.`);
+  }
+
+  const next = [...current, normalized];
   await writeStoredRelayUrls(next);
   replaceRelayPool(next);
 }

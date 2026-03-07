@@ -43,6 +43,18 @@ export default function SettingsPage() {
   const handleSaveRelays = async () => {
     try {
       const urls = relaysText.split("\n").map(r => r.trim()).filter(r => r.length > 0);
+
+      const invalid = urls.filter(u => !/^wss?:\/\//i.test(u));
+      if (invalid.length > 0) {
+        error("Invalid relay URL", `These URLs must start with wss:// or ws://:\n${invalid.join("\n")}`);
+        return;
+      }
+
+      if (urls.length > 10) {
+        error("Too many relays", "A maximum of 10 relays is allowed.");
+        return;
+      }
+
       await initRelays(urls);
       success("Relays updated", "Successfully connected to new relays.");
     } catch (err) {
