@@ -23,6 +23,10 @@ import {
   Trash2,
   Key,
   Package,
+  Globe,
+  EyeOff,
+  ToggleRight,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -41,6 +45,7 @@ const TABS: Tab[] = [
   { id: "seeding", label: "Why Seed?", icon: <Coins size={18} /> },
   { id: "security", label: "Security", icon: <Shield size={18} /> },
   { id: "storage", label: "Storage", icon: <Database size={18} /> },
+  { id: "tor", label: "Tor/Privacy", icon: <Globe size={18} /> },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -893,8 +898,16 @@ function StorageTab() {
           <div className="grid grid-cols-1 gap-3">
             {[
               {
-                key: "entropyIdentity",
-                desc: "Nostr keypair (pubkey + privkey). Generated on first launch or imported manually. The Service Worker caches this in memory and falls back to storage.local on cold start.",
+                key: "entropyIdentityV2",
+                desc: "AES-256-GCM encrypted private key (VaultEntry with salt, iv, ct fields). PBKDF2-SHA-256 with 200 000 iterations derives the encryption key. The raw private key is never stored in plain text — only the ciphertext blob. On Service Worker cold start the vault is decrypted into an in-memory cache.",
+                color: "text-emerald-400" as const,
+                bg: "bg-emerald-500/10" as const,
+                border: "border-emerald-500/20" as const,
+                icon: <Lock size={14} />,
+              },
+              {
+                key: "entropyPubkey",
+                desc: "Public key stored in plain text alongside the vault entry so the UI can display the active identity without decrypting the private key.",
                 color: "text-emerald-400" as const,
                 bg: "bg-emerald-500/10" as const,
                 border: "border-emerald-500/20" as const,
@@ -932,12 +945,26 @@ function StorageTab() {
           <div className="mt-4 bg-background/60 rounded-lg p-3">
             <div className="flex items-start gap-2">
               <Lock size={13} className="text-orange-400 shrink-0 mt-0.5" />
-              <p className="text-muted text-[10px] leading-relaxed">
-                <strong className="text-white">Security note:</strong> The private key stored in{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentity</code>{" "}
-                never leaves the extension sandbox. The web app can only request the public key or ask
-                the extension to sign events — it never sees the raw private key.
-              </p>
+              <div className="text-muted text-[10px] leading-relaxed space-y-1.5">
+                <p>
+                  <strong className="text-white">Encrypted at rest:</strong> The private key in{" "}
+                  <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentityV2</code>{" "}
+                  is wrapped with <strong className="text-white">AES-256-GCM</strong> using a key derived via{" "}
+                  <strong className="text-white">PBKDF2</strong> (200k iterations). A fresh random salt and IV are
+                  generated on every write, so the ciphertext changes even if the key stays the same.
+                </p>
+                <p>
+                  <strong className="text-white">Sandboxed:</strong> The decrypted key never leaves the extension
+                  Service Worker. The web app can only request the public key or ask the extension to sign
+                  events — it never sees the raw private key.
+                </p>
+                <p>
+                  <strong className="text-white">Auto-migration:</strong> If a legacy plain-text{" "}
+                  <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentity</code>{" "}
+                  entry is detected, it is automatically encrypted and upgraded to the v2 vault format on
+                  next read, and the old key is deleted.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -1000,7 +1027,7 @@ function StorageTab() {
             </thead>
             <tbody className="text-muted">
               {[
-                ["Purpose", "Bulk chunk binary data", "Identity, credits, settings"],
+                ["Purpose", "Bulk chunk binary data", "Encrypted identity, credits, settings"],
                 ["Max Size", "~2 GB (quota managed)", "~10 MB (browser limit)"],
                 ["Data Format", "ArrayBuffer (structured clone)", "JSON-serializable objects"],
                 ["Indexed Queries", "Yes (hash, rootHash, lastAccessed, pinned)", "Key-value only"],
@@ -1042,6 +1069,252 @@ function StorageTab() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  TAB 6: Tor & Privacy                                               */
+/* ------------------------------------------------------------------ */
+
+function TorTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <SectionTitle>Tor & Privacy</SectionTitle>
+        <SectionSub>
+          Entropy provides optional privacy layers that help protect your IP address from relay
+          operators and peers. These features require local Tor and/or a TURN server.
+        </SectionSub>
+      </div>
+
+      {/* Scope callout */}
+      <div className="panel p-5 border-purple-500/20 bg-purple-500/[0.03]">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center shrink-0">
+            <Globe size={16} className="text-purple-400" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-purple-400 mb-1">What's Supported Today</h4>
+            <ul className="text-muted text-xs leading-relaxed space-y-1 list-disc list-inside">
+              <li>Route <strong className="text-white">Nostr relay signaling</strong> through a local Tor SOCKS5 proxy.</li>
+              <li>Connect to <code className="text-purple-400 bg-purple-500/10 px-1 rounded text-[10px]">.onion</code> relay URLs for fully anonymous signaling.</li>
+              <li>Strip <strong className="text-white">local/host ICE candidates</strong> from WebRTC negotiation.</li>
+              <li>Force <strong className="text-white">TURN relay-only</strong> mode so peers never see your public IP.</li>
+            </ul>
+            <p className="text-muted text-[10px] mt-2">
+              <strong className="text-orange-400">Not in scope:</strong> Routing WebRTC data-channel traffic over Tor
+              (requires TURN-over-Tor, a future enhancement).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Three layers of protection */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <Shield size={14} className="text-purple-400" /> Three Layers of IP Protection
+        </h3>
+
+        <div className="grid grid-cols-1 gap-3">
+          {[
+            {
+              layer: "1",
+              title: "Tor Proxy (Signaling)",
+              desc: "Relay operators see a Tor exit node instead of your real IP. Requires Tor Browser or the Tor daemon running locally.",
+              protects: "Relay operators seeing your IP",
+              requires: "Tor running on localhost",
+              color: "text-purple-400" as const,
+              bg: "bg-purple-500/10" as const,
+              border: "border-purple-500/20" as const,
+              icon: <Globe size={14} />,
+            },
+            {
+              layer: "2",
+              title: "ICE Candidate Filtering",
+              desc: "Strips local/host candidates from the SDP before sending to the remote peer, preventing LAN IP leaks.",
+              protects: "Peers seeing your local/private IP",
+              requires: "Toggle in privacy settings",
+              color: "text-accent" as const,
+              bg: "bg-accent/10" as const,
+              border: "border-accent/20" as const,
+              icon: <EyeOff size={14} />,
+            },
+            {
+              layer: "3",
+              title: "TURN Relay-Only Mode",
+              desc: "Forces all WebRTC traffic through a TURN server so peers never establish a direct connection to your public IP.",
+              protects: "Peers seeing your public IP via WebRTC",
+              requires: "A configured TURN server",
+              color: "text-orange-400" as const,
+              bg: "bg-orange-500/10" as const,
+              border: "border-orange-500/20" as const,
+              icon: <Server size={14} />,
+            },
+          ].map((item) => (
+            <div key={item.layer} className={`flex items-start gap-3 p-4 rounded-xl ${item.bg} border ${item.border}`}>
+              <div className={`shrink-0 w-9 h-9 rounded-lg ${item.bg} border ${item.border} flex items-center justify-center ${item.color}`}>
+                {item.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[10px] font-bold ${item.color} tabular-nums`}>Layer {item.layer}</span>
+                  <h4 className="text-xs font-bold text-white">{item.title}</h4>
+                </div>
+                <p className="text-muted text-[10px] leading-relaxed mb-2">{item.desc}</p>
+                <div className="flex flex-wrap gap-2">
+                  <InfoBadge variant={item.layer === "1" ? "green" : item.layer === "2" ? "cyan" : "orange"}>
+                    <Shield size={10} /> {item.protects}
+                  </InfoBadge>
+                  <InfoBadge variant="blue">
+                    <ToggleRight size={10} /> {item.requires}
+                  </InfoBadge>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Architecture flow diagram */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <ArrowRightLeft size={14} className="text-purple-400" /> Signal Flow with Tor
+        </h3>
+
+        <div className="panel p-5">
+          <div className="flex flex-col items-center gap-2">
+            <DiagramBox label="Extension Service Worker" sub="Generates signaling offer" color="primary" className="w-full max-w-sm" />
+            <ConnectorArrow label="SOCKS5 proxy" />
+            <DiagramBox label="Tor Network" sub="127.0.0.1:9150 → exit node" color="muted" className="w-full max-w-sm" />
+            <ConnectorArrow label="onion / clearnet" />
+            <DiagramBox label="Nostr Relay" sub="Sees Tor exit IP, not yours" color="green" className="w-full max-w-sm" />
+            <ConnectorArrow label="NIP-44 encrypted offer" />
+            <DiagramBox label="Remote Peer" sub="Receives offer, replies with answer" color="accent" className="w-full max-w-sm" />
+          </div>
+
+          <div className="mt-4 bg-background/60 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <Lock size={13} className="text-purple-400 shrink-0 mt-0.5" />
+              <p className="text-muted text-[10px] leading-relaxed">
+                <strong className="text-white">End-to-end encrypted signaling:</strong> SDP offers and answers are
+                encrypted with <strong className="text-white">NIP-44</strong> before being published to Nostr relays,
+                so even the relay operator cannot read the WebRTC negotiation details.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Privacy settings */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <Key size={14} className="text-purple-400" /> Privacy Settings
+        </h3>
+
+        <div className="panel p-5">
+          <p className="text-muted text-xs leading-relaxed mb-4">
+            All settings are persisted in{" "}
+            <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">chrome.storage.local</code>{" "}
+            and applied automatically on every Service Worker restart.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 pr-4 text-muted font-medium">Setting</th>
+                  <th className="text-left py-2 pr-4 text-muted font-medium">Default</th>
+                  <th className="text-left py-2 text-muted font-medium">Description</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted">
+                {[
+                  ["torEnabled", "false", "Route relay connections through Tor SOCKS5 proxy"],
+                  ["torProxyAddress", "127.0.0.1:9150", "Local Tor SOCKS5 address (Tor Browser default)"],
+                  ["forceRelay", "false", "Set iceTransportPolicy to \"relay\" — requires TURN server"],
+                  ["turnServers", "[]", "Array of { urls, username?, credential? } TURN configs"],
+                  ["filterLocalCandidates", "false", "Strip host/local ICE candidates from SDP"],
+                  ["customIceServers", "Google STUN", "Override default STUN servers with custom list"],
+                ].map(([setting, def, desc]) => (
+                  <tr key={setting} className="border-b border-border/50">
+                    <td className="py-2 pr-4">
+                      <code className="text-purple-400 bg-purple-500/10 px-1 rounded text-[10px]">{setting}</code>
+                    </td>
+                    <td className="py-2 pr-4 font-mono text-[10px] text-white">{def}</td>
+                    <td className="py-2 text-[10px]">{desc}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Implementation architecture */}
+      <div>
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <Package size={14} className="text-purple-400" /> Implementation Architecture
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            {
+              pkg: "@entropy/core",
+              files: [
+                { name: "nat-traversal.ts", desc: "createPrivacyRtcConfiguration(), isLocalCandidate(), shouldFilterCandidate()" },
+                { name: "extension-bridge.ts", desc: "PrivacySettingsPayload type, defaults, type guards, GET/SET messages" },
+              ],
+              color: "text-primary",
+              bg: "bg-primary/10",
+              border: "border-primary/20",
+            },
+            {
+              pkg: "@entropy/extension",
+              files: [
+                { name: "tor-proxy.ts", desc: "SOCKS5 proxy — Firefox native API / Chrome PAC script" },
+                { name: "privacy-store.ts", desc: "Persist settings in chrome.storage.local" },
+                { name: "relay-manager.ts", desc: ".onion URL support conditioned on isTorActive()" },
+                { name: "signaling + peer-fetch", desc: "Privacy-aware RTC config + ICE candidate filtering" },
+              ],
+              color: "text-accent",
+              bg: "bg-accent/10",
+              border: "border-accent/20",
+            },
+          ].map((group) => (
+            <div key={group.pkg} className={`panel p-4 ${group.bg} border ${group.border}`}>
+              <code className={`text-xs font-bold ${group.color}`}>{group.pkg}</code>
+              <div className="mt-3 space-y-2">
+                {group.files.map((f) => (
+                  <div key={f.name}>
+                    <code className="text-white text-[10px] font-medium">{f.name}</code>
+                    <p className="text-muted text-[10px] leading-relaxed">{f.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Important warning */}
+      <div className="panel p-5 border-orange-500/20 bg-orange-500/[0.03]">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle size={16} className="text-orange-400" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-orange-400 mb-1">Privacy Is Not Anonymity</h4>
+            <p className="text-muted text-xs leading-relaxed">
+              Even with all three layers enabled, Entropy does <strong className="text-white">not</strong> guarantee full anonymity.
+              WebRTC data-channel traffic still flows directly between peers (or via TURN) without
+              Tor routing. Metadata such as timing, chunk access patterns, and Nostr pubkey linkage
+              can still be used for correlation. Treat these features as <strong className="text-white">defense-in-depth</strong>,
+              not as a replacement for a dedicated anonymity tool.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -1054,6 +1327,7 @@ export default function HowItWorksPage() {
     seeding: <WhySeedTab />,
     security: <SecurityTab />,
     storage: <StorageTab />,
+    tor: <TorTab />,
   };
 
   return (
