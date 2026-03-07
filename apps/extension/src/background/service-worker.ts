@@ -304,7 +304,7 @@ async function bootstrapBackground(): Promise<void> {
     privkeyHex: identity.privkey,
     chunkStore,
     signEvent: signNostrEvent,
-    onChunkServed: async (chunkHash, peerPubkey, bytes) => {
+    onChunkServed: async (chunkHash, peerPubkey, bytes, receiptSig) => {
       try {
         await peerReputationStore.recordSuccess(peerPubkey, bytes);
       } catch (err) {
@@ -315,7 +315,7 @@ async function bootstrapBackground(): Promise<void> {
         peerPubkey,
         bytes,
         chunkHash,
-        receiptSignature: `rtc-upload:${chunkHash}:${Date.now()}`,
+        receiptSignature: receiptSig ?? `unverified:${chunkHash}:${Date.now()}`,
         timestamp: Math.floor(Date.now() / 1000)
       });
 
@@ -422,7 +422,7 @@ browser.runtime.onMessage.addListener(
       "type" in message &&
       (message as { type: string }).type === "P2P_CHUNK_SERVED"
     ) {
-      const msg = message as unknown as { chunkHash: string; peerPubkey: string; bytes: number };
+      const msg = message as unknown as { chunkHash: string; peerPubkey: string; bytes: number; receiptSig?: string };
 
       void peerReputationStore.recordSuccess(msg.peerPubkey, msg.bytes).catch((err) => {
         logger.warn("[peer-reputation] failed to record offscreen upload peer success:", err);
@@ -432,7 +432,7 @@ browser.runtime.onMessage.addListener(
         peerPubkey: msg.peerPubkey,
         bytes: msg.bytes,
         chunkHash: msg.chunkHash,
-        receiptSignature: `rtc-upload:${msg.chunkHash}:${Date.now()}`,
+        receiptSignature: msg.receiptSig ?? `unverified:${msg.chunkHash}:${Date.now()}`,
         timestamp: Math.floor(Date.now() / 1000)
       }).then(emitCreditUpdate);
       return;

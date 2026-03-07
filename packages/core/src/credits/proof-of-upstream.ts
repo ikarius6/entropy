@@ -71,7 +71,10 @@ function buildReceiptEventLike(receipt: SignedReceipt): ReceiptEventLike {
 
 function defaultSignatureVerifier(event: ReceiptEventLike): boolean {
   if (!defaultVerifySignature) {
-    return false;
+    throw new Error(
+      "Receipt signature verifier is not configured. " +
+      "Call wireReceiptVerifier() at application startup before validating receipts."
+    );
   }
 
   try {

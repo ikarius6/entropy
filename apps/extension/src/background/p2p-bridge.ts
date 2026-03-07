@@ -71,7 +71,7 @@ export interface P2PBridgeOptions {
   privkeyHex: string;
   chunkStore: ChunkStore;
   signEvent: SignEventFn;
-  onChunkServed?: (chunkHash: string, peerPubkey: string, bytes: number) => void;
+  onChunkServed?: (chunkHash: string, peerPubkey: string, bytes: number, receiptSig?: string) => void;
   authorizeChunkRequest?: (request: {
     peerPubkey: string;
     chunkHash: string;
@@ -101,8 +101,8 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
           channel,
           peerPubkey,
           options.chunkStore,
-          async (chunkHash, bytes) => {
-            options.onChunkServed?.(chunkHash, peerPubkey, bytes);
+          async (chunkHash, bytes, receiptSig) => {
+            options.onChunkServed?.(chunkHash, peerPubkey, bytes, receiptSig);
           },
           {
             authorizeRequest: options.authorizeChunkRequest,

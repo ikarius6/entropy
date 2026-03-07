@@ -154,7 +154,7 @@ export function handleDataChannel(
   channel: RTCDataChannel,
   peerPubkey: string,
   chunkStore: ChunkStore,
-  onChunkServed: (chunkHash: string, bytes: number) => void | Promise<void>,
+  onChunkServed: (chunkHash: string, bytes: number, receiptSig?: string) => void | Promise<void>,
   context: ChunkServerContext = {}
 ): void {
   channel.binaryType = "arraybuffer";
@@ -292,6 +292,7 @@ export function handleDataChannel(
         sendChunkOverDataChannel(channel, chunk);
 
         // Sign and send transfer receipt after chunk data
+        let servedReceiptSig: string | undefined;
         if (context.signEvent && context.myPubkey) {
           try {
             const receiptDraft = buildReceiptDraft({
@@ -303,6 +304,7 @@ export function handleDataChannel(
             });
 
             const signedReceipt = await context.signEvent(receiptDraft);
+            servedReceiptSig = signedReceipt.sig;
 
             if (channel.readyState === "open") {
               channel.send(encodeTransferReceipt({
@@ -343,7 +345,7 @@ export function handleDataChannel(
           }
         }
 
-        await onChunkServed(chunk.hash, chunk.data.byteLength);
+        await onChunkServed(chunk.hash, chunk.data.byteLength, servedReceiptSig);
         logger.log("[chunk-server] ✅ chunk served successfully");
       } catch (sendErr) {
         logger.error("[chunk-server] error sending chunk:", sendErr);

@@ -123,17 +123,20 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
         channel,
         peerPubkey,
         chunkStore!,
-        async (chunkHash, bytes) => {
+        async (chunkHash, bytes, receiptSig) => {
           logger.log("[offscreen] served chunk", chunkHash.slice(0, 12) + "…", bytes, "bytes to", peerPubkey.slice(0, 8) + "…");
           chrome.runtime.sendMessage({
             type: "P2P_CHUNK_SERVED",
             chunkHash,
             peerPubkey,
-            bytes
+            bytes,
+            receiptSig
           }).catch(() => { /* ignore */ });
         },
         {
-          authorizeRequest: authorizeChunkRequest
+          authorizeRequest: authorizeChunkRequest,
+          signEvent: signNostrEvent,
+          myPubkey: identity!.pubkey
         }
       );
     },

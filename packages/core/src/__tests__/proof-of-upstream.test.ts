@@ -126,4 +126,36 @@ describe("proof-of-upstream", () => {
 
     configureReceiptSignatureVerifier(null);
   });
+
+  it("throws when isValidReceipt is called with no verifier configured", () => {
+    // configureReceiptSignatureVerifier(null) was called by the previous test — verifier is null
+    const receipt = buildSignedReceipt();
+
+    expect(() =>
+      isValidReceipt(receipt, receipt.chunkHash, {
+        nowSeconds: receipt.timestamp + 10
+        // no verifySignature option → falls back to defaultSignatureVerifier → should throw
+      })
+    ).toThrowError("Receipt signature verifier is not configured");
+  });
+
+  it("explicit verifySignature option works even without a global verifier configured", () => {
+    // verifier is still null from the previous tests
+    const receipt = buildSignedReceipt();
+
+    // Passing an explicit option should bypass the null global verifier
+    expect(
+      isValidReceipt(receipt, receipt.chunkHash, {
+        nowSeconds: receipt.timestamp + 10,
+        verifySignature: () => true
+      })
+    ).toBe(true);
+
+    expect(
+      isValidReceipt(receipt, receipt.chunkHash, {
+        nowSeconds: receipt.timestamp + 10,
+        verifySignature: () => false
+      })
+    ).toBe(false);
+  });
 });
