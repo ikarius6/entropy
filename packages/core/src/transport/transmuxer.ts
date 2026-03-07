@@ -1,5 +1,6 @@
 import { createFile } from "mp4box";
 import type { ISOFile } from "mp4box";
+import { assertSafeMp4, MAX_SAFE_BYTES } from "./mp4guard";
 
 /**
  * A Transmuxer converts raw video chunks to fragmented MP4 (fMP4) segments
@@ -106,6 +107,18 @@ export function createTransmuxer(): Transmuxer {
       };
     }
 
+    // Guard: validate the first chunk before handing untrusted bytes to mp4box.
+    // If the assertion fails (wrong magic bytes, oversized buffer, etc.) we fall
+    // back to pass-through mode so playback can still attempt to proceed.
+    try {
+      assertSafeMp4(firstChunk, "transmuxer");
+    } catch (guardErr) {
+      console.warn("[transmuxer] mp4guard rejected first chunk, using pass-through:", guardErr);
+      state.passThrough = true;
+      state.outputMimeType = mimeType;
+      return { initSegment: new ArrayBuffer(0), outputMimeType: mimeType };
+    }
+
     // Transmuxing path: we'll remux to fMP4
     const mp4 = createFile();
     state.mp4 = mp4;
@@ -180,6 +193,14 @@ export function createTransmuxer(): Transmuxer {
     if (state.passThrough || !state.mp4) {
       // Pass-through: return data unchanged
       return chunk;
+    }
+
+    // Guard: reject oversized individual chunks to prevent heap exhaustion.
+    if (chunk.byteLength > MAX_SAFE_BYTES) {
+      console.warn(
+        `[transmuxer] chunk too large (${chunk.byteLength} bytes), dropping`
+      );
+      return new ArrayBuffer(0);
     }
 
     return new Promise<ArrayBuffer>((resolve) => {

@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTransmuxer } from "../transport/transmuxer";
 
 // ---------------------------------------------------------------------------
+// Mock mp4guard — use a small MAX_SAFE_BYTES (1024) so we can test the
+// per-chunk cap without allocating 512 MiB in a unit test.
+// assertSafeMp4 is kept real (from importActual).
+// NOTE: vi.mock factories are hoisted, so we must use a literal — no
+// top-level variable references allowed inside the factory.
+// ---------------------------------------------------------------------------
+vi.mock("../transport/mp4guard", async () => {
+  const actual = await vi.importActual<typeof import("../transport/mp4guard")>("../transport/mp4guard");
+  return { ...actual, MAX_SAFE_BYTES: 1024 };
+});
+
+// ---------------------------------------------------------------------------
 // Mock mp4box
 // ---------------------------------------------------------------------------
 vi.mock("mp4box", () => {
@@ -26,6 +38,22 @@ vi.mock("mp4box", () => {
 // By default: report "video/mp4" as supported, "video/webm" as NOT.
 const isSupportedMock = vi.fn((mime: string) => mime.startsWith("video/mp4"));
 vi.stubGlobal("MediaSource", { isTypeSupported: isSupportedMock });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Build an ArrayBuffer whose bytes 4-7 spell a valid ISO BMFF box type. */
+function makeValidMp4Buffer(size: number): ArrayBuffer {
+  const buf = new ArrayBuffer(size);
+  const view = new DataView(buf);
+  // Write "ftyp" at offset 4-7
+  view.setUint8(4, 0x66); // 'f'
+  view.setUint8(5, 0x74); // 't'
+  view.setUint8(6, 0x79); // 'y'
+  view.setUint8(7, 0x70); // 'p'
+  return buf;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -62,7 +90,7 @@ describe("createTransmuxer — transmuxing mode", () => {
 
   it("init returns non-empty init segment when mimeType not supported", async () => {
     const t = createTransmuxer();
-    const data = new ArrayBuffer(256);
+    const data = makeValidMp4Buffer(256);
 
     // We need the mp4box mock to call onReady
     // Since mp4box is a singleton mock per test we trigger it manually
@@ -90,7 +118,7 @@ describe("createTransmuxer — transmuxing mode", () => {
 
   it("transmux returns ArrayBuffer in transmuxing mode", async () => {
     const t = createTransmuxer();
-    const data = new ArrayBuffer(256);
+    const data = makeValidMp4Buffer(256);
 
     const mp4box = await import("mp4box");
     const mockFile = mp4box.createFile() as unknown as {
@@ -103,6 +131,46 @@ describe("createTransmuxer — transmuxing mode", () => {
 
     const out = await t.transmux(new ArrayBuffer(128), 1);
     expect(out).toBeInstanceOf(ArrayBuffer);
+  });
+});
+
+describe("createTransmuxer — mp4guard hardening", () => {
+  beforeEach(() => {
+    // "video/webm" not supported → enters transmuxing branch
+    isSupportedMock.mockImplementation((mime) => !mime.startsWith("video/webm"));
+  });
+
+  it("init falls back to pass-through when leading box type is invalid", async () => {
+    const t = createTransmuxer();
+    // All-zero buffer → box type at offset 4-7 is "\x00\x00\x00\x00" → rejected by assertSafeMp4
+    const badData = new ArrayBuffer(256);
+
+    const { initSegment, outputMimeType } = await t.init(badData, "video/webm");
+
+    // assertSafeMp4 threw → transmuxer caught it and fell back to pass-through
+    expect(initSegment.byteLength).toBe(0);
+    expect(outputMimeType).toBe("video/webm");
+  });
+
+  it("transmux returns empty ArrayBuffer when chunk exceeds MAX_SAFE_BYTES", async () => {
+    const t = createTransmuxer();
+    const data = makeValidMp4Buffer(256);
+
+    const mp4box = await import("mp4box");
+    const mockFile = mp4box.createFile() as unknown as {
+      _onReady: ((info: unknown) => void) | null;
+    };
+
+    // Init in transmuxing mode (not pass-through)
+    const initPromise = t.init(data, "video/webm");
+    mockFile._onReady?.({ tracks: [{ id: 1, video: {} }] });
+    await initPromise;
+
+    // Feed a chunk larger than the mocked MAX_SAFE_BYTES (1024)
+    const oversizedChunk = new ArrayBuffer(1025);
+    const out = await t.transmux(oversizedChunk, 1);
+
+    expect(out.byteLength).toBe(0);
   });
 });
 

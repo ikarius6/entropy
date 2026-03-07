@@ -1,4 +1,5 @@
 import { createFile } from "mp4box";
+import { assertSafeMp4 } from "../transport/mp4guard";
 import { sha256Hex } from "../crypto/hash";
 import { computeMerkleRoot } from "./merkle";
 import { chunkFile, DEFAULT_CHUNK_SIZE_BYTES } from "./chunker";
@@ -112,6 +113,9 @@ function extractKeyframeOffsets(file: Blob): Promise<number[]> {
 
     // Feed the entire file into mp4box in one shot
     file.arrayBuffer().then((ab) => {
+      // Guard: reject obviously non-MP4 or oversized buffers before the parser
+      // sees a single byte. Throws → caught by .catch(reject) below.
+      assertSafeMp4(ab, "keyframe-aligner");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (ab as any).fileStart = 0;
       mp4.appendBuffer(ab as ArrayBuffer & { fileStart: number });

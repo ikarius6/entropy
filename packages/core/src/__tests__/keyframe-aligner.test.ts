@@ -117,6 +117,29 @@ describe("chunkFileWithKeyframeAlignment", () => {
     expect(result.chunks.length).toBeGreaterThan(0);
   });
 
+  it("falls back to standard chunking when mp4guard rejects bad box type", async () => {
+    // Build a blob whose bytes 4-7 spell "BAAD" — not a valid ISO BMFF box.
+    // assertSafeMp4 will throw before mp4box sees any bytes, and the outer
+    // catch in chunkFileWithKeyframeAlignment should fall back gracefully.
+    const raw = new Uint8Array(1024);
+    raw[4] = 0x42; // 'B'
+    raw[5] = 0x41; // 'A'
+    raw[6] = 0x41; // 'A'
+    raw[7] = 0x44; // 'D'
+    const file = new Blob([raw], { type: "video/mp4" });
+
+    const result = await chunkFileWithKeyframeAlignment({
+      file,
+      mimeType: "video/mp4",
+      targetChunkSize: 512,
+    });
+
+    // Fell back to standard chunking — no keyframe offsets, but chunks produced
+    expect(result.keyframeOffsets).toEqual([]);
+    expect(result.chunks.length).toBeGreaterThan(0);
+    expect(result.rootHash).toHaveLength(64);
+  });
+
   it("aligns chunks to keyframe offsets for video/mp4", async () => {
     // 3 samples of 400 bytes each. Sync samples: 1, 3 (1-indexed)
     // → keyframe byte offsets: [0, 800]
@@ -127,7 +150,6 @@ describe("chunkFileWithKeyframeAlignment", () => {
     mockMp4File.appendBuffer.mockImplementationOnce(() => {
       setTimeout(() => {
         const moov = buildMoov(sampleSizes, syncSampleNumbers);
-        // @ts-expect-error -- we're setting internal state via mock
         mockMp4File.onReady?.({ tracks: [{ id: 1, video: {} }], moovBox: moov });
       }, 0);
     });
