@@ -488,7 +488,6 @@ export class ChunkDownloader {
 
     const request: ChunkRequestMessage = {
       type: "CHUNK_REQUEST",
-      requesterPubkey: this.myPubkey,
       rootHash: this.chunkMap.rootHash,
       chunkHash,
     };

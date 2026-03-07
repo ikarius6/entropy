@@ -103,8 +103,7 @@ describe("chunk transfer", () => {
     const encoded = encodeChunkRequest({
       type: "CHUNK_REQUEST",
       chunkHash: CHUNK_HASH,
-      rootHash: ROOT_HASH,
-      requesterPubkey: "npub1requester"
+      rootHash: ROOT_HASH
     });
 
     const decoded = decodeChunkTransferMessage(encoded);
@@ -112,8 +111,7 @@ describe("chunk transfer", () => {
     expect(decoded).toEqual({
       type: "CHUNK_REQUEST",
       chunkHash: CHUNK_HASH,
-      rootHash: ROOT_HASH,
-      requesterPubkey: "npub1requester"
+      rootHash: ROOT_HASH
     });
   });
 

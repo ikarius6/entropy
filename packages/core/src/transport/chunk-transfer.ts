@@ -11,7 +11,7 @@ export const MESSAGE_TYPE_CUSTODY_PROOF = 0x06;
 export const MESSAGE_TYPE_TRANSFER_RECEIPT = 0x07;
 
 const HASH_BYTES = 32;
-const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES + 2;
+const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES;
 const RESPONSE_BASE_BYTES = 1 + HASH_BYTES + 4;
 const ERROR_BYTES = 1 + HASH_BYTES + 1;
 const CHUNK_DATA_HEADER_BYTES = 1 + HASH_BYTES + 4;
@@ -41,7 +41,6 @@ export type ChunkRequestMessage = {
   type: "CHUNK_REQUEST";
   chunkHash: string;
   rootHash: string;
-  requesterPubkey: string;
 };
 
 export type ChunkResponseMessage = {
@@ -137,28 +136,13 @@ function readHash(source: Uint8Array, offset: number): { hash: string; nextOffse
 }
 
 export function encodeChunkRequest(message: ChunkRequestMessage): ArrayBuffer {
-  if (message.requesterPubkey.length === 0) {
-    throw new Error("requesterPubkey is required.");
-  }
-
-  const pubkeyBytes = new TextEncoder().encode(message.requesterPubkey);
-
-  if (pubkeyBytes.byteLength > 0xffff) {
-    throw new Error("requesterPubkey is too large to encode.");
-  }
-
-  const output = new Uint8Array(REQUEST_BASE_BYTES + pubkeyBytes.byteLength);
-  const view = new DataView(output.buffer);
+  const output = new Uint8Array(REQUEST_BASE_BYTES);
 
   output[0] = MESSAGE_TYPE_CHUNK_REQUEST;
 
   let offset = 1;
   offset = writeHash(output, offset, message.chunkHash, "chunkHash");
-  offset = writeHash(output, offset, message.rootHash, "rootHash");
-
-  view.setUint16(offset, pubkeyBytes.byteLength, false);
-  offset += 2;
-  output.set(pubkeyBytes, offset);
+  writeHash(output, offset, message.rootHash, "rootHash");
 
   return output.buffer;
 }
@@ -357,29 +341,11 @@ export function decodeChunkTransferMessage(buffer: ArrayBuffer): ChunkTransferMe
     offset = chunkHashResult.nextOffset;
 
     const rootHashResult = readHash(input, offset);
-    offset = rootHashResult.nextOffset;
-
-    const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
-    const requesterPubkeyLength = view.getUint16(offset, false);
-    offset += 2;
-
-    const endOffset = offset + requesterPubkeyLength;
-
-    if (endOffset > input.byteLength) {
-      throw new Error("Chunk request message has an invalid requester pubkey length.");
-    }
-
-    const requesterPubkey = new TextDecoder().decode(input.subarray(offset, endOffset));
-
-    if (requesterPubkey.length === 0) {
-      throw new Error("Chunk request message has an empty requester pubkey.");
-    }
 
     return {
       type: "CHUNK_REQUEST",
       chunkHash: chunkHashResult.hash,
-      rootHash: rootHashResult.hash,
-      requesterPubkey
+      rootHash: rootHashResult.hash
     };
   }
 

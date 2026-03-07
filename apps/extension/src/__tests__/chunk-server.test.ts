@@ -91,8 +91,7 @@ describe("chunk-server", () => {
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CHUNK_REQUEST",
       chunkHash: "chunk-hash",
-      rootHash: "root-hash",
-      requesterPubkey: "peer-a"
+      rootHash: "root-hash"
     });
 
     const channel = new MockDataChannel();
@@ -125,8 +124,7 @@ describe("chunk-server", () => {
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CHUNK_REQUEST",
       chunkHash: "chunk-hash",
-      rootHash: "root-hash",
-      requesterPubkey: "peer-a"
+      rootHash: "root-hash"
     });
 
     const channel = new MockDataChannel();
@@ -147,32 +145,48 @@ describe("chunk-server", () => {
     expect(channel.send).toHaveBeenCalled();
   });
 
-  it("returns BUSY when requester pubkey does not match active peer", async () => {
+  it("authorizeRequest receives peerPubkey from the signaling channel, not any self-reported field", async () => {
+    // Verifies that the identity passed to authorizeRequest comes from the
+    // channel context (established by the Nostr-signed signaling handshake)
+    // and NOT from any field inside the request message.
     const { handleDataChannel } = await import("../background/chunk-server");
 
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CHUNK_REQUEST",
       chunkHash: "chunk-hash",
-      rootHash: "root-hash",
-      requesterPubkey: "peer-other"
+      rootHash: "root-hash"
     });
 
-    const channel = new MockDataChannel();
-    const chunkStore = {
-      getChunk: vi.fn(async () => null)
+    const chunk = {
+      hash: "chunk-hash",
+      rootHash: "root-hash",
+      index: 0,
+      data: new ArrayBuffer(4),
+      createdAt: 1,
+      lastAccessed: 1,
+      pinned: false
     };
 
-    handleDataChannel(channel as unknown as RTCDataChannel, "peer-a", chunkStore as never, vi.fn());
+    const channel = new MockDataChannel();
+    const chunkStore = { getChunk: vi.fn(async () => chunk) };
+    const authorizeRequest = vi.fn(async () => false);
+
+    handleDataChannel(
+      channel as unknown as RTCDataChannel,
+      "peer-a",
+      chunkStore as never,
+      vi.fn(),
+      { authorizeRequest }
+    );
 
     channel.emitMessage(new ArrayBuffer(1));
     await flushAsync();
 
-    expect(encodeChunkErrorMock).toHaveBeenCalledWith({
-      type: "CHUNK_ERROR",
-      chunkHash: "chunk-hash",
-      reason: "BUSY"
-    });
-    expect(chunkStore.getChunk).not.toHaveBeenCalled();
+    // The authorize callback must receive the channel-level peerPubkey,
+    // not any value from inside the message payload.
+    expect(authorizeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ peerPubkey: "peer-a" })
+    );
   });
 
   it("returns INSUFFICIENT_CREDIT when authorization fails", async () => {
@@ -181,8 +195,7 @@ describe("chunk-server", () => {
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CHUNK_REQUEST",
       chunkHash: "chunk-hash",
-      rootHash: "root-hash",
-      requesterPubkey: "peer-a"
+      rootHash: "root-hash"
     });
 
     const chunk = {
@@ -227,8 +240,7 @@ describe("chunk-server", () => {
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CHUNK_REQUEST",
       chunkHash: "chunk-hash",
-      rootHash: "root-hash",
-      requesterPubkey: "peer-rate"
+      rootHash: "root-hash"
     });
 
     const chunk = {

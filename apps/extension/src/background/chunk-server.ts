@@ -251,16 +251,9 @@ export function handleDataChannel(
         return;
       }
 
-      logger.log("[chunk-server] CHUNK_REQUEST from:", message.requesterPubkey.slice(0, 8) + "…",
+      logger.log("[chunk-server] CHUNK_REQUEST from:", peerPubkey.slice(0, 8) + "…",
         "chunkHash:", message.chunkHash.slice(0, 12) + "…",
         "rootHash:", message.rootHash.slice(0, 12) + "…");
-
-      if (message.requesterPubkey !== peerPubkey) {
-        logger.warn("[chunk-server] requester mismatch, expected:", peerPubkey.slice(0, 8) + "…",
-          "got:", message.requesterPubkey.slice(0, 8) + "…");
-        await sendChunkError(channel, message.chunkHash, "BUSY");
-        return;
-      }
 
       if (isRateLimited(peerPubkey, Date.now())) {
         logger.warn("[chunk-server] rate limit exceeded for peer", peerPubkey.slice(0, 8) + "…");
