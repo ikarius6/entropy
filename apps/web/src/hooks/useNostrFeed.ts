@@ -28,7 +28,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const { pubkey, relayPool, relayUrls, cacheChunkMap } = useEntropyStore();
   const { follows: myFollows } = useContactList(pubkey);
 
-  const kinds = options.kinds ?? [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP];
+  const kinds = options.kinds ?? [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP, KINDS.REPOST];
   const limit = options.limit ?? 50;
   const entropyOnly = options.entropyOnly !== false; // default true
 
@@ -71,11 +71,56 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     setItems(sorted);
   };
 
+  /** Detect NIP-10 reply: has an "e" tag with "reply" or "root" marker */
+  const isReplyEvent = (event: NostrEvent): { isReply: boolean; replyToId?: string } => {
+    if (event.kind !== KINDS.TEXT_NOTE) return { isReply: false };
+    const replyTag = event.tags.find(t => t[0] === "e" && t[3] === "reply");
+    const rootTag = event.tags.find(t => t[0] === "e" && t[3] === "root");
+    // Deprecated positional: if there are any "e" tags at all, it's likely a reply
+    const anyETag = event.tags.find(t => t[0] === "e");
+    if (replyTag) return { isReply: true, replyToId: replyTag[1] };
+    if (rootTag) return { isReply: true, replyToId: rootTag[1] };
+    if (anyETag) return { isReply: true, replyToId: anyETag[1] };
+    return { isReply: false };
+  };
+
+  /** Parse a kind:6 repost — content is the JSON-stringified original event */
+  const parseRepost = (event: NostrEvent): FeedItem | null => {
+    try {
+      const inner = JSON.parse(event.content);
+      if (!inner || !inner.id || !inner.pubkey || !inner.kind) return null;
+      const innerItem: FeedItem = {
+        id: inner.id,
+        pubkey: inner.pubkey,
+        kind: inner.kind,
+        content: inner.content ?? "",
+        created_at: inner.created_at ?? event.created_at,
+        tags: inner.tags ?? [],
+      };
+      if (inner.kind === KINDS.ENTROPY_CHUNK_MAP) {
+        try {
+          innerItem.chunkMap = parseEntropyChunkMapTags(inner.tags);
+          cacheChunkMap(innerItem.chunkMap);
+        } catch { /* ignore malformed inner chunk map */ }
+      }
+      return innerItem;
+    } catch {
+      // content might be empty for generic reposts — use e-tag reference
+      return null;
+    }
+  };
+
   const ingestEvent = (event: NostrEvent, boost: number) => {
     const score = event.created_at + boost;
     const existing = accRef.current.get(event.id);
     // If we already have the event at a higher score (follow-boosted), keep it.
     if (existing && existing.score >= score) return;
+
+    // Skip replies from the main feed — they lack context and look confusing
+    if (!options.authors) {
+      const { isReply } = isReplyEvent(event);
+      if (isReply) return;
+    }
 
     const item: FeedItem = {
       id: event.id,
@@ -87,6 +132,22 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     };
 
     let contentTags: ContentTag[] = [];
+
+    // Handle kind:6 reposts (NIP-18)
+    if (event.kind === KINDS.REPOST) {
+      const inner = parseRepost(event);
+      if (inner) {
+        item.repostedEvent = inner;
+        item.repostedBy = event.pubkey;
+        // Surface the inner event's content tags for scoring
+        if (inner.chunkMap?.entropyTags) {
+          contentTags = inner.chunkMap.entropyTags;
+        }
+      } else {
+        // Repost without parseable content — skip it
+        return;
+      }
+    }
 
     if (event.kind === KINDS.ENTROPY_CHUNK_MAP) {
       try {
@@ -101,6 +162,15 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
         contentTags = item.chunkMap.entropyTags ?? [];
       } catch (e) {
         console.warn("[feed] failed to parse chunk map for", event.id, e);
+      }
+    }
+
+    // For profile pages, mark replies so PostCard can render context
+    if (options.authors && event.kind === KINDS.TEXT_NOTE) {
+      const reply = isReplyEvent(event);
+      if (reply.isReply) {
+        item.isReply = true;
+        item.replyToId = reply.replyToId;
       }
     }
 
@@ -137,16 +207,17 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
     if (options.authors !== undefined) {
       // ── Explicit authors mode (profile page, etc.) ──────────────────────────
-      // Split into two subscriptions:
+      // Split into three subscriptions:
       //  1. Media posts (kind:7001) — must have the entropy #t tag
       //  2. Text notes (kind:1)    — no tag filter, plain Nostr events
-      // This way plain text-only kind:1 posts are included even without the entropy tag.
+      //  3. Reposts (kind:6)       — no tag filter (reposts don't carry #t)
       const authorFilter = options.authors.length > 0 ? { authors: options.authors } : {};
 
-      const mediaKinds = kinds.filter(k => k !== KINDS.TEXT_NOTE);
-      const textKinds  = kinds.filter(k => k === KINDS.TEXT_NOTE);
+      const mediaKinds  = kinds.filter(k => k !== KINDS.TEXT_NOTE && k !== KINDS.REPOST);
+      const textKinds   = kinds.filter(k => k === KINDS.TEXT_NOTE);
+      const repostKinds = kinds.filter(k => k === KINDS.REPOST);
 
-      expectedEose = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0);
+      expectedEose = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0) + (repostKinds.length > 0 ? 1 : 0);
       if (expectedEose === 0) expectedEose = 1; // safety guard
 
       if (mediaKinds.length > 0) {
@@ -160,6 +231,14 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       if (textKinds.length > 0) {
         subs.push(relayPool.subscribe(
           [{ kinds: textKinds, limit, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          onEose
+        ));
+      }
+
+      if (repostKinds.length > 0) {
+        subs.push(relayPool.subscribe(
+          [{ kinds: repostKinds, limit, ...authorFilter }],
           (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
           onEose
         ));
@@ -199,5 +278,12 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     console.log("[feed] loadMore not yet implemented");
   };
 
-  return { items, isLoading, loadMore };
+  /** Remove an event from the feed (e.g. after undoing a repost) */
+  const removeItem = (eventId: string) => {
+    if (accRef.current.delete(eventId)) {
+      flush();
+    }
+  };
+
+  return { items, isLoading, loadMore, removeItem };
 }

@@ -36,9 +36,9 @@ export default function ProfilePage() {
   );
 
   // Fetch both kind:1 (text) and kind:7001 (media) from this profile
-  const { items: posts, isLoading: feedLoading } = useNostrFeed(
+  const { items: posts, isLoading: feedLoading, removeItem } = useNostrFeed(
     targetPubkey
-      ? { authors: [targetPubkey], kinds: [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP], limit: 50 }
+      ? { authors: [targetPubkey], kinds: [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP, KINDS.REPOST], limit: 50 }
       : { kinds: [] }
   );
 
@@ -112,7 +112,7 @@ export default function ProfilePage() {
         ) : (
           <div className="flex flex-col gap-4">
             {posts.map(item => (
-              <PostCard key={item.id} item={item} />
+              <PostCard key={item.id} item={item} onRemoveItem={removeItem} />
             ))}
           </div>
         )}

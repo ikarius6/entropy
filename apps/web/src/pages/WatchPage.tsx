@@ -6,12 +6,13 @@ import { useChunkBlob } from "../hooks/useChunkBlob";
 import { useCreditGate } from "../hooks/useCreditGate";
 import { CreditGate } from "../components/CreditGate";
 import { VideoPlayer } from "../components/player/VideoPlayer";
-import { Server, Download, ShieldCheck, Loader2, Heart, Share2 } from "lucide-react";
+import { Server, Download, ShieldCheck, Loader2, Heart, Share2, Repeat2 } from "lucide-react";
 import { parseEntropyChunkMapTags, type EntropyChunkMap, type NostrEvent } from "@entropy/core";
 import { KINDS } from "../lib/constants";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useReactions } from "../hooks/useReactions";
+import { useRepost } from "../hooks/useRepost";
 import { useReplies } from "../hooks/useReplies";
 import { ReplyComposer } from "../components/feed/ReplyComposer";
 import { ReplyCard } from "../components/feed/PostCard";
@@ -132,6 +133,7 @@ export default function WatchPage() {
 
   // Interactions Layer
   const { counts: reactionCounts, total: reactionTotal, myReaction, react, isReacting } = useReactions(event?.id || "", event?.pubkey || "");
+  const { reposted, isBusy: repostBusy, count: repostCount, toggle: toggleRepost } = useRepost(event?.id || "");
   const { replies, isLoading: repliesLoading, load: loadReplies, isLoaded: repliesLoaded } = useReplies(event?.id || "");
   const [showComposer, setShowComposer] = useState(false);
 
@@ -258,6 +260,31 @@ export default function WatchPage() {
                 {emoji} {count}
               </button>
             ))}
+
+            {/* 🔁 Repost */}
+            <button
+              onClick={() => {
+                if (repostBusy || !event) return;
+                toggleRepost({
+                  id: event.id,
+                  pubkey: event.pubkey,
+                  kind: event.kind,
+                  content: event.content,
+                  created_at: event.created_at,
+                  tags: event.tags,
+                });
+              }}
+              disabled={repostBusy}
+              title={reposted ? "Undo repost" : "Repost"}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-all ${
+                reposted
+                  ? "text-emerald-400 bg-emerald-400/10"
+                  : "text-muted hover:text-emerald-400 hover:bg-emerald-400/10"
+              } disabled:opacity-50`}
+            >
+              <Repeat2 size={16} />
+              {repostBusy ? "…" : repostCount > 0 ? <span className="tabular-nums font-medium">{repostCount}</span> : null}
+            </button>
 
             <button
               onClick={async () => {

@@ -24,4 +24,12 @@ export interface FeedItem {
   tags: string[][];
   profile?: NostrProfile;
   chunkMap?: any; // We'll type this properly later with EntropyChunkMap
+  /** For kind:6 reposts — the inner reposted event parsed from content */
+  repostedEvent?: FeedItem;
+  /** Pubkey of the user who reposted (the kind:6 author) */
+  repostedBy?: string;
+  /** Whether this kind:1 is a reply (has NIP-10 e-tags) */
+  isReply?: boolean;
+  /** The event id this replies to (NIP-10 "reply" or last "e" tag) */
+  replyToId?: string;
 }

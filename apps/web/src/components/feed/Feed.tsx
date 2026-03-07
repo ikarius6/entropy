@@ -10,7 +10,7 @@ export function Feed() {
   const [filter, setFilter] = useState<FeedFilter>("entropy");
   const [sortMode, setSortMode] = useState<FeedSortMode>("chronological");
   const { preferences, recordSignal } = useTagPreferences();
-  const { items, isLoading, loadMore } = useNostrFeed({
+  const { items, isLoading, loadMore, removeItem } = useNostrFeed({
     entropyOnly: filter === "entropy",
     feedMode: sortMode,
     userPrefs: preferences,
@@ -104,7 +104,7 @@ export function Feed() {
       ) : (
         <div className="flex flex-col gap-4">
           {items.map(item => (
-            <PostCard key={item.id} item={item} onSignal={recordSignal} />
+            <PostCard key={item.id} item={item} onSignal={recordSignal} onRemoveItem={removeItem} />
           ))}
 
           <div id="feed-loader" className="h-16 flex items-center justify-center text-muted">

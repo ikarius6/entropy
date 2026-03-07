@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff, Repeat2, CornerUpLeft } from "lucide-react";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap, ContentTag, UserSignalType } from "@entropy/core";
 import { AvatarBadge } from "../profile/ProfileHeader";
@@ -11,6 +11,8 @@ import { CreditGate } from "../CreditGate";
 import { KINDS } from "../../lib/constants";
 import { useReactions } from "../../hooks/useReactions";
 import { useReplies } from "../../hooks/useReplies";
+import { useRepost } from "../../hooks/useRepost";
+import { useEvent } from "../../hooks/useEvent";
 import { ReplyComposer } from "./ReplyComposer";
 
 /** Build a shareable URL pointing to this Entropy instance. */
@@ -40,34 +42,44 @@ async function sharePost(item: FeedItem) {
 interface PostCardProps {
   item: FeedItem;
   onSignal?: (contentTags: ContentTag[], signal: UserSignalType) => void;
+  /** Called to remove this item from the parent feed (e.g. after undoing a repost) */
+  onRemoveItem?: (eventId: string) => void;
 }
 
-export function PostCard({ item, onSignal }: PostCardProps) {
-  const { profile } = useNostrProfile(item.pubkey);
-  const timeAgo = Math.floor(Date.now() / 1000) - item.created_at;
+export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
+  // For reposts, the display item is the inner reposted event
+  const isRepost = item.kind === KINDS.REPOST && !!item.repostedEvent;
+  const displayItem = isRepost ? item.repostedEvent! : item;
 
-  const isMedia = item.kind === KINDS.ENTROPY_CHUNK_MAP && !!item.chunkMap;
-  const contentSize = isMedia ? (item.chunkMap as EntropyChunkMap).size || 0 : 0;
-  const chunkHashes = isMedia ? (item.chunkMap as EntropyChunkMap).chunks : undefined;
+  const { profile: repostProfile } = useNostrProfile(isRepost ? item.pubkey : null);
+  const { profile } = useNostrProfile(displayItem.pubkey);
+  const timeAgo = Math.floor(Date.now() / 1000) - displayItem.created_at;
+
+  const isMedia = displayItem.kind === KINDS.ENTROPY_CHUNK_MAP && !!displayItem.chunkMap;
+  const contentSize = isMedia ? (displayItem.chunkMap as EntropyChunkMap).size || 0 : 0;
+  const chunkHashes = isMedia ? (displayItem.chunkMap as EntropyChunkMap).chunks : undefined;
   const gate = useCreditGate({
     contentSizeBytes: contentSize,
-    authorPubkey: item.pubkey,
+    authorPubkey: displayItem.pubkey,
     chunkHashes,
   });
 
   // Only start P2P transfer if credit gate allows it
   const { blobUrl, status: blobStatus, progress: blobProgress } = useChunkBlob(
-    isMedia && gate.allowed ? item.chunkMap ?? null : null
+    isMedia && gate.allowed ? displayItem.chunkMap ?? null : null
   );
 
   // Reactions (always-on, lightweight)
-  const { counts: reactionCounts, total: reactionTotal, myReaction, react, isReacting } = useReactions(item.id, item.pubkey);
+  const { counts: reactionCounts, total: reactionTotal, myReaction, react, isReacting } = useReactions(displayItem.id, displayItem.pubkey);
 
   // Replies (lazy — only loads on demand)
-  const { replies, isLoading: repliesLoading, load: loadReplies, isLoaded: repliesLoaded } = useReplies(item.id);
+  const { replies, isLoading: repliesLoading, load: loadReplies, isLoaded: repliesLoaded } = useReplies(displayItem.id);
   const [showReplies, setShowReplies] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
   const [shareFeedback, setShareFeedback] = useState(false);
+
+  // Repost (stateful — queries relay for existing reposts)
+  const { reposted, isBusy: repostBusy, count: repostCount, toggle: toggleRepost } = useRepost(displayItem.id);
 
   const toggleReplies = () => {
     if (!showReplies && !repliesLoaded) {
@@ -78,8 +90,8 @@ export function PostCard({ item, onSignal }: PostCardProps) {
   };
 
   // Extract content tags from the chunk map (if any) for signal emission
-  const contentTags: ContentTag[] = isMedia && item.chunkMap
-    ? (item.chunkMap as EntropyChunkMap).entropyTags ?? []
+  const contentTags: ContentTag[] = isMedia && displayItem.chunkMap
+    ? (displayItem.chunkMap as EntropyChunkMap).entropyTags ?? []
     : [];
 
   const emitSignal = (signal: UserSignalType) => {
@@ -89,10 +101,20 @@ export function PostCard({ item, onSignal }: PostCardProps) {
   };
 
   const handleShare = async () => {
-    await sharePost(item);
+    await sharePost(displayItem);
     emitSignal("share");
     setShareFeedback(true);
     setTimeout(() => setShareFeedback(false), 2000);
+  };
+
+  const handleRepost = async () => {
+    if (repostBusy) return;
+    const wasReposted = reposted;
+    await toggleRepost(displayItem);
+    // If we just undid a repost and this card IS the repost event, remove it from the feed
+    if (wasReposted && isRepost && onRemoveItem) {
+      onRemoveItem(item.id);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -103,43 +125,59 @@ export function PostCard({ item, onSignal }: PostCardProps) {
   };
 
   // NIP-10 root id for reply threading
-  const rootId = item.tags.find(t => t[0] === "e" && t[3] === "root")?.[1] ?? item.id;
+  const rootId = displayItem.tags.find(t => t[0] === "e" && t[3] === "root")?.[1] ?? displayItem.id;
 
   const replyContext = {
     rootId,
-    parentId: item.id,
-    authorPubkey: item.pubkey,
+    parentId: displayItem.id,
+    authorPubkey: displayItem.pubkey,
   };
 
   return (
     <div className="panel p-5 flex flex-col gap-3 transition-colors hover:bg-white/[0.02]">
+      {/* Repost header */}
+      {isRepost && (
+        <div className="flex items-center gap-2 text-muted text-xs -mb-1">
+          <Repeat2 size={13} />
+          <Link to={`/profile/${item.pubkey}`} className="hover:underline font-medium">
+            {repostProfile?.name || repostProfile?.displayName || item.pubkey.slice(0, 8) + "…"}
+          </Link>
+          <span>reposted</span>
+        </div>
+      )}
+
+      {/* Reply context: quoted parent post */}
+      {item.isReply && item.replyToId && (
+        <QuotedParent eventId={item.replyToId} />
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link to={`/profile/${item.pubkey}`}>
-          <AvatarBadge profile={profile} pubkey={item.pubkey} size="sm" />
+        <Link to={`/profile/${displayItem.pubkey}`}>
+          <AvatarBadge profile={profile} pubkey={displayItem.pubkey} size="sm" />
         </Link>
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
-            <Link to={`/profile/${item.pubkey}`} className="font-bold hover:underline">
+            <Link to={`/profile/${displayItem.pubkey}`} className="font-bold hover:underline">
               {profile?.name || profile?.displayName || "Anonymous Node"}
             </Link>
-            <span className="text-muted text-sm font-mono">{item.pubkey.slice(0, 8)}...</span>
+            <span className="text-muted text-sm font-mono">{displayItem.pubkey.slice(0, 8)}...</span>
             <span className="text-muted text-sm">• {formatTime(timeAgo)}</span>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      {item.content && (
+      {displayItem.content && (
         <div className="text-white/90 whitespace-pre-wrap break-words leading-relaxed mt-1">
-          {item.content}
+          {displayItem.content}
         </div>
       )}
 
       {/* Media specific rendering — gated by credits */}
-      {isMedia && item.chunkMap && (
-        <CreditGate gate={gate} contentTitle={item.chunkMap.title} mimeType={item.chunkMap.mimeType}>
-          <MediaPost chunkMap={item.chunkMap} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
+      {isMedia && displayItem.chunkMap && (
+        <CreditGate gate={gate} contentTitle={displayItem.chunkMap.title} mimeType={displayItem.chunkMap.mimeType}>
+          <MediaPost chunkMap={displayItem.chunkMap} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
         </CreditGate>
       )}
 
@@ -193,9 +231,24 @@ export function PostCard({ item, onSignal }: PostCardProps) {
           {!repliesLoaded ? "Replies" : replies.length === 0 ? "Reply" : ""}
         </button>
 
+        {/* 🔁 Repost */}
+        <button
+          onClick={handleRepost}
+          disabled={repostBusy}
+          title={reposted ? "Undo repost" : "Repost"}
+          className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg transition-all ${
+            reposted
+              ? "text-emerald-400 bg-emerald-400/10"
+              : "text-muted hover:text-emerald-400 hover:bg-emerald-400/10"
+          } disabled:opacity-50`}
+        >
+          <Repeat2 size={15} />
+          {repostBusy ? "…" : repostCount > 0 ? <span className="tabular-nums">{repostCount}</span> : null}
+        </button>
+
         {/* Full Page link */}
         <Link
-          to={isMedia && item.chunkMap ? `/watch/${item.chunkMap.rootHash}` : `/watch/${item.id}`}
+          to={isMedia && displayItem.chunkMap ? `/watch/${displayItem.chunkMap.rootHash}` : `/watch/${displayItem.id}`}
           className="flex items-center gap-1.5 text-sm text-muted hover:text-white transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 ml-1"
         >
           <Maximize size={15} />
@@ -203,8 +256,8 @@ export function PostCard({ item, onSignal }: PostCardProps) {
         </Link>
 
         {/* Media-specific download */}
-        {isMedia && item.chunkMap && (
-          <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={item.chunkMap} />
+        {isMedia && displayItem.chunkMap && (
+          <DownloadButton blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} chunkMap={displayItem.chunkMap} />
         )}
 
         {/* Not interested */}
@@ -274,6 +327,57 @@ export function PostCard({ item, onSignal }: PostCardProps) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Quoted parent post (shown above replies for context) ─────────────────────
+
+function QuotedParent({ eventId }: { eventId: string }) {
+  const { event, isLoading } = useEvent(eventId);
+  const { profile } = useNostrProfile(event?.pubkey ?? null);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-muted text-xs py-2 px-3 rounded-lg bg-white/[0.03] border border-border/40">
+        <Loader2 size={12} className="animate-spin" />
+        <span>Loading original post…</span>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="flex items-center gap-2 text-muted text-xs py-2 px-3 rounded-lg bg-white/[0.03] border border-border/40">
+        <CornerUpLeft size={12} />
+        <span>Replying to a post</span>
+      </div>
+    );
+  }
+
+  const displayName = profile?.name || profile?.displayName || event.pubkey.slice(0, 8) + "…";
+  const truncatedContent = event.content.length > 280
+    ? event.content.slice(0, 280) + "…"
+    : event.content;
+
+  return (
+    <Link
+      to={`/watch/${eventId}`}
+      className="block rounded-lg bg-white/[0.03] border border-border/40 px-3 py-2.5 hover:bg-white/[0.05] transition-colors group"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <CornerUpLeft size={12} className="text-muted flex-shrink-0" />
+        <AvatarBadge profile={profile} pubkey={event.pubkey} size="sm" />
+        <span className="text-xs font-semibold text-white/80 group-hover:text-white transition-colors">
+          {displayName}
+        </span>
+        <span className="text-muted text-xs font-mono">{event.pubkey.slice(0, 6)}…</span>
+      </div>
+      {truncatedContent && (
+        <p className="text-xs text-muted leading-relaxed ml-5 line-clamp-3">
+          {truncatedContent}
+        </p>
+      )}
+    </Link>
   );
 }
 
