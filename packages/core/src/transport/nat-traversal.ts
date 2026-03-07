@@ -1,4 +1,5 @@
-import type { PrivacySettingsPayload, TurnServerConfig } from "../types/extension-bridge";
+import type { IceServerConfig, PrivacySettingsPayload, TurnServerConfig } from "../types/extension-bridge";
+import { DEFAULT_ICE_SERVERS_CONFIG } from "../types/extension-bridge";
 
 export interface StunTurnConfig {
   iceServers: RTCIceServer[];
@@ -30,6 +31,11 @@ function turnServerToIceServer(turn: TurnServerConfig): RTCIceServer {
   return server;
 }
 
+function resolveStunServers(custom?: IceServerConfig[]): RTCIceServer[] {
+  const configs = custom && custom.length > 0 ? custom : DEFAULT_ICE_SERVERS_CONFIG;
+  return configs.map((c) => ({ urls: c.urls }));
+}
+
 export function createPrivacyRtcConfiguration(
   privacy: PrivacySettingsPayload
 ): RTCConfiguration {
@@ -41,8 +47,8 @@ export function createPrivacyRtcConfiguration(
       iceServers.push(turnServerToIceServer(turn));
     }
   } else {
-    // Normal mode: STUN + optional TURN
-    iceServers.push(...DEFAULT_ICE_SERVERS);
+    // Normal mode: user-configured (or default) STUN + optional TURN
+    iceServers.push(...resolveStunServers(privacy.customIceServers));
     for (const turn of privacy.turnServers) {
       iceServers.push(turnServerToIceServer(turn));
     }

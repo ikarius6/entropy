@@ -66,6 +66,21 @@
           <label for="filter-local-toggle" class="toggle-label">Strip local IP candidates</label>
           <input id="filter-local-toggle" type="checkbox" />
         </div>
+        <details style="margin-top:0.75rem;" open>
+          <summary>ICE (STUN) server configuration</summary>
+          <p style="font-size:0.8rem;color:#888;margin:0.4rem 0;">
+            Custom STUN servers used for NAT traversal. Leave empty to use Google defaults.
+          </p>
+          <div class="settings-row" style="margin-top:0.5rem;">
+            <input id="ice-url-input" type="text" placeholder="stun:stun.example.com:3478" style="flex:1" />
+            <button id="add-ice" type="button">Add</button>
+          </div>
+          <ul id="ice-list" class="inventory-list"></ul>
+          <div class="settings-row" style="margin-top:0.25rem;">
+            <button id="reset-ice-defaults" type="button">Reset to defaults</button>
+          </div>
+        </details>
+
         <details style="margin-top:0.75rem;">
           <summary>TURN server configuration</summary>
           <div class="settings-row" style="margin-top:0.5rem;">

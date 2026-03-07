@@ -6,7 +6,8 @@ import {
 } from "@entropy/core";
 
 import type { ColdStorageAssignmentPayload, CreditSummaryPayload, NodeMetricsPayload, NodeStatusPayload, PrivacySettingsPayload } from "../shared/messaging";
-import type { TurnServerConfig } from "@entropy/core";
+import type { IceServerConfig, TurnServerConfig } from "@entropy/core";
+import { DEFAULT_ICE_SERVERS_CONFIG } from "@entropy/core";
 import {
   addRuntimeRelay,
   importRuntimeKeypair,
@@ -60,6 +61,10 @@ const addTurnButton = document.getElementById("add-turn");
 const turnListElement = document.getElementById("turn-list");
 const savePrivacyButton = document.getElementById("save-privacy");
 const privacyStatusElement = document.getElementById("privacy-status");
+const iceUrlInput = document.getElementById("ice-url-input");
+const addIceButton = document.getElementById("add-ice");
+const iceListElement = document.getElementById("ice-list");
+const resetIceDefaultsButton = document.getElementById("reset-ice-defaults");
 
 let latestStatus: NodeStatusPayload | null = null;
 let latestCredits: CreditSummaryPayload | null = null;
@@ -67,6 +72,7 @@ let latestPubkey: string | null = null;
 let latestColdAssignments: ColdStorageAssignmentPayload[] = [];
 let latestMetrics: NodeMetricsPayload | null = null;
 let pendingTurnServers: TurnServerConfig[] = [];
+let pendingIceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS_CONFIG];
 
 const chunkStore = createIndexedDbChunkStore();
 const quotaManager = createIndexedDbQuotaManager(chunkStore);
@@ -829,13 +835,66 @@ function renderTurnList(): void {
   }
 }
 
+function renderIceList(): void {
+  if (!(iceListElement instanceof HTMLElement)) return;
+  while (iceListElement.firstChild) iceListElement.removeChild(iceListElement.firstChild);
+
+  if (pendingIceServers.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No custom ICE servers — using Google STUN defaults.";
+    iceListElement.appendChild(li);
+    return;
+  }
+
+  for (let i = 0; i < pendingIceServers.length; i++) {
+    const ice = pendingIceServers[i];
+    const li = document.createElement("li");
+    li.className = "relay-item";
+
+    const span = document.createElement("span");
+    span.textContent = ice.urls;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Remove";
+    removeBtn.type = "button";
+    removeBtn.className = "relay-remove-btn";
+    removeBtn.addEventListener("click", () => {
+      pendingIceServers.splice(i, 1);
+      renderIceList();
+    });
+
+    li.appendChild(span);
+    li.appendChild(removeBtn);
+    iceListElement.appendChild(li);
+  }
+}
+
+function addIceFromInput(): void {
+  if (!(iceUrlInput instanceof HTMLInputElement)) return;
+  const url = iceUrlInput.value.trim();
+  if (!url) return;
+
+  pendingIceServers.push({ urls: url });
+  iceUrlInput.value = "";
+  renderIceList();
+}
+
+function resetIceToDefaults(): void {
+  pendingIceServers = [...DEFAULT_ICE_SERVERS_CONFIG];
+  renderIceList();
+}
+
 function populatePrivacyUI(settings: PrivacySettingsPayload): void {
   if (torToggle instanceof HTMLInputElement) torToggle.checked = settings.torEnabled;
   if (torProxyInput instanceof HTMLInputElement) torProxyInput.value = settings.torProxyAddress;
   if (forceRelayToggle instanceof HTMLInputElement) forceRelayToggle.checked = settings.forceRelay;
   if (filterLocalToggle instanceof HTMLInputElement) filterLocalToggle.checked = settings.filterLocalCandidates;
   pendingTurnServers = [...settings.turnServers];
+  pendingIceServers = settings.customIceServers && settings.customIceServers.length > 0
+    ? [...settings.customIceServers]
+    : [...DEFAULT_ICE_SERVERS_CONFIG];
   renderTurnList();
+  renderIceList();
 }
 
 async function loadPrivacySettings(): Promise<void> {
@@ -859,6 +918,7 @@ async function savePrivacySettings(): Promise<void> {
     forceRelay: forceRelayToggle instanceof HTMLInputElement ? forceRelayToggle.checked : false,
     filterLocalCandidates: filterLocalToggle instanceof HTMLInputElement ? filterLocalToggle.checked : false,
     turnServers: pendingTurnServers,
+    customIceServers: pendingIceServers.length > 0 ? pendingIceServers : undefined,
   };
 
   if (payload.forceRelay && payload.turnServers.length === 0) {
@@ -898,6 +958,20 @@ function addTurnFromInput(): void {
 
 if (addTurnButton instanceof HTMLButtonElement) {
   addTurnButton.addEventListener("click", () => addTurnFromInput());
+}
+
+if (addIceButton instanceof HTMLButtonElement) {
+  addIceButton.addEventListener("click", () => addIceFromInput());
+}
+
+if (iceUrlInput instanceof HTMLInputElement) {
+  iceUrlInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") addIceFromInput();
+  });
+}
+
+if (resetIceDefaultsButton instanceof HTMLButtonElement) {
+  resetIceDefaultsButton.addEventListener("click", () => resetIceToDefaults());
 }
 
 if (savePrivacyButton instanceof HTMLButtonElement) {

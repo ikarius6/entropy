@@ -208,6 +208,10 @@ export interface TurnServerConfig {
   credential?: string;
 }
 
+export interface IceServerConfig {
+  urls: string;
+}
+
 export interface PrivacySettingsPayload {
   /** Route Nostr relay connections through Tor SOCKS5 proxy. */
   torEnabled: boolean;
@@ -219,6 +223,8 @@ export interface PrivacySettingsPayload {
   turnServers: TurnServerConfig[];
   /** Strip local/host ICE candidates from signaling messages. */
   filterLocalCandidates: boolean;
+  /** User-configured ICE (STUN) servers. Defaults to Google public STUN servers when empty/undefined. */
+  customIceServers?: IceServerConfig[];
 }
 
 export function isPrivacySettingsPayload(value: unknown): value is PrivacySettingsPayload {
@@ -226,18 +232,36 @@ export function isPrivacySettingsPayload(value: unknown): value is PrivacySettin
     return false;
   }
 
-  return (
-    typeof value.torEnabled === "boolean" &&
-    typeof value.torProxyAddress === "string" &&
-    typeof value.forceRelay === "boolean" &&
-    Array.isArray(value.turnServers) &&
-    value.turnServers.every((s) => {
+  if (
+    typeof value.torEnabled !== "boolean" ||
+    typeof value.torProxyAddress !== "string" ||
+    typeof value.forceRelay !== "boolean" ||
+    !Array.isArray(value.turnServers) ||
+    !value.turnServers.every((s) => {
       if (!isRecord(s)) return false;
       return typeof s.urls === "string";
-    }) &&
-    typeof value.filterLocalCandidates === "boolean"
-  );
+    }) ||
+    typeof value.filterLocalCandidates !== "boolean"
+  ) {
+    return false;
+  }
+
+  if (value.customIceServers !== undefined) {
+    if (
+      !Array.isArray(value.customIceServers) ||
+      !value.customIceServers.every((s) => isRecord(s) && typeof s.urls === "string")
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
+
+export const DEFAULT_ICE_SERVERS_CONFIG: IceServerConfig[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" }
+];
 
 export const DEFAULT_PRIVACY_SETTINGS: PrivacySettingsPayload = {
   torEnabled: false,
@@ -245,6 +269,7 @@ export const DEFAULT_PRIVACY_SETTINGS: PrivacySettingsPayload = {
   forceRelay: false,
   turnServers: [],
   filterLocalCandidates: false,
+  customIceServers: undefined,
 };
 
 export interface NodeMetricsPayload {
