@@ -39,6 +39,8 @@ export {
   type TagContentPayload,
   type TagContentResultPayload,
   isTagContentResultPayload,
+  type PrivacySettingsPayload,
+  isPrivacySettingsPayload,
   type SignAllowlistPayload,
   type SignOriginPayload
 } from "@entropy/core";

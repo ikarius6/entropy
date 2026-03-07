@@ -8,6 +8,11 @@ const relayPoolInstances: Array<{
   getRelayStatuses: ReturnType<typeof vi.fn>;
 }> = [];
 
+vi.mock("../background/tor-proxy", () => ({
+  isTorActive: vi.fn(() => false),
+  applyTorProxy: vi.fn()
+}));
+
 vi.mock("@entropy/core", () => {
   class MockRelayPool {
     statuses: Array<{ url: string; status: string }> = [];
@@ -156,5 +161,25 @@ describe("relay-manager", () => {
     await addRelay("wss://relay.example.com");
 
     expect(await getRelayUrls()).toEqual(["wss://relay.example.com"]);
+  });
+
+  // -------------------------------------------------------------------------
+  // .onion URL tests
+  // -------------------------------------------------------------------------
+
+  it("rejects .onion relay URLs when Tor is not active", async () => {
+    const { addRelay, initRelayManager } = await import("../background/relay-manager");
+    await initRelayManager([]);
+    await expect(addRelay("wss://abc123xyz.onion")).rejects.toThrow("enabling Tor");
+  });
+
+  it("isOnionUrl correctly identifies .onion URLs", async () => {
+    const { isOnionUrl } = await import("../background/relay-manager");
+
+    expect(isOnionUrl("wss://abcdef1234567890.onion")).toBe(true);
+    expect(isOnionUrl("wss://relay.damus.io")).toBe(false);
+    expect(isOnionUrl("wss://sub.domain.onion")).toBe(true);
+    expect(isOnionUrl("not-a-url")).toBe(false);
+    expect(isOnionUrl("wss://onion.example.com")).toBe(false);
   });
 });

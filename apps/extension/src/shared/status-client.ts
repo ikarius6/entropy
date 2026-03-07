@@ -5,6 +5,7 @@ import {
   isCreditSummaryPayload,
   isExportIdentityPayload,
   isNodeMetricsPayload,
+  isPrivacySettingsPayload,
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
   isNodeSettingsPayload,
@@ -17,6 +18,7 @@ import {
   type ExportIdentityPayload,
   type ImportKeypairPayload,
   type NodeMetricsPayload,
+  type PrivacySettingsPayload,
   type ReleaseColdAssignmentPayload,
   type RelayUrlPayload,
   type SetSeedingActivePayload,
@@ -362,4 +364,63 @@ export function subscribeCreditUpdates(
   return () => {
     browser.runtime.onMessage.removeListener(listener);
   };
+}
+
+export async function requestPrivacySettings(): Promise<PrivacySettingsPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "GET_PRIVACY_SETTINGS"
+  });
+
+  if (!isEntropyRuntimeResponse(response)) {
+    throw new Error("Invalid runtime response payload received.");
+  }
+
+  if (response.requestId !== requestId) {
+    throw new Error("Mismatched extension privacy-settings response correlation id.");
+  }
+
+  if (response.type !== "GET_PRIVACY_SETTINGS") {
+    throw new Error("Unexpected runtime response type for privacy-settings request.");
+  }
+
+  if (!response.ok || !isPrivacySettingsPayload(response.payload)) {
+    throw new Error(response.ok ? "Missing privacy-settings payload." : response.error);
+  }
+
+  return response.payload;
+}
+
+export async function setRuntimePrivacySettings(
+  payload: PrivacySettingsPayload
+): Promise<PrivacySettingsPayload> {
+  const requestId = createEntropyRequestId("ext");
+
+  const response = await sendRuntimeMessage({
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "SET_PRIVACY_SETTINGS",
+    payload
+  });
+
+  if (!isEntropyRuntimeResponse(response)) {
+    throw new Error("Invalid runtime response payload received.");
+  }
+
+  if (response.requestId !== requestId) {
+    throw new Error("Mismatched extension set-privacy response correlation id.");
+  }
+
+  if (response.type !== "SET_PRIVACY_SETTINGS") {
+    throw new Error("Unexpected runtime response type for set-privacy request.");
+  }
+
+  if (!response.ok || !isPrivacySettingsPayload(response.payload)) {
+    throw new Error(response.ok ? "Missing privacy-settings payload." : response.error);
+  }
+
+  return response.payload;
 }

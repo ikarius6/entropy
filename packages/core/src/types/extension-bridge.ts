@@ -198,6 +198,55 @@ export interface CreditSummaryPayload {
   }>;
 }
 
+// ---------------------------------------------------------------------------
+// Privacy / Tor settings
+// ---------------------------------------------------------------------------
+
+export interface TurnServerConfig {
+  urls: string;
+  username?: string;
+  credential?: string;
+}
+
+export interface PrivacySettingsPayload {
+  /** Route Nostr relay connections through Tor SOCKS5 proxy. */
+  torEnabled: boolean;
+  /** SOCKS5 proxy address for Tor (default: 127.0.0.1:9150). */
+  torProxyAddress: string;
+  /** Force WebRTC to use TURN-only (relay) mode — hides IP from peers but requires a TURN server. */
+  forceRelay: boolean;
+  /** User-configured TURN server(s). Required when forceRelay is true. */
+  turnServers: TurnServerConfig[];
+  /** Strip local/host ICE candidates from signaling messages. */
+  filterLocalCandidates: boolean;
+}
+
+export function isPrivacySettingsPayload(value: unknown): value is PrivacySettingsPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.torEnabled === "boolean" &&
+    typeof value.torProxyAddress === "string" &&
+    typeof value.forceRelay === "boolean" &&
+    Array.isArray(value.turnServers) &&
+    value.turnServers.every((s) => {
+      if (!isRecord(s)) return false;
+      return typeof s.urls === "string";
+    }) &&
+    typeof value.filterLocalCandidates === "boolean"
+  );
+}
+
+export const DEFAULT_PRIVACY_SETTINGS: PrivacySettingsPayload = {
+  torEnabled: false,
+  torProxyAddress: "127.0.0.1:9150",
+  forceRelay: false,
+  turnServers: [],
+  filterLocalCandidates: false,
+};
+
 export interface NodeMetricsPayload {
   chunksServed: number;
   bytesServed: number;
@@ -215,6 +264,7 @@ export type EntropyRuntimePayload =
   | ColdStorageStatusPayload
   | CreditSummaryPayload
   | NodeMetricsPayload
+  | PrivacySettingsPayload
   | PublicKeyPayload
   | ExportIdentityPayload
   | NodeSettingsPayload
@@ -334,6 +384,17 @@ export type EntropyRuntimeMessage =
   | {
       source: typeof ENTROPY_WEB_SOURCE;
       requestId: string;
+      type: "GET_PRIVACY_SETTINGS";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "SET_PRIVACY_SETTINGS";
+      payload: PrivacySettingsPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
       type: "TAG_CONTENT";
       payload: TagContentPayload;
     }
@@ -431,6 +492,12 @@ export type EntropyRuntimeResponse =
   | {
       ok: true;
       requestId: string;
+      type: "GET_PRIVACY_SETTINGS" | "SET_PRIVACY_SETTINGS";
+      payload: PrivacySettingsPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
       type: "GET_SIGN_ALLOWLIST" | "ADD_SIGN_ORIGIN" | "REMOVE_SIGN_ORIGIN";
       payload: SignAllowlistPayload;
     }
@@ -492,6 +559,8 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "CHECK_LOCAL_CHUNKS" ||
     value === "EXPORT_IDENTITY" ||
     value === "TAG_CONTENT" ||
+    value === "GET_PRIVACY_SETTINGS" ||
+    value === "SET_PRIVACY_SETTINGS" ||
     value === "GET_SIGN_ALLOWLIST" ||
     value === "ADD_SIGN_ORIGIN" ||
     value === "REMOVE_SIGN_ORIGIN"
@@ -804,6 +873,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isTagContentPayload(value.payload);
   }
 
+  if (value.type === "SET_PRIVACY_SETTINGS") {
+    return isPrivacySettingsPayload(value.payload);
+  }
+
   if (value.type === "ADD_SIGN_ORIGIN" || value.type === "REMOVE_SIGN_ORIGIN") {
     return isRecord(value.payload) && typeof (value.payload as Record<string, unknown>).origin === "string";
   }
@@ -858,6 +931,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
     return isRecord(payload) && typeof payload.id === "string" && typeof payload.sig === "string";
   }
 
+  if (requestType === "GET_PRIVACY_SETTINGS" || requestType === "SET_PRIVACY_SETTINGS") {
+    return isPrivacySettingsPayload(payload);
+  }
+
   if (
     requestType === "GET_SIGN_ALLOWLIST" ||
     requestType === "ADD_SIGN_ORIGIN" ||
@@ -898,6 +975,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
       value.type === "SET_SEEDING_ACTIVE"
     ) {
       return isNodeSettingsPayload(value.payload);
+    }
+
+    if (value.type === "GET_PRIVACY_SETTINGS" || value.type === "SET_PRIVACY_SETTINGS") {
+      return isPrivacySettingsPayload(value.payload);
     }
 
     if (value.type === "GET_COLD_STORAGE_ASSIGNMENTS" || value.type === "RELEASE_COLD_ASSIGNMENT") {

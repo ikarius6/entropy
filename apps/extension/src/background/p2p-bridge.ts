@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import type { ChunkStore } from "@entropy/core";
+import type { ChunkStore, PrivacySettingsPayload } from "@entropy/core";
 import { logger } from "@entropy/core";
 import type { SignEventFn, RelayPool } from "@entropy/core";
 import { startSignalingListener } from "./signaling-listener";
@@ -71,6 +71,7 @@ export interface P2PBridgeOptions {
   privkeyHex: string;
   chunkStore: ChunkStore;
   signEvent: SignEventFn;
+  privacySettings?: PrivacySettingsPayload;
   onChunkServed?: (chunkHash: string, peerPubkey: string, bytes: number, receiptSig?: string) => void;
   authorizeChunkRequest?: (request: {
     peerPubkey: string;
@@ -124,7 +125,8 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
           const chunks = await options.chunkStore.listChunksByRoot(rootHash);
           return chunks.length > 0;
         },
-        signEvent: options.signEvent
+        signEvent: options.signEvent,
+        privacySettings: options.privacySettings
       }
     );
   } else {
@@ -152,6 +154,7 @@ export async function fetchChunkP2P(params: {
   myPubkey: string;
   relayPool: RelayPool;
   signEvent: SignEventFn;
+  privacySettings?: PrivacySettingsPayload;
   isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
   onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
   onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;

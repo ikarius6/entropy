@@ -49,6 +49,47 @@
       </section>
 
       <section class="settings-card">
+        <h2>Privacy &amp; Tor</h2>
+        <div class="settings-row seeding-row">
+          <label for="tor-toggle" class="toggle-label">Route relay connections through Tor</label>
+          <input id="tor-toggle" type="checkbox" />
+        </div>
+        <div class="settings-row" style="margin-top:0.5rem;">
+          <label for="tor-proxy-input" style="min-width:140px;">SOCKS5 proxy</label>
+          <input id="tor-proxy-input" type="text" placeholder="127.0.0.1:9150" style="flex:1" />
+        </div>
+        <div class="settings-row seeding-row" style="margin-top:0.5rem;">
+          <label for="force-relay-toggle" class="toggle-label">Force TURN relay (hide IP from peers)</label>
+          <input id="force-relay-toggle" type="checkbox" />
+        </div>
+        <div class="settings-row seeding-row" style="margin-top:0.5rem;">
+          <label for="filter-local-toggle" class="toggle-label">Strip local IP candidates</label>
+          <input id="filter-local-toggle" type="checkbox" />
+        </div>
+        <details style="margin-top:0.75rem;">
+          <summary>TURN server configuration</summary>
+          <div class="settings-row" style="margin-top:0.5rem;">
+            <input id="turn-url-input" type="text" placeholder="turn:your-server.com:3478" style="flex:1" />
+          </div>
+          <div class="settings-row" style="margin-top:0.25rem;">
+            <input id="turn-user-input" type="text" placeholder="Username (optional)" style="flex:1" />
+            <input id="turn-cred-input" type="password" placeholder="Credential (optional)" style="flex:1" />
+          </div>
+          <div class="settings-row" style="margin-top:0.25rem;">
+            <button id="add-turn" type="button">Add TURN</button>
+          </div>
+          <ul id="turn-list" class="inventory-list"></ul>
+        </details>
+        <div class="settings-row" style="margin-top:0.75rem;">
+          <button id="save-privacy" type="button">Save Privacy Settings</button>
+        </div>
+        <p id="privacy-status" style="font-size:0.85rem;color:#888;margin-top:0.5rem;"></p>
+        <p class="privacy-warning" style="font-size:0.8rem;color:#e67e22;margin-top:0.5rem;">
+          ⚠ Tor protects your IP from relay operators. To hide your IP from <strong>peers</strong>, enable "Force TURN relay" and configure a TURN server. Without TURN, WebRTC data transfers still expose your IP.
+        </p>
+      </section>
+
+      <section class="settings-card">
         <h2>Credit Integrity</h2>
         <div class="integrity-status">
           <div class="integrity-row">

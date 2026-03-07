@@ -8,6 +8,7 @@ import {
   isCheckLocalChunksResultPayload,
   isEntropyExtensionResponseEvent,
   isNodeSettingsPayload,
+  isPrivacySettingsPayload,
   isPublicKeyPayload,
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
@@ -21,6 +22,7 @@ import {
   type EntropyRuntimeMessage,
   type NodeSettingsPayload,
   type NodeStatusPayload,
+  type PrivacySettingsPayload,
   type PublicKeyPayload,
   type RelayUrlPayload,
   type NodeMetricsPayload,
@@ -55,7 +57,7 @@ export type {
   ChunkDataPayload
 };
 
-export type { ColdStorageAssignmentPayload, NodeMetricsPayload, TagContentPayload, TagContentResultPayload, SignAllowlistPayload, SignOriginPayload } from "@entropy/core";
+export type { ColdStorageAssignmentPayload, NodeMetricsPayload, PrivacySettingsPayload, TagContentPayload, TagContentResultPayload, SignAllowlistPayload, SignOriginPayload, TurnServerConfig } from "@entropy/core";
 
 function buildNoPayloadMessage(
   requestId: string,
@@ -68,6 +70,7 @@ function buildNoPayloadMessage(
     | "GET_COLD_STORAGE_ASSIGNMENTS"
     | "GET_NODE_METRICS"
     | "EXPORT_IDENTITY"
+    | "GET_PRIVACY_SETTINGS"
     | "GET_SIGN_ALLOWLIST"
 ): EntropyRuntimeMessage {
   return { source: ENTROPY_WEB_SOURCE, requestId, type };
@@ -258,6 +261,16 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<ColdStorageStatusPayload>;
 export function sendExtensionRequest(
+  type: "GET_PRIVACY_SETTINGS",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<PrivacySettingsPayload>;
+export function sendExtensionRequest(
+  type: "SET_PRIVACY_SETTINGS",
+  payload: PrivacySettingsPayload,
+  timeoutMs?: number
+): Promise<PrivacySettingsPayload>;
+export function sendExtensionRequest(
   type: "TAG_CONTENT",
   payload: TagContentPayload,
   timeoutMs?: number
@@ -272,9 +285,10 @@ export function sendExtensionRequest(
     | RelayUrlPayload
     | SetSeedingActivePayload
     | ReleaseColdAssignmentPayload
+    | PrivacySettingsPayload
     | TagContentPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | TagContentResultPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | PrivacySettingsPayload | TagContentResultPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -385,6 +399,29 @@ export function sendExtensionRequest(
     return sendBridgeMessage(
       buildNoPayloadMessage(requestId, type),
       (p) => (isExportIdentityPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "GET_PRIVACY_SETTINGS") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isPrivacySettingsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "SET_PRIVACY_SETTINGS") {
+    const privacyPayload = payload as PrivacySettingsPayload;
+    const privacyMsg: EntropyRuntimeMessage = {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type: "SET_PRIVACY_SETTINGS",
+      payload: privacyPayload
+    };
+    return sendBridgeMessage(
+      privacyMsg,
+      (p) => (isPrivacySettingsPayload(p) ? p : null),
       timeoutMs
     );
   }
@@ -599,4 +636,16 @@ export function removeSignOrigin(origin: string): Promise<SignAllowlistPayload> 
   const requestId = createEntropyRequestId("sign-allowlist");
   const message: EntropyRuntimeMessage = { source: ENTROPY_WEB_SOURCE, requestId, type: "REMOVE_SIGN_ORIGIN", payload: { origin } };
   return sendBridgeMessage<SignAllowlistPayload>(message, validateAllowlistPayload, DEFAULT_ALLOWLIST_TIMEOUT_MS);
+}
+
+// ---------------------------------------------------------------------------
+// Privacy / Tor Settings
+// ---------------------------------------------------------------------------
+
+export function getPrivacySettings(): Promise<PrivacySettingsPayload> {
+  return sendExtensionRequest("GET_PRIVACY_SETTINGS");
+}
+
+export function setPrivacySettings(settings: PrivacySettingsPayload): Promise<PrivacySettingsPayload> {
+  return sendExtensionRequest("SET_PRIVACY_SETTINGS", settings);
 }

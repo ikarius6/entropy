@@ -1,8 +1,11 @@
 import {
   SignalingChannel,
   createRtcConfiguration,
+  createPrivacyRtcConfiguration,
+  shouldFilterCandidate,
   logger,
   makeNip44Fns,
+  type PrivacySettingsPayload,
   type RelayPool,
   type SignalingMessage,
   type SignEventFn
@@ -12,6 +15,7 @@ export interface SignalingListenerOptions {
   canServeRoot?: (rootHash: string) => boolean | Promise<boolean>;
   signEvent?: SignEventFn;
   privkey?: string;
+  privacySettings?: PrivacySettingsPayload;
 }
 
 function toConnectionKey(signal: Pick<SignalingMessage, "senderPubkey" | "rootHash">): string {
@@ -118,11 +122,20 @@ export function startSignalingListener(
         logger.log("[signaling-listener] processing offer from", signal.senderPubkey.slice(0, 8) + "…");
         existingPeer?.close();
 
-        const peer = new RTCPeerConnection(createRtcConfiguration());
+        const rtcConfig = options.privacySettings
+          ? createPrivacyRtcConfiguration(options.privacySettings)
+          : createRtcConfiguration();
+        const peer = new RTCPeerConnection(rtcConfig);
         peers.set(key, peer);
 
         peer.onicecandidate = (event) => {
           if (!event.candidate) {
+            return;
+          }
+
+          // Filter local/host candidates when privacy settings require it
+          if (options.privacySettings && shouldFilterCandidate(event.candidate, options.privacySettings)) {
+            logger.log("[signaling-listener] filtering local ICE candidate (privacy mode)");
             return;
           }
 

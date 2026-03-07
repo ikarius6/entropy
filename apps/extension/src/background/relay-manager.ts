@@ -1,5 +1,6 @@
 import browser from "webextension-polyfill";
 import { RelayPool, type RelayInfo } from "@entropy/core";
+import { isTorActive } from "./tor-proxy";
 
 interface RelayStorageSchema {
   entropyRelayUrls?: string[];
@@ -30,6 +31,17 @@ const BLOCKED_HOSTNAME_RE =
 /** Control characters that cannot appear in a safe URL. */
 const CONTROL_CHAR_RE = /[\x00-\x1f]/;
 
+const ONION_HOSTNAME_RE = /\.onion$/i;
+
+export function isOnionUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    return ONION_HOSTNAME_RE.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function normalizeRelayUrl(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, "");
 
@@ -54,6 +66,15 @@ function normalizeRelayUrl(url: string): string {
 
   if (!parsed.hostname) {
     throw new Error("Relay URL must have a non-empty hostname.");
+  }
+
+  // Allow .onion hostnames when Tor is active — they require Tor proxy to resolve
+  if (ONION_HOSTNAME_RE.test(parsed.hostname)) {
+    if (!isTorActive()) {
+      throw new Error("Cannot add .onion relay URL without enabling Tor first.");
+    }
+    // .onion URLs bypass the local/private hostname check
+    return trimmed;
   }
 
   if (BLOCKED_HOSTNAME_RE.test(parsed.hostname)) {

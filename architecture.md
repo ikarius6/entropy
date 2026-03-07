@@ -480,6 +480,9 @@ Archivo Original
 | **Cifrado en tránsito** | WebRTC usa DTLS por defecto; todo el tráfico P2P está cifrado. |
 | **Señalización cifrada** | SDP offers/answers encriptados con NIP-44 (mandatory). |
 | **Sin servidores centrales** | Ni los relays ni los STUN servers ven el contenido; solo metadatos y señalización. |
+| **Tor proxy (opcional)** | Conexiones a relays Nostr pueden enrutarse por SOCKS5 (Tor) para ocultar IP del operador del relay. Soporte `.onion` relay URLs. Firefox: `browser.proxy.onRequest`; Chrome: PAC script via `chrome.proxy.settings`. |
+| **ICE candidate filtering** | Opción para eliminar host/srflx candidates con IPs locales de los mensajes de señalización, evitando filtración de IP interna. |
+| **TURN relay-only mode** | Opción para forzar `iceTransportPolicy: "relay"` con TURN servers configurados por el usuario, ocultando la IP pública de peers directos. |
 
 ---
 

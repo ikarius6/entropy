@@ -5,7 +5,8 @@ import {
   type StoredChunk
 } from "@entropy/core";
 
-import type { ColdStorageAssignmentPayload, CreditSummaryPayload, NodeMetricsPayload, NodeStatusPayload } from "../shared/messaging";
+import type { ColdStorageAssignmentPayload, CreditSummaryPayload, NodeMetricsPayload, NodeStatusPayload, PrivacySettingsPayload } from "../shared/messaging";
+import type { TurnServerConfig } from "@entropy/core";
 import {
   addRuntimeRelay,
   importRuntimeKeypair,
@@ -17,7 +18,9 @@ import {
   requestNodeMetrics,
   requestNodeSettings,
   requestNodeStatus,
+  requestPrivacySettings,
   requestPublicKey,
+  setRuntimePrivacySettings,
   setRuntimeSeedingActive,
   subscribeCreditUpdates,
   subscribeNodeStatusUpdates
@@ -46,12 +49,24 @@ const coldStorageListElement = document.getElementById("cold-storage-list");
 const refreshColdStorageButton = document.getElementById("refresh-cold-storage");
 const metricsContentElement = document.getElementById("metrics-content");
 const refreshMetricsButton = document.getElementById("refresh-metrics");
+const torToggle = document.getElementById("tor-toggle");
+const torProxyInput = document.getElementById("tor-proxy-input");
+const forceRelayToggle = document.getElementById("force-relay-toggle");
+const filterLocalToggle = document.getElementById("filter-local-toggle");
+const turnUrlInput = document.getElementById("turn-url-input");
+const turnUserInput = document.getElementById("turn-user-input");
+const turnCredInput = document.getElementById("turn-cred-input");
+const addTurnButton = document.getElementById("add-turn");
+const turnListElement = document.getElementById("turn-list");
+const savePrivacyButton = document.getElementById("save-privacy");
+const privacyStatusElement = document.getElementById("privacy-status");
 
 let latestStatus: NodeStatusPayload | null = null;
 let latestCredits: CreditSummaryPayload | null = null;
 let latestPubkey: string | null = null;
 let latestColdAssignments: ColdStorageAssignmentPayload[] = [];
 let latestMetrics: NodeMetricsPayload | null = null;
+let pendingTurnServers: TurnServerConfig[] = [];
 
 const chunkStore = createIndexedDbChunkStore();
 const quotaManager = createIndexedDbQuotaManager(chunkStore);
@@ -770,9 +785,129 @@ window.addEventListener("beforeunload", () => {
   chunkStore.close();
 });
 
+// ---------------------------------------------------------------------------
+// Privacy / Tor settings
+// ---------------------------------------------------------------------------
+
+function setPrivacyStatus(message: string): void {
+  if (privacyStatusElement instanceof HTMLElement) {
+    privacyStatusElement.textContent = message;
+  }
+}
+
+function renderTurnList(): void {
+  if (!(turnListElement instanceof HTMLElement)) return;
+  while (turnListElement.firstChild) turnListElement.removeChild(turnListElement.firstChild);
+
+  if (pendingTurnServers.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No TURN servers configured.";
+    turnListElement.appendChild(li);
+    return;
+  }
+
+  for (let i = 0; i < pendingTurnServers.length; i++) {
+    const turn = pendingTurnServers[i];
+    const li = document.createElement("li");
+    li.className = "relay-item";
+
+    const span = document.createElement("span");
+    span.textContent = `${turn.urls}${turn.username ? ` (user: ${turn.username})` : ""}`;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Remove";
+    removeBtn.type = "button";
+    removeBtn.className = "relay-remove-btn";
+    removeBtn.addEventListener("click", () => {
+      pendingTurnServers.splice(i, 1);
+      renderTurnList();
+    });
+
+    li.appendChild(span);
+    li.appendChild(removeBtn);
+    turnListElement.appendChild(li);
+  }
+}
+
+function populatePrivacyUI(settings: PrivacySettingsPayload): void {
+  if (torToggle instanceof HTMLInputElement) torToggle.checked = settings.torEnabled;
+  if (torProxyInput instanceof HTMLInputElement) torProxyInput.value = settings.torProxyAddress;
+  if (forceRelayToggle instanceof HTMLInputElement) forceRelayToggle.checked = settings.forceRelay;
+  if (filterLocalToggle instanceof HTMLInputElement) filterLocalToggle.checked = settings.filterLocalCandidates;
+  pendingTurnServers = [...settings.turnServers];
+  renderTurnList();
+}
+
+async function loadPrivacySettings(): Promise<void> {
+  setPrivacyStatus("Loading privacy settings...");
+  try {
+    const settings = await requestPrivacySettings();
+    populatePrivacyUI(settings);
+    setPrivacyStatus(settings.torEnabled ? "Tor is enabled." : "Tor is disabled.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error.";
+    setPrivacyStatus(`Privacy settings unavailable: ${msg}`);
+  }
+}
+
+async function savePrivacySettings(): Promise<void> {
+  setPrivacyStatus("Saving...");
+
+  const payload: PrivacySettingsPayload = {
+    torEnabled: torToggle instanceof HTMLInputElement ? torToggle.checked : false,
+    torProxyAddress: torProxyInput instanceof HTMLInputElement ? torProxyInput.value.trim() || "127.0.0.1:9150" : "127.0.0.1:9150",
+    forceRelay: forceRelayToggle instanceof HTMLInputElement ? forceRelayToggle.checked : false,
+    filterLocalCandidates: filterLocalToggle instanceof HTMLInputElement ? filterLocalToggle.checked : false,
+    turnServers: pendingTurnServers,
+  };
+
+  if (payload.forceRelay && payload.turnServers.length === 0) {
+    setPrivacyStatus("Warning: Force TURN relay requires at least one TURN server.");
+    return;
+  }
+
+  try {
+    const updated = await setRuntimePrivacySettings(payload);
+    populatePrivacyUI(updated);
+    setPrivacyStatus("Privacy settings saved.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error.";
+    setPrivacyStatus(`Save failed: ${msg}`);
+  }
+}
+
+function addTurnFromInput(): void {
+  if (!(turnUrlInput instanceof HTMLInputElement)) return;
+  const url = turnUrlInput.value.trim();
+  if (!url) return;
+
+  const turn: TurnServerConfig = { urls: url };
+  if (turnUserInput instanceof HTMLInputElement && turnUserInput.value.trim()) {
+    turn.username = turnUserInput.value.trim();
+  }
+  if (turnCredInput instanceof HTMLInputElement && turnCredInput.value.trim()) {
+    turn.credential = turnCredInput.value.trim();
+  }
+
+  pendingTurnServers.push(turn);
+  turnUrlInput.value = "";
+  if (turnUserInput instanceof HTMLInputElement) turnUserInput.value = "";
+  if (turnCredInput instanceof HTMLInputElement) turnCredInput.value = "";
+  renderTurnList();
+}
+
+if (addTurnButton instanceof HTMLButtonElement) {
+  addTurnButton.addEventListener("click", () => addTurnFromInput());
+}
+
+if (savePrivacyButton instanceof HTMLButtonElement) {
+  savePrivacyButton.addEventListener("click", () => void savePrivacySettings());
+}
+
 void refresh();
 void refreshPublicKey();
 void refreshInventory();
 void refreshRelaySettings();
 void refreshColdStorage();
 void refreshMetrics();
+void loadPrivacySettings();

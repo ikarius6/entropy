@@ -1,3 +1,5 @@
+import type { PrivacySettingsPayload, TurnServerConfig } from "../types/extension-bridge";
+
 export interface StunTurnConfig {
   iceServers: RTCIceServer[];
 }
@@ -15,4 +17,70 @@ export function createRtcConfiguration(custom: Partial<StunTurnConfig> = {}): RT
     bundlePolicy: "balanced",
     iceCandidatePoolSize: 2
   };
+}
+
+// ---------------------------------------------------------------------------
+// Privacy-aware RTC configuration
+// ---------------------------------------------------------------------------
+
+function turnServerToIceServer(turn: TurnServerConfig): RTCIceServer {
+  const server: RTCIceServer = { urls: turn.urls };
+  if (turn.username) server.username = turn.username;
+  if (turn.credential) server.credential = turn.credential;
+  return server;
+}
+
+export function createPrivacyRtcConfiguration(
+  privacy: PrivacySettingsPayload
+): RTCConfiguration {
+  const iceServers: RTCIceServer[] = [];
+
+  if (privacy.forceRelay && privacy.turnServers.length > 0) {
+    // Relay-only mode: only TURN servers, no STUN
+    for (const turn of privacy.turnServers) {
+      iceServers.push(turnServerToIceServer(turn));
+    }
+  } else {
+    // Normal mode: STUN + optional TURN
+    iceServers.push(...DEFAULT_ICE_SERVERS);
+    for (const turn of privacy.turnServers) {
+      iceServers.push(turnServerToIceServer(turn));
+    }
+  }
+
+  return {
+    iceServers,
+    iceTransportPolicy: privacy.forceRelay ? "relay" : "all",
+    bundlePolicy: "balanced",
+    iceCandidatePoolSize: privacy.forceRelay ? 0 : 2
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ICE candidate filtering
+// ---------------------------------------------------------------------------
+
+const LOCAL_IP_RE =
+  /^(10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|127\.\d+\.\d+\.\d+|::1|fd[0-9a-f]{2}:)/i;
+
+export function isLocalCandidate(candidate: RTCIceCandidate | RTCIceCandidateInit): boolean {
+  const candidateStr = typeof candidate.candidate === "string" ? candidate.candidate : "";
+  if (!candidateStr) return false;
+
+  // host candidates always contain local IPs
+  if (candidateStr.includes(" typ host ")) return true;
+
+  // Check for local IPs in srflx candidates (shouldn't happen, but defense-in-depth)
+  const ipMatch = candidateStr.match(/(\d+\.\d+\.\d+\.\d+|[0-9a-f:]+)\s+\d+\s+typ\s/i);
+  if (ipMatch && LOCAL_IP_RE.test(ipMatch[1])) return true;
+
+  return false;
+}
+
+export function shouldFilterCandidate(
+  candidate: RTCIceCandidate | RTCIceCandidateInit,
+  privacy: PrivacySettingsPayload
+): boolean {
+  if (!privacy.filterLocalCandidates) return false;
+  return isLocalCandidate(candidate);
 }

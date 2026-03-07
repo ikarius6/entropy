@@ -26,6 +26,7 @@ import {
   type NodeMetricsPayload,
   type NodeSettingsPayload,
   type NodeStatusPayload,
+  type PrivacySettingsPayload,
   type PublicKeyPayload,
   type ExportIdentityPayload,
   type SignedEventPayload,
@@ -61,6 +62,8 @@ import {
 import { createColdStorageManager } from "./cold-storage-manager";
 import { createMetricsCollector } from "./metrics";
 import { scheduleMaintenance } from "./scheduler";
+import { getPrivacySettings, setPrivacySettings } from "./privacy-store";
+import { applyTorProxy } from "./tor-proxy";
 
 const KEEP_ALIVE_ALARM_NAME = "entropy-keepalive";
 const KEEP_ALIVE_ALARM_PERIOD_MINUTES = 1;
@@ -290,7 +293,19 @@ function ensureMaintenanceScheduled(): void {
   scheduleMaintenance(coldStorageManager, metricsCollector);
 }
 
+function privacySettingsResponse(
+  requestId: string,
+  type: "GET_PRIVACY_SETTINGS" | "SET_PRIVACY_SETTINGS",
+  payload: PrivacySettingsPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type, payload };
+}
+
 async function bootstrapBackground(): Promise<void> {
+  // Apply Tor proxy settings before connecting to relays
+  const privacySettings = await getPrivacySettings();
+  applyTorProxy(privacySettings);
+
   const identity = await getOrCreateKeypair();
 
   await initRelayManager();
@@ -304,6 +319,7 @@ async function bootstrapBackground(): Promise<void> {
     privkeyHex: identity.privkey,
     chunkStore,
     signEvent: signNostrEvent,
+    privacySettings,
     onChunkServed: async (chunkHash, peerPubkey, bytes, receiptSig) => {
       try {
         await peerReputationStore.recordSuccess(peerPubkey, bytes);
@@ -563,6 +579,7 @@ browser.runtime.onMessage.addListener(
 
                   try {
                     logger.log(`[GET_CHUNK] fetching ${message.payload.hash.slice(0, 12)}… from peer ${gk.slice(0, 8)}…`);
+                    const currentPrivacy = await getPrivacySettings();
                     const peerResult = await fetchChunkP2P({
                       chunkHash: message.payload.hash,
                       rootHash: reqRootHash,
@@ -570,6 +587,7 @@ browser.runtime.onMessage.addListener(
                       myPubkey: identity.pubkey,
                       relayPool: pool,
                       signEvent: signNostrEvent,
+                      privacySettings: currentPrivacy,
                       isPeerBanned: (peerPubkey) => peerReputationStore.isBanned(peerPubkey),
                       onPeerTransferSuccess: async (peerPubkey, bytes) => {
                         await peerReputationStore.recordSuccess(peerPubkey, bytes);
@@ -844,6 +862,17 @@ browser.runtime.onMessage.addListener(
               }
             };
             return tagResponse;
+          }
+
+          case "GET_PRIVACY_SETTINGS": {
+            const privacy = await getPrivacySettings();
+            return privacySettingsResponse(message.requestId, message.type, privacy);
+          }
+
+          case "SET_PRIVACY_SETTINGS": {
+            const updated = await setPrivacySettings(message.payload);
+            applyTorProxy(updated);
+            return privacySettingsResponse(message.requestId, message.type, updated);
           }
 
           case "GET_SIGN_ALLOWLIST": {

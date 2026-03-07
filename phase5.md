@@ -577,26 +577,47 @@ Nuevo message type en `extension-bridge.ts`:
 
 ---
 
-## Bloque 8: Soporte Tor Opcional
+## Bloque 8: Soporte Tor Opcional ✅
 
 ### 8.1 Alcance Phase 5
 
 Soporte Tor es un feature avanzado. En Phase 5, el alcance es:
 
-1. **Documentar** la arquitectura para routing de WebRTC sobre Tor.
-2. **Preparar** la configuración del extension manifest para permitir conexiones a `.onion` relays.
-3. **Implementar** la opción de usar relays Nostr sobre Tor (`.onion` relay URLs) para señalización.
+1. ✅ **Documentar** la arquitectura para routing de WebRTC sobre Tor.
+2. ✅ **Preparar** la configuración del extension manifest para permitir conexiones a `.onion` relays.
+3. ✅ **Implementar** la opción de usar relays Nostr sobre Tor (`.onion` relay URLs) para señalización.
 4. **NO** implementar routing de tráfico WebRTC data channel sobre Tor (requiere TURN sobre Tor, fuera de scope).
 
-### 8.2 Configuración en `SettingsPage` / Dashboard
+### 8.2 Implementación completada
 
-- Toggle "Use Tor for signaling" (off por defecto).
-- Campo para agregar `.onion` relay URLs.
-- Warning: "WebRTC data transfers still expose your IP to peers. Only signaling is routed through Tor."
+#### Core (`@entropy/core`)
+- `extension-bridge.ts`: Tipos `TurnServerConfig`, `PrivacySettingsPayload`, `DEFAULT_PRIVACY_SETTINGS`, type guard `isPrivacySettingsPayload`, mensajes `GET_PRIVACY_SETTINGS` / `SET_PRIVACY_SETTINGS`.
+- `nat-traversal.ts`: `createPrivacyRtcConfiguration()` (relay-only + TURN), `isLocalCandidate()`, `shouldFilterCandidate()`.
 
-### 8.3 Integración en `relay-manager.ts`
+#### Extension (`@entropy/extension`)
+- `privacy-store.ts`: Persistencia de configuración en `chrome.storage.local`.
+- `tor-proxy.ts`: Proxy SOCKS5 cross-browser (Firefox `browser.proxy.onRequest`, Chrome PAC script).
+- `relay-manager.ts`: Soporte `.onion` URLs condicionado a `isTorActive()`.
+- `manifest.json`: Permiso `"proxy"` agregado.
+- `service-worker.ts`: Handlers `GET/SET_PRIVACY_SETTINGS`, bootstrap con `applyTorProxy()`, `privacySettings` pasado a P2P bridge.
+- `signaling-listener.ts` / `peer-fetch.ts` / `p2p-bridge.ts`: Privacy-aware RTC config + ICE candidate filtering.
+- `messaging.ts` / `status-client.ts`: Exports y funciones cliente `requestPrivacySettings()`, `setRuntimePrivacySettings()`.
+- Dashboard: Panel "Privacy & Tor" con toggles, TURN config, warning UX.
 
-Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
+#### Web (`@entropy/web`)
+- `extension-bridge.ts`: `getPrivacySettings()`, `setPrivacySettings()`, overloads y tipos exportados.
+
+#### Tests
+- `nat-traversal.test.ts`: Tests para `createPrivacyRtcConfiguration`, `isLocalCandidate`, `shouldFilterCandidate`.
+- `relay-manager.test.ts`: Tests para `.onion` URL rejection y `isOnionUrl`.
+
+### 8.3 Capas de protección IP
+
+| Capa | Protege contra | Requisito |
+|---|---|---|
+| Tor proxy (señalización) | Operadores de relay ven tu IP | Tor corriendo localmente |
+| ICE candidate filtering | Peers ven tu IP local en SDP | Activar "Strip local IP candidates" |
+| TURN relay-only mode | Peers ven tu IP pública vía WebRTC | Configurar un TURN server + activar "Force TURN relay" |
 
 ---
 
@@ -718,11 +739,15 @@ Detectar `.onion` URLs y configurar proxy SOCKS si disponible.
 │  Bloque 8: Soporte Tor (señalización only)                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ○ 8.1  .onion relay URL support in relay-manager.ts            │
-│  ○ 8.2  Settings UI: Tor toggle + .onion relay config           │
-│  ○ 8.3  Documentation                                           │
-│                                                                 │
-│  ⚠️  PENDIENTE                                                   │
+│  ✅ 8.1  .onion relay URL support in relay-manager.ts            │
+│  ✅ 8.2  Settings UI: Tor toggle + .onion relay config           │
+│  ✅ 8.3  Documentation                                           │
+│  ✅ 8.4  Privacy types + bridge messages (extension-bridge.ts)   │
+│  ✅ 8.5  Tor SOCKS5 proxy (tor-proxy.ts, Firefox + Chrome)      │
+│  ✅ 8.6  Privacy-aware RTC config + ICE candidate filtering      │
+│  ✅ 8.7  TURN relay-only mode support                            │
+│  ✅ 8.8  Dashboard: Privacy & Tor panel                          │
+│  ✅ 8.9  Tests (nat-traversal, relay-manager .onion)             │
 │                                                                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │

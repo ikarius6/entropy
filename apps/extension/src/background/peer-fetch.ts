@@ -1,11 +1,14 @@
 import {
   SignalingChannel,
   createRtcConfiguration,
+  createPrivacyRtcConfiguration,
+  shouldFilterCandidate,
   encodeChunkRequest,
   createChunkReceiver,
   sha256Hex,
   logger,
   makeNip44Fns,
+  type PrivacySettingsPayload,
   type RelayPool,
   type SignEventFn,
   type ChunkRequestMessage,
@@ -57,6 +60,7 @@ export interface FetchChunkParams {
   relayPool: RelayPool;
   signEvent: SignEventFn;
   privkey?: string;
+  privacySettings?: PrivacySettingsPayload;
   isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
   onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
   onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
@@ -93,7 +97,9 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
     ? { encryptFn: nip44Opts.encrypt, decryptFn: nip44Opts.decrypt }
     : undefined
   );
-  const rtcConfig = createRtcConfiguration();
+  const rtcConfig = params.privacySettings
+    ? createPrivacyRtcConfiguration(params.privacySettings)
+    : createRtcConfiguration();
   logger.log("[peer-fetch] creating RTCPeerConnection with config:", JSON.stringify(rtcConfig));
   const pc = new RTCPeerConnection(rtcConfig);
   const dc = pc.createDataChannel(DATA_CHANNEL_LABEL);
@@ -212,6 +218,11 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
     // Forward ICE candidates to gatekeeper
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        // Filter local/host candidates when privacy settings require it
+        if (params.privacySettings && shouldFilterCandidate(event.candidate, params.privacySettings)) {
+          logger.log("[peer-fetch] filtering local ICE candidate (privacy mode)");
+          return;
+        }
         logger.log("[peer-fetch] sending ICE candidate to gatekeeper");
         channel.sendIceCandidate({
           targetPubkey: gatekeeperPubkey,
@@ -332,7 +343,6 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
 
       const request: ChunkRequestMessage = {
         type: "CHUNK_REQUEST",
-        requesterPubkey: myPubkey,
         rootHash,
         chunkHash
       };
