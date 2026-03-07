@@ -1,3 +1,9 @@
+declare module "nostr-tools/nip44" {
+  export function getConversationKey(privkey: Uint8Array, pubkey: string): Uint8Array;
+  export function encrypt(plaintext: string, conversationKey: Uint8Array): string;
+  export function decrypt(ciphertext: string, conversationKey: Uint8Array): string;
+}
+
 declare module "nostr-tools" {
   export interface NostrEventTemplate {
     kind: number;

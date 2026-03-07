@@ -679,7 +679,7 @@ function SecurityTab() {
             {
               icon: <Lock size={16} />,
               title: "Encrypted Transit",
-              desc: "WebRTC uses DTLS encryption by default. All P2P traffic is encrypted end-to-end. SDP signaling offers are encrypted with NIP-04/NIP-44.",
+              desc: "WebRTC uses DTLS encryption by default. All P2P traffic is encrypted end-to-end. SDP signaling offers are encrypted with NIP-44 (mandatory).",
               color: "text-accent" as const,
               bg: "bg-accent/10" as const,
               border: "border-accent/20" as const,

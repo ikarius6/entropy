@@ -424,7 +424,7 @@ Se usan **eventos efímeros** (kind rango 20000-29999) para el handshake WebRTC 
 }
 ```
 
-El contenido SDP se encripta con **NIP-04** (o NIP-44 para mayor seguridad) usando la pubkey del destinatario, garantizando que solo el peer objetivo pueda leer la señalización.
+El contenido SDP se encripta con **NIP-44 (mandatory)** usando la pubkey del destinatario, garantizando que solo el peer objetivo pueda leer la señalización.
 
 ### 6.3 Proof of Upstream (Recibo Firmado)
 
@@ -478,7 +478,7 @@ Archivo Original
 |---|---|
 | **Negación plausible** | Chunks son fragmentos binarios sin formato; un nodo nunca posee contenido reconocible. |
 | **Cifrado en tránsito** | WebRTC usa DTLS por defecto; todo el tráfico P2P está cifrado. |
-| **Señalización cifrada** | SDP offers/answers encriptados con NIP-04/NIP-44. |
+| **Señalización cifrada** | SDP offers/answers encriptados con NIP-44 (mandatory). |
 | **Sin servidores centrales** | Ni los relays ni los STUN servers ven el contenido; solo metadatos y señalización. |
 
 ---
@@ -519,7 +519,7 @@ Las operaciones pesadas **nunca** bloquean el hilo principal:
 | Hashing SHA-256 de chunks | `hash.ts` |
 | Construcción de Merkle Tree | `merkle.ts` |
 | Re-ensamblaje de archivo | `assembler.ts` |
-| Cifrado/descifrado NIP-04 | `crypto-worker.ts` |
+| Cifrado/descifrado NIP-44 | `nip44.ts` |
 
 Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias de memoria.
 

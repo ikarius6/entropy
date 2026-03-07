@@ -2,6 +2,7 @@ import {
   SignalingChannel,
   createRtcConfiguration,
   logger,
+  makeNip44Fns,
   type RelayPool,
   type SignalingMessage,
   type SignEventFn
@@ -10,6 +11,7 @@ import {
 export interface SignalingListenerOptions {
   canServeRoot?: (rootHash: string) => boolean | Promise<boolean>;
   signEvent?: SignEventFn;
+  privkey?: string;
 }
 
 function toConnectionKey(signal: Pick<SignalingMessage, "senderPubkey" | "rootHash">): string {
@@ -48,7 +50,11 @@ export function startSignalingListener(
   onPeerConnected: (pubkey: string, dataChannel: RTCDataChannel) => void,
   options: SignalingListenerOptions = {}
 ): () => void {
-  const channel = new SignalingChannel(pool, options.signEvent);
+  const nip44Opts = options.privkey ? makeNip44Fns(options.privkey) : undefined;
+  const channel = new SignalingChannel(pool, options.signEvent, nip44Opts
+    ? { encryptFn: nip44Opts.encrypt, decryptFn: nip44Opts.decrypt }
+    : undefined
+  );
   const peers = new Map<string, RTCPeerConnection>();
   const offerTimestamps = new Map<string, number>();
   const OFFER_DEDUP_MS = 5_000;

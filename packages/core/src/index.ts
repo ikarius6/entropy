@@ -9,6 +9,7 @@ export * from "./nostr/events";
 export * from "./nostr/signaling";
 export * from "./nostr/client";
 export * from "./nostr/identity";
+export * from "./nostr/nip44";
 export * from "./nostr/seeder-announcement";
 export * from "./transport/peer-manager";
 export * from "./transport/signaling-channel";

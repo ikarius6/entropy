@@ -6,6 +6,7 @@ import {
 } from "../nostr/signaling";
 import type { NostrEvent, NostrFilter, EventCallback, Subscription } from "../nostr/client";
 import type { NostrEventDraft } from "../nostr/events";
+import type { EncryptFn, DecryptFn } from "../nostr/nip44";
 import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,11 @@ export interface SignalingMessage {
 export type SignalCallback = (signal: SignalingMessage) => void;
 export type SignEventFn = (draft: NostrEventDraft) => NostrEvent | Promise<NostrEvent>;
 
+export interface SignalingChannelOptions {
+  encryptFn?: EncryptFn;
+  decryptFn?: DecryptFn;
+}
+
 // ---------------------------------------------------------------------------
 // Signaling Channel — sends/receives WebRTC signaling via Nostr
 // ---------------------------------------------------------------------------
@@ -36,10 +42,14 @@ export class SignalingChannel {
   private pool: RelayPool;
   private signEvent: SignEventFn | null;
   private subscription: Subscription | null = null;
+  private encryptFn: EncryptFn | null;
+  private decryptFn: DecryptFn | null;
 
-  constructor(pool: RelayPool, signEvent?: SignEventFn) {
+  constructor(pool: RelayPool, signEvent?: SignEventFn, options?: SignalingChannelOptions) {
     this.pool = pool;
     this.signEvent = signEvent ?? null;
+    this.encryptFn = options?.encryptFn ?? null;
+    this.decryptFn = options?.decryptFn ?? null;
   }
 
   /** Send an SDP offer to a target peer. */
@@ -84,10 +94,22 @@ export class SignalingChannel {
         return;
       }
 
+      let rawContent = event.content;
+
+      const encTag = event.tags.find((tag) => tag[0] === "enc" && tag[1] === "nip44");
+      if (encTag && this.decryptFn) {
+        try {
+          rawContent = this.decryptFn(event.pubkey, rawContent);
+        } catch (decryptErr) {
+          logger.warn("[SignalingChannel] NIP-44 decryption failed, dropping event:", decryptErr);
+          return;
+        }
+      }
+
       let payload: unknown;
 
       try {
-        payload = JSON.parse(event.content);
+        payload = JSON.parse(rawContent);
       } catch {
         logger.log("[SignalingChannel] failed to parse content JSON");
         return;
@@ -122,15 +144,23 @@ export class SignalingChannel {
     payload: unknown,
     rootHash: string
   ): void {
+    let content = JSON.stringify(payload);
+    const tags: string[][] = [
+      ["p", targetPubkey],
+      ["x", rootHash],
+      ["type", type]
+    ];
+
+    if (this.encryptFn) {
+      content = this.encryptFn(targetPubkey, content);
+      tags.push(["enc", "nip44"]);
+    }
+
     const draft: NostrEventDraft = {
       kind: SIGNALING_KIND,
       created_at: Math.floor(Date.now() / 1000),
-      content: JSON.stringify(payload),
-      tags: [
-        ["p", targetPubkey],
-        ["x", rootHash],
-        ["type", type]
-      ]
+      content,
+      tags
     };
 
     if (this.signEvent) {

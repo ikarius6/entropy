@@ -5,6 +5,7 @@ import {
   createChunkReceiver,
   sha256Hex,
   logger,
+  makeNip44Fns,
   type RelayPool,
   type SignEventFn,
   type ChunkRequestMessage,
@@ -55,6 +56,7 @@ export interface FetchChunkParams {
   myPubkey: string;
   relayPool: RelayPool;
   signEvent: SignEventFn;
+  privkey?: string;
   isPeerBanned?: (peerPubkey: string) => boolean | Promise<boolean>;
   onPeerTransferSuccess?: (peerPubkey: string, bytes: number) => void | Promise<void>;
   onPeerFailedVerification?: (peerPubkey: string) => void | Promise<void>;
@@ -86,7 +88,11 @@ export async function fetchChunkFromPeer(params: FetchChunkParams): Promise<Peer
 
   logger.log("[peer-fetch] fetchChunkFromPeer called — chunk:", chunkHash.slice(0, 12) + "…", "root:", rootHash.slice(0, 12) + "…", "gatekeeper:", gatekeeperPubkey.slice(0, 8) + "…", "myPubkey:", myPubkey.slice(0, 8) + "…");
 
-  const channel = new SignalingChannel(relayPool, signEvent);
+  const nip44Opts = params.privkey ? makeNip44Fns(params.privkey) : undefined;
+  const channel = new SignalingChannel(relayPool, signEvent, nip44Opts
+    ? { encryptFn: nip44Opts.encrypt, decryptFn: nip44Opts.decrypt }
+    : undefined
+  );
   const rtcConfig = createRtcConfiguration();
   logger.log("[peer-fetch] creating RTCPeerConnection with config:", JSON.stringify(rtcConfig));
   const pc = new RTCPeerConnection(rtcConfig);
