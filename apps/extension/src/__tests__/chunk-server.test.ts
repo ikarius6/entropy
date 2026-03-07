@@ -5,6 +5,11 @@ const encodeCustodyProofMock = vi.fn(() => new ArrayBuffer(65));
 const encodeChunkErrorMock = vi.fn(() => new ArrayBuffer(2));
 const sendChunkOverDataChannelMock = vi.fn();
 const sha256HexMock = vi.fn(async () => "aa".repeat(32));
+const hexToBytesMock = vi.fn((hex: string) => new Uint8Array(hex.length / 2));
+const concatBytesMock = vi.fn((...parts: Uint8Array[]) => {
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  return new Uint8Array(total);
+});
 
 const encodeTransferReceiptMock = vi.fn(() => new ArrayBuffer(4));
 const buildReceiptDraftMock = vi.fn(() => ({ kind: 9735, tags: [], content: "", created_at: 0 }));
@@ -22,6 +27,8 @@ vi.mock("@entropy/core", () => ({
   buildReceiptDraft: buildReceiptDraftMock,
   ENTROPY_UPSTREAM_RECEIPT_KIND: 9735,
   sha256Hex: sha256HexMock,
+  hexToBytes: hexToBytesMock,
+  concatBytes: concatBytesMock,
   logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
   encodeTagUpdate: encodeTagUpdateMock,
   decodeTagUpdate: decodeTagUpdateMock,
@@ -108,7 +115,7 @@ describe("chunk-server", () => {
     await flushAsync();
 
     expect(sendChunkOverDataChannelMock).toHaveBeenCalledWith(channel, chunk);
-    expect(onChunkServed).toHaveBeenCalledWith("chunk-hash", 4);
+    expect(onChunkServed).toHaveBeenCalledWith("chunk-hash", 4, undefined);
     expect(encodeChunkErrorMock).not.toHaveBeenCalled();
   });
 
@@ -279,8 +286,8 @@ describe("chunk-server", () => {
     decodeChunkTransferMessageMock.mockReturnValue({
       type: "CUSTODY_CHALLENGE",
       chunkHash: "chunk-hash",
-      offset: 1,
-      length: 2
+      injectionOffset: 2,
+      nonce: "ff".repeat(32)
     });
 
     const channel = new MockDataChannel();
@@ -306,6 +313,12 @@ describe("chunk-server", () => {
     channel.emitMessage(new ArrayBuffer(1));
     await flushAsync();
 
+    // before=[9,8], nonce=[0xff*32], after=[7,6]
+    expect(hexToBytesMock).toHaveBeenCalledWith("ff".repeat(32));
+    expect(concatBytesMock).toHaveBeenCalledTimes(1);
+    const concatCall = concatBytesMock.mock.calls[0] as Uint8Array[];
+    // First arg = before slice (bytes 0..2), second = nonce, third = after slice (bytes 2..)
+    expect(concatCall).toHaveLength(3);
     expect(sha256HexMock).toHaveBeenCalledTimes(1);
     expect(encodeCustodyProofMock).toHaveBeenCalledWith({
       type: "CUSTODY_PROOF",
@@ -314,5 +327,75 @@ describe("chunk-server", () => {
     });
     expect(channel.send).toHaveBeenCalled();
     expect(sendChunkOverDataChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("responds with custody proof when injectionOffset is 0 (nonce prepended)", async () => {
+    const { handleDataChannel } = await import("../background/chunk-server");
+
+    decodeChunkTransferMessageMock.mockReturnValue({
+      type: "CUSTODY_CHALLENGE",
+      chunkHash: "chunk-hash",
+      injectionOffset: 0,
+      nonce: "ab".repeat(32)
+    });
+
+    const channel = new MockDataChannel();
+    const chunkStore = {
+      getChunk: vi.fn(async () => ({
+        hash: "chunk-hash",
+        rootHash: "root-hash",
+        index: 0,
+        data: new Uint8Array([1, 2, 3, 4]).buffer,
+        createdAt: 1,
+        lastAccessed: 1,
+        pinned: false
+      }))
+    };
+
+    handleDataChannel(channel as unknown as RTCDataChannel, "peer-a", chunkStore as never, vi.fn());
+    channel.emitMessage(new ArrayBuffer(1));
+    await flushAsync();
+
+    // before=[] (empty), nonce=..., after=[1,2,3,4]
+    const concatCall = concatBytesMock.mock.calls[0] as Uint8Array[];
+    expect(concatCall).toHaveLength(3);
+    expect(concatCall[0]).toHaveLength(0); // empty before
+    expect(sha256HexMock).toHaveBeenCalledTimes(1);
+    expect(channel.send).toHaveBeenCalled();
+  });
+
+  it("returns BUSY when injectionOffset exceeds chunk size", async () => {
+    const { handleDataChannel } = await import("../background/chunk-server");
+
+    decodeChunkTransferMessageMock.mockReturnValue({
+      type: "CUSTODY_CHALLENGE",
+      chunkHash: "chunk-hash",
+      injectionOffset: 9999, // way beyond 4-byte chunk
+      nonce: "cc".repeat(32)
+    });
+
+    const channel = new MockDataChannel();
+    const chunkStore = {
+      getChunk: vi.fn(async () => ({
+        hash: "chunk-hash",
+        rootHash: "root-hash",
+        index: 0,
+        data: new Uint8Array([9, 8, 7, 6]).buffer,
+        createdAt: 1,
+        lastAccessed: 1,
+        pinned: false
+      }))
+    };
+
+    handleDataChannel(channel as unknown as RTCDataChannel, "peer-a", chunkStore as never, vi.fn());
+    channel.emitMessage(new ArrayBuffer(1));
+    await flushAsync();
+
+    expect(encodeChunkErrorMock).toHaveBeenCalledWith({
+      type: "CHUNK_ERROR",
+      chunkHash: "chunk-hash",
+      reason: "BUSY"
+    });
+    expect(sha256HexMock).not.toHaveBeenCalled();
   });
 });

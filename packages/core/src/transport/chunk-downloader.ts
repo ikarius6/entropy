@@ -5,10 +5,12 @@ import type { SignalingChannel, SignalingMessage } from "./signaling-channel";
 import { createRtcConfiguration } from "./nat-traversal";
 import {
   encodeChunkRequest,
+  encodeCustodyChallenge,
+  type CustodyProofMessage,
   createChunkReceiver,
   type ChunkRequestMessage,
 } from "./chunk-transfer";
-import { sha256Hex } from "../crypto/hash";
+import { sha256Hex, bytesToHex, concatBytes } from "../crypto/hash";
 import { discoverSeeders } from "./seeder-discovery";
 
 // ---------------------------------------------------------------------------
@@ -18,6 +20,9 @@ import { discoverSeeders } from "./seeder-discovery";
 const DATA_CHANNEL_LABEL = "entropy";
 const REQUEST_TIMEOUT_MS = 15_000;
 const PEER_CONNECT_TIMEOUT_MS = 10_000;
+
+/** Timeout waiting for a CUSTODY_PROOF response from a seeder (ms). */
+const CUSTODY_PROOF_TIMEOUT_MS = 5_000;
 
 // ICE reconnection constants
 const ICE_DISCONNECT_GRACE_MS = 5_000;
@@ -78,6 +83,12 @@ export class ChunkDownloader {
 
   /** Reverse lookup: chunkHash → chunk index (for incoming data messages) */
   private hashToIndex = new Map<string, number>();
+
+  /** Pending custody-proof futures: nonce → { resolve, reject } */
+  private pendingCustodyProofs = new Map<string, {
+    resolve: (msg: CustodyProofMessage) => void;
+    reject: (err: Error) => void;
+  }>();
 
   private cleanupSignaling: (() => void) | null = null;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -376,6 +387,17 @@ export class ChunkDownloader {
           if (index !== undefined) {
             this.handleReceivedChunk(peerId, index, message.data);
           }
+        } else if (message.type === "CUSTODY_PROOF") {
+          const pending = this.pendingCustodyProofs.get(message.chunkHash + ":" + message.sliceHash.slice(0, 8));
+          // Route by nonce key stored in the map — find matching entry by chunkHash prefix
+          for (const [key, handler] of this.pendingCustodyProofs) {
+            if (key.startsWith(message.chunkHash + ":")) {
+              this.pendingCustodyProofs.delete(key);
+              handler.resolve(message);
+              break;
+            }
+          }
+          void pending;
         } else if (message.type === "CHUNK_ERROR") {
           const index = this.hashToIndex.get(message.chunkHash);
           if (index !== undefined) {
@@ -485,10 +507,31 @@ export class ChunkDownloader {
     const chunkData = new Uint8Array(data);
 
     sha256Hex(chunkData)
-      .then((actualHash: string) => {
+      .then(async (actualHash: string) => {
         if (actualHash === expectedHash) {
           this.inFlightChunks.delete(index);
           this.downloadedChunks.set(index, data);
+
+          // --- Custody verification ---
+          // After confirming content hash, challenge the seeder to prove it still
+          // physically holds the data. Use injection-based full-chunk hashing so
+          // there is no exploitable slice-hash cache.
+          const custodyOk = await this.verifyCustody(peerId, expectedHash, data);
+          if (!custodyOk) {
+            console.error(`[ChunkDownloader] custody challenge FAILED for chunk ${index} from ${peerId.slice(0, 8)}…`);
+            this.downloadedChunks.delete(index);
+
+            void Promise.resolve(this.onPeerFailedVerification?.(peerId)).catch((err) => {
+              console.warn(
+                `[ChunkDownloader] failed to record custody failure for ${peerId.slice(0, 8)}…:`,
+                err
+              );
+            });
+
+            this.handleChunkError(index);
+            return;
+          }
+          // ----------------------------
 
           void Promise.resolve(this.onPeerTransferSuccess?.(peerId, data.byteLength)).catch((err) => {
             console.warn(
@@ -518,6 +561,83 @@ export class ChunkDownloader {
         console.error(`[ChunkDownloader] hash verification failed for chunk ${index}:`, err);
         this.handleChunkError(index);
       });
+  }
+
+  /**
+   * Issue a CUSTODY_CHALLENGE to `peerId` for the chunk identified by `chunkHash`.
+   * Picks a random nonce and injectionOffset, sends the challenge over the open
+   * data channel, and awaits the CUSTODY_PROOF response.
+   *
+   * The expected proof is: sha256(chunk[0:injectionOffset] || nonce || chunk[injectionOffset:])
+   *
+   * Returns true if the seeder's response is correct, false otherwise (including timeout).
+   */
+  private async verifyCustody(
+    peerId: string,
+    chunkHash: string,
+    localData: ArrayBuffer
+  ): Promise<boolean> {
+    const dc = this.dataChannels.get(peerId);
+    if (!dc || dc.readyState !== "open") {
+      // Channel gone — treat as pass to avoid penalising disconnected peer for prior transfer
+      return true;
+    }
+
+    // Generate a fresh 32-byte nonce
+    const nonceBytes = new Uint8Array(32);
+    crypto.getRandomValues(nonceBytes);
+    const nonce = bytesToHex(nonceBytes);
+
+    // Pick a random injection offset within [0, chunkSize]
+    const chunkSize = localData.byteLength;
+    const injectionOffset = Math.floor(Math.random() * (chunkSize + 1));
+
+    // Compute the expected proof hash locally
+    const chunkBytes = new Uint8Array(localData);
+    const before = chunkBytes.slice(0, injectionOffset);
+    const after  = chunkBytes.slice(injectionOffset);
+    const expectedSliceHash = await sha256Hex(
+      concatBytes(before, nonceBytes, after)
+    );
+
+    // Register the pending future keyed by "chunkHash:" prefix (matched in setupDataChannel)
+    const mapKey = chunkHash + ":pending";
+    const proofPromise = new Promise<CustodyProofMessage>((resolve, reject) => {
+      this.pendingCustodyProofs.set(mapKey, { resolve, reject });
+    });
+
+    // Send the challenge
+    try {
+      dc.send(encodeCustodyChallenge({
+        type: "CUSTODY_CHALLENGE",
+        chunkHash,
+        injectionOffset,
+        nonce
+      }));
+    } catch (err) {
+      this.pendingCustodyProofs.delete(mapKey);
+      console.warn(`[ChunkDownloader] failed to send custody challenge:`, err);
+      return true; // don't penalise on send failure
+    }
+
+    // Await response with timeout
+    const timeoutId = setTimeout(() => {
+      const handler = this.pendingCustodyProofs.get(mapKey);
+      if (handler) {
+        this.pendingCustodyProofs.delete(mapKey);
+        handler.reject(new Error("custody proof timeout"));
+      }
+    }, CUSTODY_PROOF_TIMEOUT_MS);
+
+    try {
+      const proof = await proofPromise;
+      clearTimeout(timeoutId);
+      return proof.sliceHash === expectedSliceHash;
+    } catch {
+      clearTimeout(timeoutId);
+      console.warn(`[ChunkDownloader] custody proof timed out for chunk from ${peerId.slice(0, 8)}…`);
+      return false;
+    }
   }
 
   private handleChunkError(index: number): void {

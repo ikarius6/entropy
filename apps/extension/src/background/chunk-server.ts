@@ -7,6 +7,8 @@ import {
   buildReceiptDraft,
   ENTROPY_UPSTREAM_RECEIPT_KIND,
   sha256Hex,
+  hexToBytes,
+  concatBytes,
   logger,
   encodeTagUpdate,
   decodeTagUpdate,
@@ -121,12 +123,11 @@ async function sendCustodyProof(
     return;
   }
 
-  const endOffset = message.offset + message.length;
-  if (message.length === 0 || endOffset > chunk.data.byteLength) {
+  // injectionOffset must be within [0, chunkSize] (inclusive — 0 prepends, chunkSize appends)
+  if (message.injectionOffset > chunk.data.byteLength) {
     logger.warn(
-      "[chunk-server] invalid custody challenge range",
-      `offset=${message.offset}`,
-      `length=${message.length}`,
+      "[chunk-server] invalid custody challenge injectionOffset",
+      `injectionOffset=${message.injectionOffset}`,
       `chunkSize=${chunk.data.byteLength}`
     );
     await sendChunkError(channel, message.chunkHash, "BUSY");
@@ -134,8 +135,13 @@ async function sendCustodyProof(
   }
 
   const chunkBytes = new Uint8Array(chunk.data);
-  const slice = chunkBytes.slice(message.offset, endOffset);
-  const sliceHash = await sha256Hex(slice);
+  const before = chunkBytes.slice(0, message.injectionOffset);
+  const after  = chunkBytes.slice(message.injectionOffset);
+  const nonceBytes = hexToBytes(message.nonce);
+  // Hash the entire chunk with the nonce spliced at the injection point.
+  // This forces the prover to hold ALL raw bytes — no slice-hash cache can answer
+  // for an arbitrary injectionOffset without having the full data present.
+  const sliceHash = await sha256Hex(concatBytes(before, nonceBytes, after));
 
   if (channel.readyState !== "open") {
     return;

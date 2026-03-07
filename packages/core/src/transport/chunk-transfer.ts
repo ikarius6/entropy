@@ -15,7 +15,7 @@ const REQUEST_BASE_BYTES = 1 + HASH_BYTES + HASH_BYTES + 2;
 const RESPONSE_BASE_BYTES = 1 + HASH_BYTES + 4;
 const ERROR_BYTES = 1 + HASH_BYTES + 1;
 const CHUNK_DATA_HEADER_BYTES = 1 + HASH_BYTES + 4;
-const CUSTODY_CHALLENGE_BYTES = 1 + HASH_BYTES + 4 + 4;
+const CUSTODY_CHALLENGE_BYTES = 1 + HASH_BYTES + 4 + HASH_BYTES;
 const CUSTODY_PROOF_BYTES = 1 + HASH_BYTES + HASH_BYTES;
 const TRANSFER_RECEIPT_MIN_BYTES = 1 + HASH_BYTES + 4;
 
@@ -59,8 +59,9 @@ export type ChunkErrorMessage = {
 export type CustodyChallengeMessage = {
   type: "CUSTODY_CHALLENGE";
   chunkHash: string;
-  offset: number;
-  length: number;
+  /** Byte offset at which the nonce is spliced into the full chunk data. */
+  injectionOffset: number;
+  nonce: string;
 };
 
 export type CustodyProofMessage = {
@@ -196,8 +197,7 @@ export function encodeChunkError(message: ChunkErrorMessage): ArrayBuffer {
 }
 
 export function encodeCustodyChallenge(message: CustodyChallengeMessage): ArrayBuffer {
-  assertUint32(message.offset, "offset");
-  assertUint32(message.length, "length");
+  assertUint32(message.injectionOffset, "injectionOffset");
 
   const output = new Uint8Array(CUSTODY_CHALLENGE_BYTES);
   const view = new DataView(output.buffer);
@@ -206,9 +206,9 @@ export function encodeCustodyChallenge(message: CustodyChallengeMessage): ArrayB
 
   let offset = 1;
   offset = writeHash(output, offset, message.chunkHash, "chunkHash");
-  view.setUint32(offset, message.offset, false);
+  view.setUint32(offset, message.injectionOffset, false);
   offset += 4;
-  view.setUint32(offset, message.length, false);
+  writeHash(output, offset, message.nonce, "nonce");
 
   return output.buffer;
 }
@@ -229,15 +229,15 @@ export function decodeCustodyChallenge(buffer: ArrayBuffer): CustodyChallengeMes
   offset = chunkHashResult.nextOffset;
 
   const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
-  const challengeOffset = view.getUint32(offset, false);
+  const injectionOffset = view.getUint32(offset, false);
   offset += 4;
-  const challengeLength = view.getUint32(offset, false);
+  const nonceResult = readHash(input, offset);
 
   return {
     type: "CUSTODY_CHALLENGE",
     chunkHash: chunkHashResult.hash,
-    offset: challengeOffset,
-    length: challengeLength
+    injectionOffset,
+    nonce: nonceResult.hash
   };
 }
 

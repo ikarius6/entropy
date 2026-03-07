@@ -22,6 +22,7 @@ import {
 
 const CHUNK_HASH = "ab".repeat(32);
 const ROOT_HASH = "cd".repeat(32);
+const NONCE_HASH = "ef".repeat(32);
 
 function bytes(values: number[]): ArrayBuffer {
   return new Uint8Array(values).buffer;
@@ -155,8 +156,8 @@ describe("chunk transfer", () => {
     const encoded = encodeCustodyChallenge({
       type: "CUSTODY_CHALLENGE",
       chunkHash: CHUNK_HASH,
-      offset: 12,
-      length: 34
+      injectionOffset: 42,
+      nonce: NONCE_HASH
     });
 
     const decoded = decodeCustodyChallenge(encoded);
@@ -164,8 +165,8 @@ describe("chunk transfer", () => {
     expect(decoded).toEqual({
       type: "CUSTODY_CHALLENGE",
       chunkHash: CHUNK_HASH,
-      offset: 12,
-      length: 34
+      injectionOffset: 42,
+      nonce: NONCE_HASH
     });
   });
 
@@ -190,16 +191,16 @@ describe("chunk transfer", () => {
       encodeCustodyChallenge({
         type: "CUSTODY_CHALLENGE",
         chunkHash: CHUNK_HASH,
-        offset: 1,
-        length: 2
+        injectionOffset: 7,
+        nonce: NONCE_HASH
       })
     );
 
     expect(challenge).toEqual({
       type: "CUSTODY_CHALLENGE",
       chunkHash: CHUNK_HASH,
-      offset: 1,
-      length: 2
+      injectionOffset: 7,
+      nonce: NONCE_HASH
     });
 
     const proof = decodeChunkTransferMessage(
