@@ -14,6 +14,7 @@ import { useReplies } from "../../hooks/useReplies";
 import { useRepost } from "../../hooks/useRepost";
 import { useEvent } from "../../hooks/useEvent";
 import { ReplyComposer } from "./ReplyComposer";
+import { SmartContent } from "./SmartContent";
 
 /** Build a shareable URL pointing to this Entropy instance. */
 function postUrl(item: FeedItem): string {
@@ -169,8 +170,8 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
 
       {/* Content */}
       {displayItem.content && (
-        <div className="text-white/90 whitespace-pre-wrap break-words leading-relaxed mt-1">
-          {displayItem.content}
+        <div className="mt-1">
+          <SmartContent content={displayItem.content} />
         </div>
       )}
 
@@ -409,8 +410,8 @@ export function ReplyCard({ item }: { item: FeedItem }) {
       </div>
 
       {item.content && (
-        <div className="text-white/85 text-sm whitespace-pre-wrap break-words leading-relaxed ml-9">
-          {item.content}
+        <div className="text-sm ml-9">
+          <SmartContent content={item.content} compact />
         </div>
       )}
 

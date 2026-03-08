@@ -16,6 +16,7 @@ import { useRepost } from "../hooks/useRepost";
 import { useReplies } from "../hooks/useReplies";
 import { ReplyComposer } from "../components/feed/ReplyComposer";
 import { ReplyCard } from "../components/feed/PostCard";
+import { SmartContent } from "../components/feed/SmartContent";
 
 export default function WatchPage() {
   const { rootHash } = useParams<{ rootHash: string }>();
@@ -182,8 +183,8 @@ export default function WatchPage() {
 
         {/* Text content (description) — shown inline above media like Feed */}
         {event?.content && (
-          <div className="text-white/90 whitespace-pre-wrap break-words leading-relaxed text-[15px] mt-1">
-            {event.content}
+          <div className="text-[15px] mt-1">
+            <SmartContent content={event.content} />
           </div>
         )}
 
