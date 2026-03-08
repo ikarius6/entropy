@@ -11,26 +11,30 @@ export function TopBar({ onConnect, connectError, isConnecting }: TopBarProps) {
   const { pubkey } = useEntropyStore();
   
   return (
-    <header className="h-16 border-b border-border flex items-center justify-between px-6 sticky top-0 bg-background/80 backdrop-blur-md z-10">
-      <Link to="/" className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center font-bold text-background">
-          E
-        </div>
-        <span className="font-bold text-xl tracking-tight">Entropy</span>
-      </Link>
-      
-      <div className="flex items-center gap-4">
+    <header className="app-topbar sticky top-0 z-20">
+      <div className="app-frame flex h-full items-center justify-between px-4 md:px-6">
+        <Link to="/" className="flex items-center gap-3 text-inherit no-underline">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-panel text-sm font-semibold text-primary">
+            E
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="text-[1.05rem] font-semibold tracking-tight">Entropy</span>
+            <span className="text-[0.72rem] text-muted">p2p network</span>
+          </div>
+        </Link>
+
+        <div className="flex items-center gap-4">
         {pubkey ? (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-panel border border-border text-sm">
-            <div className="w-2 h-2 rounded-full bg-accent"></div>
-            <span className="font-mono text-muted">{pubkey.slice(0, 8)}...</span>
+          <div className="flex items-center gap-2 rounded-md border border-border bg-panel px-3 py-1.5 text-sm">
+            <div className="h-2 w-2 rounded-full bg-accent"></div>
+            <span className="font-mono text-[0.8rem] text-muted">{pubkey.slice(0, 8)}...</span>
           </div>
         ) : (
           <div className="flex flex-col items-end gap-1">
             <button
               onClick={onConnect}
               disabled={isConnecting}
-              className="px-4 py-1.5 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded-full transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="button-secondary px-4 py-2 text-sm"
             >
               {isConnecting ? "Connecting..." : "Connect Extension"}
             </button>
@@ -41,6 +45,7 @@ export function TopBar({ onConnect, connectError, isConnecting }: TopBarProps) {
             )}
           </div>
         )}
+        </div>
       </div>
     </header>
   );

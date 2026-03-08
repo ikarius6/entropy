@@ -27,18 +27,18 @@ function CollapsibleJSON({ raw }: { raw: string }) {
   }, [parsed, raw]);
 
   return (
-    <div className="rounded-lg border border-border bg-white/[0.03] overflow-hidden">
+    <div className="surface-subtle overflow-hidden">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
       >
         {expanded ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
-        <Code2 size={14} className="text-accent shrink-0" />
-        <span className="text-xs text-muted font-mono truncate">{preview}</span>
+        <Code2 size={14} className="text-primary shrink-0" />
+        <span className="truncate font-mono text-xs text-muted">{preview}</span>
         <span className="ml-auto text-[10px] text-muted/60 shrink-0">JSON</span>
       </button>
       {expanded && (
-        <pre className="px-3 pb-3 text-xs font-mono text-white/80 leading-relaxed overflow-x-auto max-h-[400px] overflow-y-auto border-t border-border bg-black/20">
+        <pre className="code-block max-h-[400px] overflow-x-auto overflow-y-auto border-x-0 border-b-0 rounded-none border-t px-3 pb-3 pt-3 font-mono text-xs leading-relaxed text-white/80">
           {parsed ? JSON.stringify(parsed, null, 2) : raw.trim()}
         </pre>
       )}
@@ -61,7 +61,7 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
               src={m.url}
               alt=""
               loading="lazy"
-              className="rounded-lg max-h-[400px] object-contain border border-border bg-black/30"
+              className="max-h-[400px] rounded-md border border-border bg-black/20 object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
           </a>
@@ -71,7 +71,7 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
             src={m.url}
             controls
             preload="metadata"
-            className="rounded-lg max-h-[400px] w-full border border-border bg-black/30"
+            className="max-h-[400px] w-full rounded-md border border-border bg-black/20"
           />
         )
       )}
@@ -96,7 +96,7 @@ function LinkChips({ urls }: { urls: ParsedUrl[] }) {
             href={l.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-primary/80 hover:text-primary bg-primary/5 hover:bg-primary/10 border border-primary/10 rounded-md px-2 py-1 transition-colors truncate max-w-[280px]"
+            className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-md border border-border bg-white/[0.02] px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-white/[0.04] hover:text-white"
           >
             <ExternalLink size={11} className="shrink-0" />
             {hostname}
@@ -117,7 +117,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
       href={href as string}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary hover:underline break-all"
+      className="break-all text-primary hover:underline"
     >
       {children as ReactNode}
     </a>
@@ -133,17 +133,17 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   code: ({ children, className }: Record<string, unknown>) => {
     const isInline = !className;
     if (isInline) {
-      return <code className="bg-white/10 text-accent px-1 py-0.5 rounded text-[0.85em] font-mono break-all">{children as ReactNode}</code>;
+      return <code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-[0.85em] text-primary break-all">{children as ReactNode}</code>;
     }
     return (
-      <pre className="bg-black/30 border border-border rounded-lg p-3 overflow-x-auto my-1 max-w-full">
+      <pre className="code-block my-1 max-w-full overflow-x-auto p-3">
         <code className={`text-xs font-mono whitespace-pre-wrap break-words ${className}`}>{children as ReactNode}</code>
       </pre>
     );
   },
   // Blockquote
   blockquote: ({ children }: Record<string, unknown>) => (
-    <blockquote className="border-l-2 border-primary/40 pl-3 text-white/70 italic my-1">{children as ReactNode}</blockquote>
+    <blockquote className="my-1 border-l-2 border-primary/35 pl-3 text-white/75">{children as ReactNode}</blockquote>
   ),
   // Lists
   ul: ({ children }: Record<string, unknown>) => <ul className="list-disc list-inside space-y-0.5 my-1">{children as ReactNode}</ul>,
@@ -156,7 +156,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
       src={src as string}
       alt={(alt as string) || ""}
       loading="lazy"
-      className="rounded-lg max-h-[400px] object-contain border border-border bg-black/30 my-1"
+      className="my-1 max-h-[400px] rounded-md border border-border bg-black/20 object-contain"
       onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
     />
   ),
@@ -201,7 +201,7 @@ export function SmartContent({ content, compact = false }: SmartContentProps) {
   }, [content, urls, compact]);
 
   return (
-    <div className="text-white/90 break-words leading-relaxed smart-content">
+    <div className="smart-content break-words text-[0.95rem] leading-7 text-white/90">
       {textForMd && <MarkdownBody text={textForMd} />}
       {!compact && <MediaEmbeds urls={urls} />}
       {!compact && <LinkChips urls={urls} />}

@@ -32,8 +32,8 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 flex flex-col gap-6 pt-4 pr-6 border-r border-border sticky top-[5rem] h-[calc(100vh-5rem)] overflow-y-auto">
-      <nav className="flex flex-col gap-2">
+    <aside className="app-sidebar flex flex-col gap-6 md:sticky md:top-[56px] md:h-[calc(100vh-56px)] md:overflow-y-auto md:self-start">
+      <nav className="grid grid-cols-2 gap-2 md:flex md:flex-col md:gap-1.5">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || 
             (item.path !== "/" && location.pathname.startsWith(item.path));
@@ -42,31 +42,32 @@ export function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={`sidebar-link ${
                 isActive 
-                  ? "bg-primary/10 text-primary font-medium" 
-                  : "text-muted hover:bg-white/5 hover:text-white"
+                  ? "sidebar-link--active font-medium" 
+                  : ""
               }`}
             >
-              <item.icon size={20} className={isActive ? "text-primary" : "text-muted"} />
-              {item.name}
+              <item.icon size={18} className={isActive ? "text-primary" : "text-muted"} />
+              <span className="truncate text-[0.95rem]">{item.name}</span>
             </Link>
           );
         })}
       </nav>
       
-      <div className="mt-auto panel p-4 mb-4 bg-background/50">
-        <div className="text-sm font-medium mb-2 text-white">Credits</div>
+      <div className="surface-subtle mt-1 md:mt-auto md:mb-4 px-4 py-4">
+        <div className="mb-1 text-[0.78rem] font-medium text-muted">Credits</div>
         <div className="flex items-baseline gap-2">
           {isLoading ? (
             <span className="text-sm text-muted">Loading…</span>
           ) : (
             <>
-              <span className="text-2xl font-bold text-accent">{credits.value}</span>
+              <span className="text-[1.65rem] font-semibold text-primary">{credits.value}</span>
               <span className="text-xs text-muted">{credits.unit}</span>
             </>
           )}
         </div>
+        <div className="mt-2 text-xs text-muted">Available balance</div>
       </div>
     </aside>
   );

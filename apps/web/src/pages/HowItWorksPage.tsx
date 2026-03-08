@@ -53,7 +53,7 @@ const TABS: Tab[] = [
 /* ------------------------------------------------------------------ */
 
 function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-2xl font-bold mb-1">{children}</h2>;
+  return <h2 className="mb-1 text-[1.45rem] font-semibold tracking-tight">{children}</h2>;
 }
 
 function SectionSub({ children }: { children: ReactNode }) {
@@ -82,14 +82,14 @@ function StepCard({
   const a = accentMap[accent];
 
   return (
-    <div className={`relative panel flex flex-col gap-3 group hover:scale-[1.01] transition-transform duration-200`}>
+    <div className="panel flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <div className={`shrink-0 w-10 h-10 rounded-xl ${a.bg} border ${a.border} flex items-center justify-center ${a.text}`}>
+        <div className={`shrink-0 h-10 w-10 rounded-md ${a.bg} border ${a.border} flex items-center justify-center ${a.text}`}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className={`text-xs font-bold ${a.num} tabular-nums`}>0{number}</span>
+            <span className={`text-[11px] font-semibold ${a.num} tabular-nums`}>0{number}</span>
             <h3 className="font-semibold text-white text-sm">{title}</h3>
           </div>
           <p className="text-muted text-xs leading-relaxed">{description}</p>
@@ -119,9 +119,9 @@ function DiagramBox({
   };
 
   return (
-    <div className={`rounded-xl border px-4 py-3 text-center ${colors[color]} ${className}`}>
-      <div className="text-xs font-bold">{label}</div>
-      {sub && <div className="text-[10px] opacity-70 mt-0.5">{sub}</div>}
+    <div className={`rounded-md border px-4 py-3 text-left ${colors[color]} ${className}`}>
+      <div className="text-xs font-semibold">{label}</div>
+      {sub && <div className="mt-1 text-[10px] opacity-70">{sub}</div>}
     </div>
   );
 }
@@ -152,7 +152,7 @@ function InfoBadge({ children, variant = "blue" }: { children: ReactNode; varian
     orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
   };
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${variants[variant]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium ${variants[variant]}`}>
       {children}
     </span>
   );
@@ -1331,27 +1331,28 @@ export default function HowItWorksPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full pb-10">
+    <div className="mx-auto flex w-full max-w-[58rem] flex-col gap-6 pb-10">
       {/* Header */}
-      <div className="flex flex-col gap-2 mb-2">
-        <h1 className="text-3xl font-bold">How It Works</h1>
-        <p className="text-muted">
+      <div className="mb-1 flex flex-col gap-2 border-b border-border/70 pb-4">
+        <h1 className="text-[1.8rem] font-semibold tracking-tight">How It Works</h1>
+        <p className="max-w-2xl text-sm text-muted">
           Learn how Entropy distributes multimedia content across a peer-to-peer network.
         </p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-border overflow-x-auto">
+      <div className="panel px-4 py-2">
+        <div className="tab-strip">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              className={`tab-button whitespace-nowrap ${
                 isActive
-                  ? "bg-primary/15 text-primary shadow-sm shadow-primary/10"
-                  : "text-muted hover:text-white hover:bg-white/5"
+                  ? "tab-button--active"
+                  : ""
               }`}
             >
               {tab.icon}
@@ -1359,6 +1360,7 @@ export default function HowItWorksPage() {
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Tab content */}

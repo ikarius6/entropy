@@ -24,11 +24,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-background text-white flex flex-col">
       <TopBar onConnect={connect} connectError={error} isConnecting={isConnecting} />
-      <div className="flex-1 flex max-w-7xl mx-auto w-full px-6">
+      <div className="app-frame flex-1 w-full px-4 md:px-6">
+        <div className="flex h-full flex-col md:flex-row md:gap-8">
         <Sidebar />
-        <main className="flex-1 py-6 px-8 min-w-0">
-          {children}
-        </main>
+          <main className="min-w-0 flex-1 py-6 md:py-8 md:pr-2">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

@@ -188,10 +188,10 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full pb-10">
-      <div className="flex flex-col gap-2 mb-2">
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted">Manage your Entropy node configuration.</p>
+    <div className="mx-auto flex w-full max-w-[58rem] flex-col gap-6 pb-10">
+      <div className="mb-1 flex flex-col gap-2 border-b border-border/70 pb-4">
+        <h1 className="text-[1.8rem] font-semibold tracking-tight">Settings</h1>
+        <p className="max-w-2xl text-sm text-muted">Manage your Entropy node configuration.</p>
       </div>
 
       {/* Profile Section */}
@@ -199,17 +199,17 @@ export default function SettingsPage() {
         <section className="panel flex flex-col gap-4">
           <div className="flex items-center gap-3 border-b border-border pb-3">
             <UserCircle2 className="text-primary" />
-            <h2 className="text-xl font-bold">Profile</h2>
+            <h2 className="text-[1.05rem] font-semibold">Profile</h2>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="surface-subtle flex items-center gap-4 px-4 py-4">
             <AvatarBadge profile={profile} pubkey={pubkey} size="md" />
             <div className="flex flex-col min-w-0 flex-1">
               <span className="font-semibold truncate">
                 {profile?.displayName || profile?.name || "Anonymous Node"}
               </span>
               {profile?.nip05 ? (
-                <span className="text-sm text-accent flex items-center gap-1">
+                <span className="flex items-center gap-1 text-sm text-accent">
                   {profile.nip05}
                   <span className="text-green-400 text-[10px]" title="Verified NIP-05">✓</span>
                 </span>
@@ -222,7 +222,7 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={() => setShowEditProfile(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+              className="button-secondary shrink-0 px-4 py-2 text-sm"
             >
               <Pencil size={14} />
               Edit Profile
@@ -243,14 +243,14 @@ export default function SettingsPage() {
       <section className="panel flex flex-col gap-4">
         <div className="flex items-center gap-3 border-b border-border pb-3">
           <Shield className="text-primary" />
-          <h2 className="text-xl font-bold">Identity & Extension</h2>
+          <h2 className="text-[1.05rem] font-semibold">Identity & Extension</h2>
         </div>
         
         <div className="grid md:grid-cols-2 gap-6 pt-2">
-          <div className="flex flex-col gap-1">
+          <div className="surface-subtle flex flex-col gap-2 px-4 py-4">
             <span className="text-sm font-medium text-muted">Connected Pubkey</span>
             {pubkey ? (
-              <code className="text-sm bg-white/5 p-2 rounded border border-white/10 break-all text-accent">
+              <code className="code-block break-all p-2 text-sm text-primary">
                 {pubkey}
               </code>
             ) : (
@@ -258,10 +258,17 @@ export default function SettingsPage() {
             )}
           </div>
           
-          <div className="flex flex-col gap-2 justify-center">
-            <button className="bg-primary/10 text-primary hover:bg-primary/20 px-4 py-2 rounded-md font-medium transition-colors">
-              {pubkey ? "Reconnect Extension" : "Connect Extension"}
-            </button>
+          <div className="surface-subtle flex flex-col gap-2 justify-center px-4 py-4">
+            {pubkey ? (
+              <span className="inline-flex items-center gap-2 font-mono text-[0.8rem] text-muted">
+                <span className="h-2 w-2 rounded-full bg-accent" />
+                Extension connected
+              </span>
+            ) : (
+              <p className="text-sm text-muted">
+                Install or enable the Entropy browser extension to connect your identity.
+              </p>
+            )}
           </div>
         </div>
 
@@ -276,7 +283,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleExportIdentity}
                 disabled={identityBusy}
-                className="flex items-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+                className="button-primary px-4 py-2 text-sm disabled:opacity-50"
               >
                 <Download size={16} />
                 Export Identity
@@ -284,7 +291,7 @@ export default function SettingsPage() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={identityBusy}
-                className="flex items-center gap-2 bg-white/10 text-white hover:bg-white/20 border border-white/10 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+                className="button-secondary px-4 py-2 text-sm disabled:opacity-50"
               >
                 <Upload size={16} />
                 Import from File
@@ -308,7 +315,7 @@ export default function SettingsPage() {
       <section className="panel flex flex-col gap-4">
         <div className="flex items-center gap-3 border-b border-border pb-3">
           <Activity className="text-primary" />
-          <h2 className="text-xl font-bold">Network Relays</h2>
+          <h2 className="text-[1.05rem] font-semibold">Network Relays</h2>
         </div>
         
         <p className="text-sm text-muted">
@@ -318,14 +325,14 @@ export default function SettingsPage() {
         <textarea
           value={relaysText}
           onChange={(e) => setRelaysText(e.target.value)}
-          className="bg-background/50 border border-border rounded-md px-4 py-3 text-white font-mono text-sm min-h-[120px] focus:outline-none focus:border-primary"
+          className="input-base min-h-[120px] px-4 py-3 font-mono text-sm"
           placeholder="wss://relay.damus.io&#10;wss://nos.lol"
         />
         
         <div className="flex justify-end mt-2">
           <button 
             onClick={handleSaveRelays}
-            className="flex items-center gap-2 bg-primary text-background hover:bg-accent px-5 py-2 rounded-md font-bold transition-colors"
+            className="button-primary px-5 py-2"
           >
             <Save size={18} />
             Save Relays
@@ -338,12 +345,12 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-3">
             <Sparkles className="text-primary" />
-            <h2 className="text-xl font-bold">Your Algorithm</h2>
+            <h2 className="text-[1.05rem] font-semibold">Your Algorithm</h2>
           </div>
           {sortedPrefs.length > 0 && (
             <button
               onClick={handleResetPreferences}
-              className="flex items-center gap-1.5 text-xs text-muted hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-red-400/10"
+              className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-red-400"
             >
               <RotateCcw size={12} />
               Reset
@@ -356,7 +363,7 @@ export default function SettingsPage() {
         </p>
 
         {sortedPrefs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+          <div className="empty-state flex flex-col items-center justify-center gap-2 py-8 text-center">
             <Sparkles size={28} className="text-muted/40" />
             <p className="text-muted text-sm">No preferences yet.</p>
             <p className="text-muted/60 text-xs max-w-sm">
@@ -373,7 +380,7 @@ export default function SettingsPage() {
               return (
                 <div
                   key={pref.name}
-                  className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-colors group"
+                  className="surface-subtle group flex items-center gap-3 px-3 py-2.5"
                 >
                   {/* Sentiment icon */}
                   <div className={`shrink-0 ${
@@ -389,7 +396,7 @@ export default function SettingsPage() {
 
                   {/* Score bar */}
                   <div className="flex-1 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 overflow-hidden rounded-sm bg-white/[0.05]">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
                           isPositive ? "bg-green-500/70" : isNegative ? "bg-red-500/70" : "bg-white/20"
@@ -405,7 +412,7 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Age */}
-                  <span className="text-[10px] text-muted/50 w-14 text-right shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="w-14 shrink-0 text-right text-[10px] text-muted/50 opacity-0 transition-opacity group-hover:opacity-100">
                     {formatAge(pref.updatedAt)}
                   </span>
                 </div>
@@ -423,13 +430,13 @@ export default function SettingsPage() {
       <section className="panel flex flex-col gap-4">
         <div className="flex items-center gap-3 border-b border-border pb-3">
           <HardDrive className="text-primary" />
-          <h2 className="text-xl font-bold">Storage & Quota</h2>
+          <h2 className="text-[1.05rem] font-semibold">Storage & Quota</h2>
         </div>
         
         <div className="flex flex-col gap-6 pt-2">
           {/* Usage Bar */}
-          <div className="flex flex-col gap-2 p-4 bg-background/50 rounded-xl border border-white/5">
-            <div className="flex justify-between text-sm mb-1">
+          <div className="surface-subtle flex flex-col gap-2 px-4 py-4">
+            <div className="mb-1 flex justify-between text-sm">
               <span className="text-muted">Local Storage Usage</span>
               <span className="font-mono">
                 <span className="text-white">{formatGB(usedBytes)} GB</span>
@@ -437,7 +444,7 @@ export default function SettingsPage() {
               </span>
             </div>
             
-            <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden">
+            <div className="h-2.5 w-full overflow-hidden rounded-sm bg-white/[0.05]">
               <div 
                 className={`h-full transition-all duration-500 ${
                   usagePercent > 90 ? 'bg-red-500' : 
@@ -453,7 +460,7 @@ export default function SettingsPage() {
           </div>
           
           <div className="grid md:grid-cols-2 gap-8 items-start">
-            <div className="flex flex-col gap-4">
+            <div className="surface-subtle flex flex-col gap-4 px-4 py-4">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Maximum Storage Quota (GB)</label>
                 <div className="flex items-center gap-3">
@@ -466,25 +473,25 @@ export default function SettingsPage() {
                     onChange={(e) => setQuotaGB(parseFloat(e.target.value))}
                     className="flex-1 accent-primary"
                   />
-                  <span className="font-mono text-primary w-12 text-right">{quotaGB}</span>
+                  <span className="w-12 text-right font-mono text-primary">{quotaGB}</span>
                 </div>
               </div>
               <button 
                 onClick={handleSaveQuota}
-                className="self-start flex items-center gap-2 bg-white/10 text-white hover:bg-white/20 px-4 py-1.5 rounded-md font-medium transition-colors text-sm"
+                className="button-secondary self-start px-4 py-1.5 text-sm"
               >
                 Apply Limit
               </button>
             </div>
             
-            <div className="flex flex-col gap-2">
+            <div className="surface-subtle flex flex-col gap-2 px-4 py-4">
               <span className="text-sm font-medium text-red-400">Clear Space</span>
               <p className="text-xs text-muted mb-2">
                 Free up space by evicting the oldest unpinned chunks that you aren't currently seeding.
               </p>
               <button 
                 onClick={handleClearCache}
-                className="self-start flex items-center gap-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 px-4 py-2 rounded-md font-medium transition-colors text-sm"
+                className="self-start inline-flex items-center gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
               >
                 <Trash2 size={16} />
                 Clear Unused Cache
@@ -498,7 +505,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 border-b border-border pb-3">
           <Globe className="text-primary" />
           <div>
-            <h2 className="text-xl font-bold">Trusted Origins (NIP-07 Signing)</h2>
+            <h2 className="text-[1.05rem] font-semibold">Trusted Origins (NIP-07 Signing)</h2>
             <p className="text-xs text-muted mt-0.5">
               Only pages from these origins can call <code>window.nostr.signEvent()</code>.
             </p>
@@ -511,18 +518,18 @@ export default function SettingsPage() {
           <>
             <ul className="flex flex-col gap-2">
               {allowlist.length === 0 && (
-                <li className="text-sm text-muted/60 italic">No origins authorized yet.</li>
+                <li className="empty-state px-4 py-4 text-sm text-muted/60">No origins authorized yet.</li>
               )}
               {allowlist.map((origin) => (
                 <li
                   key={origin}
-                  className="flex items-center justify-between gap-3 bg-white/5 border border-white/10 px-4 py-2.5 rounded-lg"
+                  className="surface-subtle flex items-center justify-between gap-3 px-4 py-2.5"
                 >
-                  <code className="text-sm text-accent break-all">{origin}</code>
+                  <code className="break-all text-sm text-primary">{origin}</code>
                   <button
                     onClick={() => handleRemoveOrigin(origin)}
                     disabled={allowlistBusy}
-                    className="shrink-0 p-1 rounded hover:bg-red-500/20 text-muted hover:text-red-400 transition-colors disabled:opacity-40"
+                    className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-red-500/20 hover:text-red-400 disabled:opacity-40"
                     title="Remove"
                   >
                     <X size={14} />
@@ -538,12 +545,12 @@ export default function SettingsPage() {
                 value={newOrigin}
                 onChange={(e) => setNewOrigin(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddOrigin()}
-                className="flex-1 bg-background/50 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono"
+                className="input-base flex-1 px-3 py-2 text-sm font-mono"
               />
               <button
                 onClick={handleAddOrigin}
                 disabled={allowlistBusy || !newOrigin.trim()}
-                className="flex items-center gap-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-4 py-2 rounded-md font-medium transition-colors text-sm disabled:opacity-50"
+                className="button-primary px-4 py-2 text-sm disabled:opacity-50"
               >
                 <Plus size={15} />
                 Add

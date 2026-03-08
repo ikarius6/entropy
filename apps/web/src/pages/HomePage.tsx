@@ -3,7 +3,7 @@ import { PostComposer } from "../components/feed/PostComposer";
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full">
+    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-5 pb-8">
       <PostComposer />
       <Feed />
     </div>

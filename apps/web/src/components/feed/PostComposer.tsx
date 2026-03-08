@@ -64,15 +64,15 @@ export function PostComposer() {
 
   if (!pubkey) {
     return (
-      <div className="panel p-5 flex items-center gap-4 opacity-60 select-none">
-        <div className="w-10 h-10 rounded-full bg-white/10 flex-shrink-0" />
-        <span className="text-muted text-sm">Connect your node to post...</span>
+      <div className="panel flex items-center gap-4 px-5 py-4 opacity-75 select-none">
+        <div className="h-10 w-10 rounded-md border border-border bg-white/5 flex-shrink-0" />
+        <span className="text-sm text-muted">Connect your node to post...</span>
       </div>
     );
   }
 
   return (
-    <div className="panel p-5 flex flex-col gap-4">
+    <div className="panel flex flex-col gap-4 px-5 py-4">
       <div className="flex gap-3">
         {/* Avatar */}
         <div className="flex-shrink-0 mt-0.5">
@@ -87,10 +87,10 @@ export function PostComposer() {
               <UploadPipeline progress={uploadPipeline.progress} onCancel={handleReset} />
             </div>
           ) : textDone ? (
-            <div className="flex items-center gap-2 text-green-400 py-2">
+            <div className="flex items-center gap-2 py-2 text-green-400">
               <CheckCircle2 size={18} />
               <span className="text-sm font-medium">Posted!</span>
-              <button onClick={handleReset} className="ml-auto text-muted hover:text-white text-sm transition-colors">
+              <button onClick={handleReset} className="ml-auto text-sm text-muted transition-colors hover:text-white">
                 Write another
               </button>
             </div>
@@ -102,12 +102,12 @@ export function PostComposer() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder="What's happening on your node?"
                 rows={1}
-                className="w-full bg-transparent text-white placeholder:text-muted resize-none outline-none text-base leading-relaxed min-h-[42px] max-h-[300px] overflow-y-auto"
+                className="min-h-[44px] max-h-[300px] w-full resize-none border-0 bg-transparent px-0 py-0 text-[0.98rem] leading-relaxed text-white outline-none placeholder:text-muted overflow-y-auto"
               />
 
               {/* File attachment area */}
               {showAttach && (
-                <div className="flex flex-col gap-2">
+                <div className="surface-subtle flex flex-col gap-2 p-3">
                   <DragDropZone onFileSelected={setFile} selectedFile={file} />
                   {file && (
                     <input
@@ -115,7 +115,7 @@ export function PostComposer() {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="Title (optional)"
-                      className="bg-background/50 border border-border rounded-md px-3 py-1.5 text-sm text-white placeholder:text-muted outline-none focus:border-primary/50 transition-colors"
+                      className="input-base text-sm"
                     />
                   )}
                 </div>
@@ -123,14 +123,14 @@ export function PostComposer() {
 
               {/* Error states */}
               {(textPost.state.error || uploadPipeline.progress.error) && (
-                <div className="flex items-start gap-2 p-2.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm">
+                <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 p-2.5 text-sm text-red-400">
                   <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
                   <span>{textPost.state.error || uploadPipeline.progress.error}</span>
                 </div>
               )}
 
               {/* Action bar */}
-              <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+              <div className="flex items-center gap-2 border-t border-border/60 pt-3">
                 {/* Attach toggle */}
                 <button
                   onClick={() => {
@@ -141,10 +141,10 @@ export function PostComposer() {
                     }
                   }}
                   title={showAttach ? "Remove attachment" : "Attach a file"}
-                  className={`p-2 rounded-lg transition-colors ${
+                  className={`inline-flex items-center justify-center rounded-md border p-2 transition-colors ${
                     showAttach
-                      ? "text-primary bg-primary/10"
-                      : "text-muted hover:text-white hover:bg-white/5"
+                      ? "border-primary/35 bg-primary/10 text-primary"
+                      : "border-border text-muted hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   {showAttach ? <X size={17} /> : <Paperclip size={17} />}
@@ -152,7 +152,7 @@ export function PostComposer() {
 
                 {/* File indicator pill */}
                 {file && !showAttach && (
-                  <span className="text-xs text-muted bg-white/5 px-2 py-1 rounded-md truncate max-w-[160px]">
+                  <span className="truncate rounded-md border border-border bg-white/5 px-2 py-1 text-xs text-muted max-w-[160px]">
                     📎 {file.name}
                   </span>
                 )}
@@ -161,7 +161,7 @@ export function PostComposer() {
                 <button
                   onClick={handlePost}
                   disabled={!canPost}
-                  className="ml-auto flex items-center gap-2 bg-primary hover:bg-accent text-background px-4 py-1.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="button-primary ml-auto px-4 py-2 text-sm"
                 >
                   {isSigning ? (
                     <><Loader2 size={15} className="animate-spin" /> Signing…</>

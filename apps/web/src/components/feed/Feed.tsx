@@ -38,14 +38,14 @@ export function Feed() {
   return (
     <div className="flex flex-col gap-4">
       {/* Feed filter + sort tabs */}
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-border">
+      <div className="panel px-4 py-3">
+        <div className="tab-strip">
           <button
             onClick={() => setFilter("entropy")}
-            className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`tab-button ${
               filter === "entropy"
-                ? "bg-primary text-background shadow-sm"
-                : "text-muted hover:text-white"
+                ? "tab-button--active"
+                : ""
             }`}
           >
             <Zap size={14} />
@@ -53,10 +53,10 @@ export function Feed() {
           </button>
           <button
             onClick={() => setFilter("global")}
-            className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`tab-button ${
               filter === "global"
-                ? "bg-primary text-background shadow-sm"
-                : "text-muted hover:text-white"
+                ? "tab-button--active"
+                : ""
             }`}
           >
             <Globe size={14} />
@@ -64,15 +64,15 @@ export function Feed() {
           </button>
         </div>
         {filter === "entropy" && (
-          <div className="flex gap-1 p-0.5 bg-white/[0.03] rounded-lg">
+          <div className="mt-3 flex flex-wrap gap-2">
             {(["chronological", "for_you", "explore"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setSortMode(m)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1 rounded-md text-xs font-medium transition-all ${
+                className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                   sortMode === m
-                    ? "bg-white/10 text-white"
-                    : "text-muted/70 hover:text-white"
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-transparent text-muted hover:text-white"
                 }`}
               >
                 {m === "chronological" && "Latest"}
@@ -86,18 +86,18 @@ export function Feed() {
 
       {/* Feed items */}
       {items.length === 0 && !isLoading ? (
-        <div className="flex flex-col items-center justify-center min-h-[30vh] text-center gap-4 border border-dashed border-border rounded-xl p-8 bg-white/5">
+        <div className="empty-state flex flex-col items-center justify-center gap-4 px-8 py-10 text-center min-h-[30vh]">
           {filter === "entropy" ? (
             <>
-              <Zap size={32} className="text-muted" />
-              <h2 className="text-xl font-bold text-white">No Entropy posts yet</h2>
-              <p className="text-muted max-w-md">Connect to more relays or follow some users to see their publications.</p>
+              <Zap size={28} className="text-muted" />
+              <h2 className="text-lg font-semibold text-white">No Entropy posts yet</h2>
+              <p className="max-w-md text-sm text-muted">Connect to more relays or follow some users to see their publications.</p>
             </>
           ) : (
             <>
-              <Globe size={32} className="text-muted" />
-              <h2 className="text-xl font-bold text-white">Nothing in the open network yet</h2>
-              <p className="text-muted max-w-md">Connect to more relays to see posts from across Nostr.</p>
+              <Globe size={28} className="text-muted" />
+              <h2 className="text-lg font-semibold text-white">Nothing in the open network yet</h2>
+              <p className="max-w-md text-sm text-muted">Connect to more relays to see posts from across Nostr.</p>
             </>
           )}
         </div>
