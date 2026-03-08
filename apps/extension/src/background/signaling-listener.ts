@@ -159,6 +159,11 @@ export function startSignalingListener(
 
         peer.oniceconnectionstatechange = () => {
           logger.log("[signaling-listener] ICE state (", signal.senderPubkey.slice(0, 8) + "…):", peer.iceConnectionState);
+          if (peer.iceConnectionState === "failed" || peer.iceConnectionState === "closed") {
+            logger.log("[signaling-listener] ICE state terminal, cleaning up peer", signal.senderPubkey.slice(0, 8) + "…");
+            peers.delete(key);
+            peer.close();
+          }
         };
 
         peer.onconnectionstatechange = () => {
@@ -167,6 +172,11 @@ export function startSignalingListener(
             "| iceGatheringState:", peer.iceGatheringState);
           if (peer.connectionState === "failed") {
             logger.error("[signaling-listener] CONNECTION FAILED for", signal.senderPubkey.slice(0, 8) + "… — DTLS or ICE failure");
+          }
+          if (peer.connectionState === "failed" || peer.connectionState === "closed") {
+            logger.log("[signaling-listener] connection state terminal, cleaning up peer", signal.senderPubkey.slice(0, 8) + "…");
+            peers.delete(key);
+            peer.close();
           }
         };
 

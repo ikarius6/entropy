@@ -758,7 +758,7 @@ Soporte Tor es un feature avanzado. En Phase 5, el alcance es:
 │  ✅ 9.1  Rate limiting in chunk-server.ts (10 req/s per peer)    │
 │  ✅ 9.2  Message size validation (4 MB max) in DataChannel       │
 │  ✅ 9.3  Inactive DataChannel timeout (60s)                      │
-│  ○ 9.4  RTCPeerConnection cleanup audit                         │
+│  ✅ 9.4  RTCPeerConnection cleanup audit                         │
 │  ✅ 9.5  CSP headers for web app (index.html meta tag)           │
 │  ✅ 9.6  SHA-256 verification in peer-fetch.ts                   │
 │  ○ 9.7  Full security checklist pass                            │

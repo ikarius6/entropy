@@ -435,6 +435,7 @@ export class ChunkDownloader {
     if (!this.isRunning || this.isPaused) return;
 
     if (this.downloadedChunks.size === this.chunkMap.chunks.length) {
+      this.cancel();
       this.isRunning = false;
       this.cleanupSignaling?.();
       this.cleanupSignaling = null;
