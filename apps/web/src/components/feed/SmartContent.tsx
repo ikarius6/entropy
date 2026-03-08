@@ -112,13 +112,12 @@ function LinkChips({ urls }: { urls: ParsedUrl[] }) {
 /** Custom Markdown components for styling inside the feed */
 const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode> = {
   // Links open in new tab
-  a: ({ href, children, ...rest }: Record<string, unknown>) => (
+  a: ({ href, children }: Record<string, unknown>) => (
     <a
       href={href as string}
       target="_blank"
       rel="noopener noreferrer"
       className="text-primary hover:underline break-all"
-      {...rest}
     >
       {children as ReactNode}
     </a>
@@ -131,14 +130,14 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   h5: ({ children }: Record<string, unknown>) => <span className="font-medium text-white/90">{children as ReactNode}</span>,
   h6: ({ children }: Record<string, unknown>) => <span className="font-medium text-white/80">{children as ReactNode}</span>,
   // Code blocks
-  code: ({ children, className, ...rest }: Record<string, unknown>) => {
+  code: ({ children, className }: Record<string, unknown>) => {
     const isInline = !className;
     if (isInline) {
-      return <code className="bg-white/10 text-accent px-1 py-0.5 rounded text-[0.85em] font-mono" {...rest}>{children as ReactNode}</code>;
+      return <code className="bg-white/10 text-accent px-1 py-0.5 rounded text-[0.85em] font-mono break-all">{children as ReactNode}</code>;
     }
     return (
-      <pre className="bg-black/30 border border-border rounded-lg p-3 overflow-x-auto my-1">
-        <code className={`text-xs font-mono ${className}`} {...rest}>{children as ReactNode}</code>
+      <pre className="bg-black/30 border border-border rounded-lg p-3 overflow-x-auto my-1 max-w-full">
+        <code className={`text-xs font-mono whitespace-pre-wrap break-words ${className}`}>{children as ReactNode}</code>
       </pre>
     );
   },
