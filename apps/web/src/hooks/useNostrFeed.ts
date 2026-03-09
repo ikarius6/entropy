@@ -45,19 +45,27 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const feedMode = options.feedMode ?? "chronological";
   const userPrefs = options.userPrefs ?? [];
 
+  // Keep latest values in refs so flush() inside subscription closures sees current state
+  const feedModeRef = useRef(feedMode);
+  feedModeRef.current = feedMode;
+  const userPrefsRef = useRef(userPrefs);
+  userPrefsRef.current = userPrefs;
+
   // Accumulate events keyed by id; each entry carries a sort score.
   const accRef = useRef<Map<string, { item: FeedItem; score: number; contentTags: ContentTag[] }>>(new Map());
 
   const flush = () => {
+    const mode = feedModeRef.current;
+    const prefs = userPrefsRef.current;
     let entries = Array.from(accRef.current.values());
 
-    if (feedMode === "for_you" && userPrefs.length > 0) {
+    if (mode === "for_you" && prefs.length > 0) {
       // Re-score with tag relevance
       entries = entries.map((e) => {
-        const relevance = scoreContentRelevance(e.contentTags, userPrefs);
+        const relevance = scoreContentRelevance(e.contentTags, prefs);
         return { ...e, score: e.score + relevance * 1000 };
       });
-    } else if (feedMode === "explore") {
+    } else if (mode === "explore") {
       // Boost by max tag counter (popular content first)
       entries = entries.map((e) => {
         const maxCounter = e.contentTags.reduce((m, t) => Math.max(m, t.counter), 0);
@@ -70,6 +78,14 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       .map((v) => v.item);
     setItems(sorted);
   };
+
+  // Re-sort existing items when feedMode or userPrefs change
+  useEffect(() => {
+    if (accRef.current.size > 0) {
+      flush();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedMode, userPrefs]);
 
   /** Detect NIP-10 reply: has an "e" tag with "reply" or "root" marker */
   const isReplyEvent = (event: NostrEvent): { isReply: boolean; replyToId?: string } => {
@@ -146,6 +162,14 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       } else {
         // Repost without parseable content — skip it
         return;
+      }
+    }
+
+    // Extract #t tags from text notes so Explore/ForYou modes have data
+    if (event.kind === KINDS.TEXT_NOTE && contentTags.length === 0) {
+      const tTags = event.tags.filter(t => t[0] === "t" && t[1]);
+      for (const t of tTags) {
+        contentTags.push({ name: t[1].toLowerCase(), counter: 1, updatedAt: event.created_at });
       }
     }
 
