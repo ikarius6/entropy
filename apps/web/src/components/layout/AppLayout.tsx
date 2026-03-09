@@ -22,7 +22,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-white flex flex-col">
+    <div className="min-h-screen bg-background text-main flex flex-col">
       <TopBar onConnect={connect} connectError={error} isConnecting={isConnecting} />
       <div className="app-frame flex-1 w-full px-4 md:px-6">
         <div className="flex h-full flex-col md:flex-row md:gap-8">

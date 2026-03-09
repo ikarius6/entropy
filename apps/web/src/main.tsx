@@ -10,21 +10,24 @@ import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import HowItWorksPage from './pages/HowItWorksPage';
 import { ToastContainer } from './components/ui/Toast';
+import { ThemeProvider } from './components/ThemeProvider';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <AppLayout>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/publish" element={<UploadPage />} />
-          <Route path="/watch/:rootHash" element={<WatchPage />} />
-          <Route path="/profile/:pubkey" element={<ProfilePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/how-it-works" element={<HowItWorksPage />} />
-        </Routes>
-      </AppLayout>
-      <ToastContainer />
-    </BrowserRouter>
+    <ThemeProvider defaultTheme="dark" storageKey="entropy-ui-theme">
+      <BrowserRouter>
+        <AppLayout>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/publish" element={<UploadPage />} />
+            <Route path="/watch/:rootHash" element={<WatchPage />} />
+            <Route path="/profile/:pubkey" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+          </Routes>
+        </AppLayout>
+        <ToastContainer />
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>
 );

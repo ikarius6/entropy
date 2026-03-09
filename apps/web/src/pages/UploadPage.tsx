@@ -151,7 +151,7 @@ export default function UploadPage() {
           textDone ? (
             <div className="empty-state flex flex-col items-center gap-3 py-8 text-center">
               <CheckCircle2 size={40} className="text-green-400" />
-              <p className="font-medium text-white">Note published!</p>
+              <p className="font-medium text-main">Note published!</p>
               <button onClick={handleClear} className="button-secondary px-4 py-2 text-sm">
                 Write another
               </button>

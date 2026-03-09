@@ -42,9 +42,9 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
 
   if (selectedFile) {
     return (
-      <div className="p-6 border border-border bg-white/5 rounded-xl flex items-center justify-between gap-4">
+      <div className="p-6 border border-border bg-surface/5 rounded-xl flex items-center justify-between gap-4">
         <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <div className="font-medium text-white truncate" title={selectedFile.name}>{selectedFile.name}</div>
+          <div className="font-medium text-main truncate" title={selectedFile.name}>{selectedFile.name}</div>
           <div className="text-sm text-muted">
             {selectedFile.type || "unknown"} • {formatSize(selectedFile.size)}
           </div>
@@ -54,7 +54,7 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
             if (fileInputRef.current) fileInputRef.current.value = "";
             onFileSelected(null);
           }}
-          className="text-sm px-3 py-1.5 bg-white/10 hover:bg-red-500/20 hover:text-red-400 rounded-md transition-colors flex-shrink-0"
+          className="text-sm px-3 py-1.5 bg-surface/10 hover:bg-red-500/20 hover:text-red-400 rounded-md transition-colors flex-shrink-0"
         >
           Change
         </button>
@@ -65,7 +65,7 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
   return (
     <div 
       className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer
-        ${isDragging ? 'border-primary bg-primary/5' : 'border-border bg-white/5 hover:bg-white/10 hover:border-white/20'}`}
+        ${isDragging ? 'border-primary bg-primary/5' : 'border-border bg-surface/5 hover:bg-surface/10 hover:border-surface/20'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -77,7 +77,7 @@ export function DragDropZone({ onFileSelected, selectedFile }: DragDropZoneProps
         ref={fileInputRef}
         onChange={handleFileChange}
       />
-      <div className={`p-4 rounded-full ${isDragging ? 'bg-primary/20 text-primary' : 'bg-white/5 text-muted'}`}>
+      <div className={`p-4 rounded-full ${isDragging ? 'bg-primary/20 text-primary' : 'bg-surface/5 text-muted'}`}>
         <Upload size={32} />
       </div>
       <div className="text-center">

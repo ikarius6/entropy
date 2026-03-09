@@ -75,7 +75,7 @@ export default function ProfilePage() {
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full">
       {isLoading ? (
-        <div className="panel h-64 animate-pulse bg-white/5" />
+        <div className="panel h-64 animate-pulse bg-surface/5" />
       ) : (
         <ProfileHeader 
           profile={profile} 

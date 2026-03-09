@@ -46,7 +46,7 @@ export function ProfileHeader({
             {isCurrentUser ? (
               <button
                 onClick={() => setShowEditModal(true)}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium bg-surface/10 hover:bg-surface/20 transition-colors"
               >
                 <Pencil size={14} />
                 Edit Profile
@@ -58,7 +58,7 @@ export function ProfileHeader({
                 className={`px-4 py-1.5 rounded-full transition-colors text-sm font-medium disabled:opacity-50 ${
                   isFollowing
                     ? "bg-primary/20 text-primary hover:bg-red-500/20 hover:text-red-400"
-                    : "bg-white/10 hover:bg-white/20"
+                    : "bg-surface/10 hover:bg-surface/20"
                 }`}
               >
                 {isFollowPending ? "…" : isFollowing ? "Following" : "Follow"}
@@ -70,7 +70,7 @@ export function ProfileHeader({
         <div>
           <h1 className="text-2xl font-bold">{profile?.name || profile?.displayName || "Anonymous Node"}</h1>
           <div className="flex items-center gap-2 text-muted text-sm mt-1 mb-4">
-              <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-xs"
+              <span className="font-mono bg-surface/5 px-2 py-0.5 rounded text-xs"
               >{pubkey.slice(0, 12)}...{pubkey.slice(-4)}</span>
             {profile?.nip05 && (
               <span className="flex items-center gap-1 text-accent">
@@ -80,18 +80,18 @@ export function ProfileHeader({
             )}
           </div>
           
-          <p className="text-white/90 mb-4 whitespace-pre-wrap">
+          <p className="text-surface/90 mb-4 whitespace-pre-wrap">
             {profile?.about || "No bio provided."}
           </p>
           
           <div className="flex items-center gap-4 text-sm text-muted">
             <div className="flex items-center gap-1.5">
               <Users size={16} />
-              <span className="font-bold text-white">{followersCount}</span> Followers
+              <span className="font-bold text-main">{followersCount}</span> Followers
             </div>
             <div className="flex items-center gap-1.5">
               <User size={16} />
-              <span className="font-bold text-white">{followingCount}</span> Following
+              <span className="font-bold text-main">{followingCount}</span> Following
             </div>
           </div>
         </div>

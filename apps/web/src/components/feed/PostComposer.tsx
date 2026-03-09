@@ -65,7 +65,7 @@ export function PostComposer() {
   if (!pubkey) {
     return (
       <div className="panel flex items-center gap-4 px-5 py-4 opacity-75 select-none">
-        <div className="h-10 w-10 rounded-md border border-border bg-white/5 flex-shrink-0" />
+        <div className="h-10 w-10 rounded-md border border-border bg-surface/5 flex-shrink-0" />
         <span className="text-sm text-muted">Connect your node to post...</span>
       </div>
     );
@@ -90,7 +90,7 @@ export function PostComposer() {
             <div className="flex items-center gap-2 py-2 text-green-400">
               <CheckCircle2 size={18} />
               <span className="text-sm font-medium">Posted!</span>
-              <button onClick={handleReset} className="ml-auto text-sm text-muted transition-colors hover:text-white">
+              <button onClick={handleReset} className="ml-auto text-sm text-muted transition-colors hover:text-main">
                 Write another
               </button>
             </div>
@@ -102,7 +102,7 @@ export function PostComposer() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder="What's happening on your node?"
                 rows={1}
-                className="min-h-[44px] max-h-[300px] w-full resize-none border-0 bg-transparent px-0 py-0 text-[0.98rem] leading-relaxed text-white outline-none placeholder:text-muted overflow-y-auto"
+                className="min-h-[44px] max-h-[300px] w-full resize-none border-0 bg-transparent px-0 py-0 text-[0.98rem] leading-relaxed text-main outline-none placeholder:text-muted overflow-y-auto"
               />
 
               {/* File attachment area */}
@@ -144,7 +144,7 @@ export function PostComposer() {
                   className={`inline-flex items-center justify-center rounded-md border p-2 transition-colors ${
                     showAttach
                       ? "border-primary/35 bg-primary/10 text-primary"
-                      : "border-border text-muted hover:bg-white/5 hover:text-white"
+                      : "border-border text-muted hover:bg-surface/5 hover:text-main"
                   }`}
                 >
                   {showAttach ? <X size={17} /> : <Paperclip size={17} />}
@@ -152,7 +152,7 @@ export function PostComposer() {
 
                 {/* File indicator pill */}
                 {file && !showAttach && (
-                  <span className="truncate rounded-md border border-border bg-white/5 px-2 py-1 text-xs text-muted max-w-[160px]">
+                  <span className="truncate rounded-md border border-border bg-surface/5 px-2 py-1 text-xs text-muted max-w-[160px]">
                     📎 {file.name}
                   </span>
                 )}

@@ -47,7 +47,7 @@ export function ReplyComposer({ replyTo, onReplied }: ReplyComposerProps) {
         Reply published!
         <button
           onClick={() => { reset(); setText(""); onReplied?.(); }}
-          className="ml-auto text-muted hover:text-white transition-colors"
+          className="ml-auto text-muted hover:text-main transition-colors"
         >
           Dismiss
         </button>
@@ -69,7 +69,7 @@ export function ReplyComposer({ replyTo, onReplied }: ReplyComposerProps) {
           onChange={(e) => setText(e.target.value)}
           placeholder="Write a reply…"
           rows={1}
-          className="w-full bg-white/5 border border-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-muted resize-none outline-none focus:border-primary/50 transition-colors min-h-[36px] max-h-[150px]"
+          className="w-full bg-surface/5 border border-border rounded-lg px-3 py-2 text-sm text-main placeholder:text-muted resize-none outline-none focus:border-primary/50 transition-colors min-h-[36px] max-h-[150px]"
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handlePost();
           }}

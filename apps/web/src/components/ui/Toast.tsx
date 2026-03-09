@@ -66,7 +66,7 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: () => v
   }, [toast.duration, onRemove]);
 
   const typeStyles = {
-    info: "bg-panel border-primary/30 text-white",
+    info: "bg-panel border-primary/30 text-main",
     success: "bg-[#0b1f13] border-green-500/30 text-green-50",
     warning: "bg-[#251b08] border-yellow-500/30 text-yellow-50",
     error: "bg-[#250d11] border-red-500/30 text-red-50",
@@ -81,7 +81,7 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: () => v
         <h3 className="font-semibold text-sm">{toast.title}</h3>
         <button 
           onClick={onRemove}
-          className="text-white/50 hover:text-white transition-colors"
+          className="text-surface/50 hover:text-main transition-colors"
         >
           <X size={16} />
         </button>

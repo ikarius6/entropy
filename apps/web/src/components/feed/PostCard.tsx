@@ -211,7 +211,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
             <button
               key={emoji}
               onClick={() => react(emoji)}
-              className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1.5 text-xs text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-white"
+              className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1.5 text-xs text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-main"
             >
               {emoji} {count}
             </button>
@@ -224,7 +224,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
           className={`${actionBaseClass} ${
             showReplies
               ? "border-primary/25 bg-primary/10 text-primary"
-              : "text-muted hover:border-border hover:bg-white/[0.03] hover:text-white"
+              : "text-muted hover:border-border hover:bg-white/[0.03] hover:text-main"
           }`}
         >
           {showReplies ? <ChevronUp size={15} /> : <MessageCircle size={15} />}
@@ -252,7 +252,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
         {/* Full Page link */}
         <Link
           to={isMedia && displayItem.chunkMap ? `/watch/${displayItem.chunkMap.rootHash}` : `/watch/${displayItem.id}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-main"
         >
           <Maximize size={15} />
           Full Page
@@ -280,7 +280,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
           className={`ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
             shareFeedback
               ? "border-green-400/20 bg-green-400/10 text-green-400"
-              : "border-transparent text-muted hover:border-border hover:bg-white/[0.03] hover:text-white"
+              : "border-transparent text-muted hover:border-border hover:bg-white/[0.03] hover:text-main"
           }`}
         >
           {shareFeedback ? (
@@ -370,7 +370,7 @@ function QuotedParent({ eventId }: { eventId: string }) {
       <div className="flex items-center gap-2 mb-1.5">
         <CornerUpLeft size={12} className="text-muted flex-shrink-0" />
         <AvatarBadge profile={profile} pubkey={event.pubkey} size="sm" />
-        <span className="text-xs font-semibold text-white/80 transition-colors group-hover:text-white">
+        <span className="text-xs font-semibold text-surface/80 transition-colors group-hover:text-main">
           {displayName}
         </span>
         <span className="text-muted text-xs font-mono">{event.pubkey.slice(0, 6)}…</span>
@@ -452,7 +452,7 @@ function DownloadButton({ blobUrl, blobStatus, blobProgress, chunkMap }: {
     <button
       onClick={handleDownload}
       disabled={blobStatus !== "ready"}
-      className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+      className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-main disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {blobStatus === "loading" ? (
         <><Loader2 size={15} className="animate-spin" />{Math.round(blobProgress * 100)}%</>
@@ -497,17 +497,17 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
 
   const metaBadges = (
     <div className="flex gap-2">
-      <div className="rounded-md border border-border bg-black/55 px-2.5 py-1 text-xs font-mono text-white/85">
+      <div className="rounded-md border border-border bg-inverted/55 px-2.5 py-1 text-xs font-mono text-surface/85">
         {sizeMB} MB
       </div>
     </div>
   );
 
   return (
-    <div className="mt-2 overflow-hidden rounded-md border border-border bg-black/35">
+    <div className="mt-2 overflow-hidden rounded-md border border-border bg-inverted/35">
       {isImage ? (
         <div className="relative group">
-          <div className="flex min-h-[200px] w-full max-h-[480px] items-center justify-center overflow-hidden bg-black/55">
+          <div className="flex min-h-[200px] w-full max-h-[480px] items-center justify-center overflow-hidden bg-inverted/55">
             {blobStatus === "loading" && (
               <Loader2 className="animate-spin text-primary" size={32} />
             )}
@@ -550,12 +550,12 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               preload="metadata"
               controls={expanded}
               muted={!expanded}
-              className="w-full max-h-[480px] bg-black"
+              className="w-full max-h-[480px] bg-inverted"
             />
           )}
           {blobUrl && !expanded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/35">
-              <button className="flex h-14 w-14 items-center justify-center rounded-md border border-white/12 bg-black/65 text-white transition-colors group-hover:bg-black/80">
+            <div className="absolute inset-0 flex items-center justify-center bg-inverted/20 transition-colors group-hover:bg-inverted/35">
+              <button className="flex h-14 w-14 items-center justify-center rounded-md border border-surface/12 bg-inverted/65 text-main transition-colors group-hover:bg-inverted/80">
                 <Play fill="currentColor" size={24} className="ml-1" />
               </button>
             </div>
@@ -564,7 +564,7 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
             <div className="absolute right-3 top-3 z-10 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
               <Link
                 to={`/watch/${chunkMap.rootHash}`}
-                className="rounded-md border border-white/10 bg-black/65 p-1.5 text-white/80 transition-colors hover:bg-black/80 hover:text-white"
+                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-surface/80 transition-colors hover:bg-inverted/80 hover:text-main"
                 title="Open full page"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -572,7 +572,7 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               </Link>
               <button
                 onClick={(e) => { e.stopPropagation(); handleCollapse(); }}
-                className="rounded-md border border-white/10 bg-black/65 p-1.5 text-white/80 transition-colors hover:bg-black/80 hover:text-white"
+                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-surface/80 transition-colors hover:bg-inverted/80 hover:text-main"
                 title="Collapse"
               >
                 <X size={14} />

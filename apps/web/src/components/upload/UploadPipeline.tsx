@@ -33,15 +33,15 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
           return (
             <div key={stage.key} className="flex items-center gap-4">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                ${status === 'completed' ? 'bg-green-500 text-white' : 
+                ${status === 'completed' ? 'bg-green-500 text-main' : 
                   status === 'active' ? 'bg-primary text-background animate-pulse' : 
-                  status === 'error' ? 'bg-red-500 text-white' : 'bg-white/10 text-muted'}`}
+                  status === 'error' ? 'bg-red-500 text-main' : 'bg-surface/10 text-muted'}`}
               >
                 {status === 'completed' ? '✓' : index + 1}
               </div>
               <div className="flex-1">
                 <div className="flex justify-between mb-1 text-sm font-medium">
-                  <span className={status === 'active' ? 'text-white' : 'text-muted'}>{stage.label}</span>
+                  <span className={status === 'active' ? 'text-main' : 'text-muted'}>{stage.label}</span>
                   {stage.key === 'chunking' && status === 'active' && (
                     <span className="text-muted text-xs">{Math.round(progress.chunkingProgress * 100)}%</span>
                   )}
@@ -50,7 +50,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
                   )}
                 </div>
                 
-                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                <div className="h-1.5 w-full bg-surface/5 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-300 ${
                       status === 'completed' ? 'bg-green-500 w-full' :
@@ -73,7 +73,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
         })}
       </div>
       
-      <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/10">
+      <div className="flex justify-between items-center mt-4 pt-4 border-t border-surface/10">
         {progress.stage === 'done' ? (
           <div className="text-green-400 font-medium flex items-center gap-2">
             <span>🎉 Publication complete</span>
@@ -90,7 +90,7 @@ export function UploadPipeline({ progress, onCancel }: UploadPipelineProps) {
         
         <button 
           onClick={onCancel}
-          className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-md transition-colors text-sm font-medium"
+          className="px-4 py-2 bg-surface/5 hover:bg-surface/10 rounded-md transition-colors text-sm font-medium"
         >
           {progress.stage === 'done' || progress.stage === 'error' ? 'Back' : 'Cancel'}
         </button>

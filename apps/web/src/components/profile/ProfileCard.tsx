@@ -18,7 +18,7 @@ export function ProfileCard({ profile, pubkey, compact = false }: ProfileCardPro
   return (
     <Link
       to={linkTarget}
-      className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-border/50"
+      className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface/5 transition-colors border border-transparent hover:border-border/50"
     >
       <AvatarBadge profile={profile} pubkey={pubkey} size={compact ? "sm" : "md"} />
       <div className="flex flex-col min-w-0">

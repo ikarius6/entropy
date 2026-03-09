@@ -22,7 +22,7 @@ export function VideoPlayer({ mimeType, autoPlay = true, onReady, onError }: Vid
   }, [error, onError]);
 
   return (
-    <div className="relative group w-full bg-black rounded-xl overflow-hidden aspect-video">
+    <div className="relative group w-full bg-inverted rounded-xl overflow-hidden aspect-video">
       <video
         ref={videoRef}
         className="w-full h-full object-contain"
@@ -36,7 +36,7 @@ export function VideoPlayer({ mimeType, autoPlay = true, onReady, onError }: Vid
       </div>
 
       {error && (
-        <div className="absolute top-4 left-4 right-4 bg-red-500/90 text-white p-3 rounded-lg flex items-center gap-3 backdrop-blur-sm">
+        <div className="absolute top-4 left-4 right-4 bg-red-500/90 text-main p-3 rounded-lg flex items-center gap-3 backdrop-blur-sm">
           <AlertCircle size={20} />
           <p className="text-sm font-medium">{error}</p>
         </div>
@@ -73,20 +73,20 @@ function PlayerControls({ videoRef }: { videoRef: React.RefObject<HTMLVideoEleme
 
   return (
     <div className="flex items-center gap-4">
-      <button onClick={togglePlay} className="text-white hover:text-primary transition-colors">
+      <button onClick={togglePlay} className="text-main hover:text-primary transition-colors">
         {videoRef.current?.paused ? <Play size={24} /> : <Pause size={24} />}
       </button>
       
-      <div className="flex-1 h-1 bg-white/20 rounded-full cursor-pointer overflow-hidden relative">
+      <div className="flex-1 h-1 bg-surface/20 rounded-full cursor-pointer overflow-hidden relative">
         {/* Seek bar track */}
         <div className="absolute top-0 left-0 h-full bg-primary w-1/3" />
       </div>
 
       <div className="flex items-center gap-3">
-        <button onClick={toggleMute} className="text-white hover:text-primary transition-colors">
+        <button onClick={toggleMute} className="text-main hover:text-primary transition-colors">
           {videoRef.current?.muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
         </button>
-        <button onClick={toggleFullscreen} className="text-white hover:text-primary transition-colors">
+        <button onClick={toggleFullscreen} className="text-main hover:text-primary transition-colors">
           <Maximize size={20} />
         </button>
       </div>

@@ -4,11 +4,13 @@ import { useNostrProfile } from "../hooks/useNostrProfile";
 import { useQuotaManager } from "../hooks/useQuotaManager";
 import { useTagPreferences } from "../hooks/useTagPreferences";
 import { useToast } from "../components/ui/Toast";
+import { useTheme } from "../components/ThemeProvider";
 import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { exportIdentity, importKeypair } from "../lib/extension-bridge";
+import { THEME_OPTIONS, type Theme } from "../lib/theme-options";
 import { sortPreferencesByRelevance } from "@entropy/core";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X } from "lucide-react";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X, Moon, Sun, Laptop } from "lucide-react";
 import { getSignAllowlist, addSignOrigin, removeSignOrigin } from "../lib/extension-bridge";
 
 export default function SettingsPage() {
@@ -16,6 +18,7 @@ export default function SettingsPage() {
   const { profile } = useNostrProfile(pubkey);
   const { usedBytes, quotaBytes, usagePercent, setQuota, evictLRU } = useQuotaManager();
   const { success, error } = useToast();
+  const { theme, setTheme } = useTheme();
   const [showEditProfile, setShowEditProfile] = useState(false);
   
   const [relaysText, setRelaysText] = useState(relayUrls.join("\n"));
@@ -239,6 +242,39 @@ export default function SettingsPage() {
         </section>
       )}
 
+      {/* Appearance Section */}
+      <section className="panel flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <Moon size={18} className="text-primary" />
+          <h2 className="text-[1.05rem] font-semibold">Appearance</h2>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setTheme(option.value)}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                theme === option.value
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-white/[0.02] text-muted hover:border-surface/20 hover:bg-white/[0.04]"
+              }`}
+            >
+              <span className="flex gap-1">
+                {option.preview.map((color) => (
+                  <span
+                    key={`${option.value}-${color}`}
+                    className="inline-block h-3.5 w-3.5 rounded-full border border-black/10"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </span>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Identity Section */}
       <section className="panel flex flex-col gap-4">
         <div className="flex items-center gap-3 border-b border-border pb-3">
@@ -390,7 +426,7 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Tag name */}
-                  <span className="text-sm font-medium text-white min-w-[100px] truncate">
+                  <span className="text-sm font-medium text-main min-w-[100px] truncate">
                     {pref.name}
                   </span>
 
@@ -399,7 +435,7 @@ export default function SettingsPage() {
                     <div className="flex-1 h-1.5 overflow-hidden rounded-sm bg-white/[0.05]">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
-                          isPositive ? "bg-green-500/70" : isNegative ? "bg-red-500/70" : "bg-white/20"
+                          isPositive ? "bg-green-500/70" : isNegative ? "bg-red-500/70" : "bg-surface/20"
                         }`}
                         style={{ width: `${barWidth}%` }}
                       />
@@ -439,18 +475,22 @@ export default function SettingsPage() {
             <div className="mb-1 flex justify-between text-sm">
               <span className="text-muted">Local Storage Usage</span>
               <span className="font-mono">
-                <span className="text-white">{formatGB(usedBytes)} GB</span>
+                <span className="text-main">{formatGB(usedBytes)} GB</span>
                 <span className="text-muted"> / {formatGB(quotaBytes)} GB</span>
               </span>
             </div>
             
-            <div className="h-2.5 w-full overflow-hidden rounded-sm bg-white/[0.05]">
+            <div className="h-2.5 w-full overflow-hidden rounded-sm" style={{ background: 'rgba(var(--app-text-rgb), 0.08)' }}>
               <div 
-                className={`h-full transition-all duration-500 ${
-                  usagePercent > 90 ? 'bg-red-500' : 
-                  usagePercent > 70 ? 'bg-yellow-500' : 'bg-primary'
-                }`}
-                style={{ width: `${Math.min(100, Math.max(0, usagePercent))}%` }}
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(0, usagePercent))}%`,
+                  background: usagePercent > 90
+                    ? 'rgb(var(--app-error-rgb))'
+                    : usagePercent > 70
+                      ? 'rgb(var(--app-warning-rgb))'
+                      : 'var(--app-primary)'
+                }}
               />
             </div>
             

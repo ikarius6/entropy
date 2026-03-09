@@ -90,7 +90,7 @@ function StepCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className={`text-[11px] font-semibold ${a.num} tabular-nums`}>0{number}</span>
-            <h3 className="font-semibold text-white text-sm">{title}</h3>
+            <h3 className="font-semibold text-main text-sm">{title}</h3>
           </div>
           <p className="text-muted text-xs leading-relaxed">{description}</p>
         </div>
@@ -206,7 +206,7 @@ function OverviewTab() {
 
       {/* Three pillars */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3">Three Core Principles</h3>
+        <h3 className="text-sm font-bold text-main mb-3">Three Core Principles</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="panel flex flex-col items-center text-center gap-3 py-5">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
@@ -272,7 +272,7 @@ function DataTransferTab() {
 
       {/* Upload pipeline */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Upload size={14} className="text-primary" /> Upload Pipeline
         </h3>
         <div className="grid grid-cols-1 gap-3">
@@ -350,7 +350,7 @@ function DataTransferTab() {
 
       {/* Download flow */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Download size={14} className="text-accent" /> Download & Playback
         </h3>
 
@@ -402,26 +402,26 @@ function DataTransferTab() {
             <div className="text-[10px] font-bold text-primary mb-2">CHUNK_REQUEST (0x01)</div>
             <div className="flex gap-1 text-[9px] font-mono">
               <span className="bg-primary/15 text-primary px-1.5 py-0.5 rounded">0x01</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">root_hash 32B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">pubkey</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">root_hash 32B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">pubkey</span>
             </div>
           </div>
           <div className="bg-background/60 rounded-lg border border-border p-3">
             <div className="text-[10px] font-bold text-emerald-400 mb-2">CHUNK_DATA (0x02)</div>
             <div className="flex gap-1 text-[9px] font-mono">
               <span className="bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded">0x02</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">data_len 4B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">data ≤64KB</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">data_len 4B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">data ≤64KB</span>
             </div>
           </div>
           <div className="bg-background/60 rounded-lg border border-border p-3">
             <div className="text-[10px] font-bold text-accent mb-2">CHUNK_DATA_HEADER (0x04)</div>
             <div className="flex gap-1 text-[9px] font-mono flex-wrap">
               <span className="bg-accent/15 text-accent px-1.5 py-0.5 rounded">0x04</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">total_len 4B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">total_len 4B</span>
               <span className="text-muted px-1 py-0.5">+ N×64KB fragments</span>
             </div>
           </div>
@@ -429,8 +429,8 @@ function DataTransferTab() {
             <div className="text-[10px] font-bold text-red-400 mb-2">CHUNK_ERROR (0x03)</div>
             <div className="flex gap-1 text-[9px] font-mono">
               <span className="bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded">0x03</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
-              <span className="bg-white/5 text-muted px-1.5 py-0.5 rounded">reason 1B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">chunk_hash 32B</span>
+              <span className="bg-surface/5 text-muted px-1.5 py-0.5 rounded">reason 1B</span>
             </div>
           </div>
         </div>
@@ -532,7 +532,7 @@ function WhySeedTab() {
 
       {/* Benefits of seeding */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3">Benefits of Active Seeding</h3>
+        <h3 className="text-sm font-bold text-main mb-3">Benefits of Active Seeding</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="panel py-4 px-5">
             <div className="flex items-start gap-3">
@@ -661,7 +661,7 @@ function SecurityTab() {
             <CheckCircle2 size={13} className="text-emerald-400 shrink-0 mt-0.5" />
             <p className="text-muted text-xs leading-relaxed">
               Each chunk is verified individually against its published hash.
-              <strong className="text-white"> A single altered bit</strong> invalidates the entire verification — the peer is
+              <strong className="text-main"> A single altered bit</strong> invalidates the entire verification — the peer is
               immediately flagged as malicious and banned.
             </p>
           </div>
@@ -670,7 +670,7 @@ function SecurityTab() {
 
       {/* Privacy layers */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3">Privacy Layers</h3>
+        <h3 className="text-sm font-bold text-main mb-3">Privacy Layers</h3>
         <div className="grid grid-cols-1 gap-3">
           {[
             {
@@ -813,15 +813,15 @@ function StorageTab() {
 
       {/* Layer 1: IndexedDB Dexie */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <HardDrive size={14} className="text-primary" /> IndexedDB — Chunk Storage (Dexie.js)
         </h3>
 
         <div className="panel p-5">
           <p className="text-muted text-xs leading-relaxed mb-4">
-            The bulk of local storage is an <strong className="text-white">IndexedDB database</strong> called{" "}
+            The bulk of local storage is an <strong className="text-main">IndexedDB database</strong> called{" "}
             <code className="text-primary bg-primary/10 px-1 rounded text-[10px]">entropy-chunks</code>,
-            managed through <strong className="text-white">Dexie.js</strong> — a lightweight IndexedDB wrapper.
+            managed through <strong className="text-main">Dexie.js</strong> — a lightweight IndexedDB wrapper.
             This is where every file chunk (up to 5 MB each) is persisted as raw binary data.
           </p>
 
@@ -839,7 +839,7 @@ function StorageTab() {
                 { field: "pinned", type: "boolean", desc: "If true, exempt from LRU eviction (indexed)", pk: false },
               ].map((row) => (
                 <div key={row.field} className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-white/[0.02] border border-border">
-                  <span className={`shrink-0 w-28 ${row.pk ? "text-primary font-bold" : "text-white"}`}>
+                  <span className={`shrink-0 w-28 ${row.pk ? "text-primary font-bold" : "text-main"}`}>
                     {row.pk && "🔑 "}{row.field}
                   </span>
                   <span className="shrink-0 w-24 text-accent/70">{row.type}</span>
@@ -854,7 +854,7 @@ function StorageTab() {
               <div className="flex items-start gap-2">
                 <Package size={13} className="text-primary shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-[10px] font-bold text-white mb-1">Why Dexie?</div>
+                  <div className="text-[10px] font-bold text-main mb-1">Why Dexie?</div>
                   <p className="text-muted text-[10px] leading-relaxed">
                     Dexie provides typed queries, indexed lookups, and automatic schema migrations
                     over raw IndexedDB. It supports structured cloning of ArrayBuffer data without
@@ -867,7 +867,7 @@ function StorageTab() {
               <div className="flex items-start gap-2">
                 <Zap size={13} className="text-accent shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-[10px] font-bold text-white mb-1">Access Pattern</div>
+                  <div className="text-[10px] font-bold text-main mb-1">Access Pattern</div>
                   <p className="text-muted text-[10px] leading-relaxed">
                     Chunks are looked up by hash (O(1)), listed by rootHash to reconstruct a file,
                     and sorted by lastAccessed for LRU eviction. The pinned index protects
@@ -882,7 +882,7 @@ function StorageTab() {
 
       {/* Layer 2: chrome.storage.local */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Key size={14} className="text-emerald-400" /> chrome.storage.local — Extension State
         </h3>
 
@@ -892,7 +892,7 @@ function StorageTab() {
             <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">chrome.storage.local</code>{" "}
             (via <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">webextension-polyfill</code>)
             to persist lightweight key-value data that must survive Service Worker restarts.
-            This is <strong className="text-white">not</strong> used for bulk chunk data — only small JSON-serializable state.
+            This is <strong className="text-main">not</strong> used for bulk chunk data — only small JSON-serializable state.
           </p>
 
           <div className="grid grid-cols-1 gap-3">
@@ -947,19 +947,19 @@ function StorageTab() {
               <Lock size={13} className="text-orange-400 shrink-0 mt-0.5" />
               <div className="text-muted text-[10px] leading-relaxed space-y-1.5">
                 <p>
-                  <strong className="text-white">Encrypted at rest:</strong> The private key in{" "}
+                  <strong className="text-main">Encrypted at rest:</strong> The private key in{" "}
                   <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentityV2</code>{" "}
-                  is wrapped with <strong className="text-white">AES-256-GCM</strong> using a key derived via{" "}
-                  <strong className="text-white">PBKDF2</strong> (200k iterations). A fresh random salt and IV are
+                  is wrapped with <strong className="text-main">AES-256-GCM</strong> using a key derived via{" "}
+                  <strong className="text-main">PBKDF2</strong> (200k iterations). A fresh random salt and IV are
                   generated on every write, so the ciphertext changes even if the key stays the same.
                 </p>
                 <p>
-                  <strong className="text-white">Sandboxed:</strong> The decrypted key never leaves the extension
+                  <strong className="text-main">Sandboxed:</strong> The decrypted key never leaves the extension
                   Service Worker. The web app can only request the public key or ask the extension to sign
                   events — it never sees the raw private key.
                 </p>
                 <p>
-                  <strong className="text-white">Auto-migration:</strong> If a legacy plain-text{" "}
+                  <strong className="text-main">Auto-migration:</strong> If a legacy plain-text{" "}
                   <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded text-[10px]">entropyIdentity</code>{" "}
                   entry is detected, it is automatically encrypted and upgraded to the v2 vault format on
                   next read, and the old key is deleted.
@@ -972,16 +972,16 @@ function StorageTab() {
 
       {/* Layer 3: Quota Management */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <HardDrive size={14} className="text-accent" /> Quota Management & Eviction
         </h3>
 
         <div className="panel p-5">
           <p className="text-muted text-xs leading-relaxed mb-4">
-            The <strong className="text-white">QuotaManager</strong> monitors how much disk space Entropy
+            The <strong className="text-main">QuotaManager</strong> monitors how much disk space Entropy
             consumes and automatically evicts old chunks when limits are exceeded. It uses the browser's
             <code className="text-accent bg-accent/10 px-1 rounded text-[10px] mx-1">navigator.storage.estimate()</code>
-            API for real usage tracking and enforces a configurable hard limit (default: <strong className="text-white">2 GB</strong>).
+            API for real usage tracking and enforces a configurable hard limit (default: <strong className="text-main">2 GB</strong>).
           </p>
 
           {/* Eviction flow */}
@@ -1036,7 +1036,7 @@ function StorageTab() {
                 ["Eviction", "LRU by QuotaManager", "Never auto-evicted"],
               ].map(([feature, idb, storage]) => (
                 <tr key={feature} className="border-b border-border/50">
-                  <td className="py-2 pr-4 text-white font-medium">{feature}</td>
+                  <td className="py-2 pr-4 text-main font-medium">{feature}</td>
                   <td className="py-2 pr-4">{idb}</td>
                   <td className="py-2">{storage}</td>
                 </tr>
@@ -1055,9 +1055,9 @@ function StorageTab() {
           <div>
             <h4 className="text-sm font-bold text-accent mb-1">Inspect Your Storage</h4>
             <p className="text-muted text-xs leading-relaxed">
-              Open DevTools → <strong className="text-white">Application</strong> tab → <strong className="text-white">IndexedDB</strong> →{" "}
+              Open DevTools → <strong className="text-main">Application</strong> tab → <strong className="text-main">IndexedDB</strong> →{" "}
               <code className="text-primary bg-primary/10 px-1 rounded text-[10px]">entropy-chunks</code> to browse stored
-              chunks. Check <strong className="text-white">Storage</strong> → <strong className="text-white">Local Storage</strong> under
+              chunks. Check <strong className="text-main">Storage</strong> → <strong className="text-main">Local Storage</strong> under
               the extension origin to see identity and credit data. The Settings page also shows a live quota
               visualization powered by the QuotaManager.
             </p>
@@ -1092,10 +1092,10 @@ function TorTab() {
           <div>
             <h4 className="text-sm font-bold text-purple-400 mb-1">What's Supported Today</h4>
             <ul className="text-muted text-xs leading-relaxed space-y-1 list-disc list-inside">
-              <li>Route <strong className="text-white">Nostr relay signaling</strong> through a local Tor SOCKS5 proxy.</li>
+              <li>Route <strong className="text-main">Nostr relay signaling</strong> through a local Tor SOCKS5 proxy.</li>
               <li>Connect to <code className="text-purple-400 bg-purple-500/10 px-1 rounded text-[10px]">.onion</code> relay URLs for fully anonymous signaling.</li>
-              <li>Strip <strong className="text-white">local/host ICE candidates</strong> from WebRTC negotiation.</li>
-              <li>Force <strong className="text-white">TURN relay-only</strong> mode so peers never see your public IP.</li>
+              <li>Strip <strong className="text-main">local/host ICE candidates</strong> from WebRTC negotiation.</li>
+              <li>Force <strong className="text-main">TURN relay-only</strong> mode so peers never see your public IP.</li>
             </ul>
             <p className="text-muted text-[10px] mt-2">
               <strong className="text-orange-400">Not in scope:</strong> Routing WebRTC data-channel traffic over Tor
@@ -1107,7 +1107,7 @@ function TorTab() {
 
       {/* Three layers of protection */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Shield size={14} className="text-purple-400" /> Three Layers of IP Protection
         </h3>
 
@@ -1154,7 +1154,7 @@ function TorTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`text-[10px] font-bold ${item.color} tabular-nums`}>Layer {item.layer}</span>
-                  <h4 className="text-xs font-bold text-white">{item.title}</h4>
+                  <h4 className="text-xs font-bold text-main">{item.title}</h4>
                 </div>
                 <p className="text-muted text-[10px] leading-relaxed mb-2">{item.desc}</p>
                 <div className="flex flex-wrap gap-2">
@@ -1173,7 +1173,7 @@ function TorTab() {
 
       {/* Architecture flow diagram */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <ArrowRightLeft size={14} className="text-purple-400" /> Signal Flow with Tor
         </h3>
 
@@ -1192,8 +1192,8 @@ function TorTab() {
             <div className="flex items-start gap-2">
               <Lock size={13} className="text-purple-400 shrink-0 mt-0.5" />
               <p className="text-muted text-[10px] leading-relaxed">
-                <strong className="text-white">End-to-end encrypted signaling:</strong> SDP offers and answers are
-                encrypted with <strong className="text-white">NIP-44</strong> before being published to Nostr relays,
+                <strong className="text-main">End-to-end encrypted signaling:</strong> SDP offers and answers are
+                encrypted with <strong className="text-main">NIP-44</strong> before being published to Nostr relays,
                 so even the relay operator cannot read the WebRTC negotiation details.
               </p>
             </div>
@@ -1203,7 +1203,7 @@ function TorTab() {
 
       {/* Privacy settings */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Key size={14} className="text-purple-400" /> Privacy Settings
         </h3>
 
@@ -1236,7 +1236,7 @@ function TorTab() {
                     <td className="py-2 pr-4">
                       <code className="text-purple-400 bg-purple-500/10 px-1 rounded text-[10px]">{setting}</code>
                     </td>
-                    <td className="py-2 pr-4 font-mono text-[10px] text-white">{def}</td>
+                    <td className="py-2 pr-4 font-mono text-[10px] text-main">{def}</td>
                     <td className="py-2 text-[10px]">{desc}</td>
                   </tr>
                 ))}
@@ -1248,7 +1248,7 @@ function TorTab() {
 
       {/* Implementation architecture */}
       <div>
-        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-main mb-3 flex items-center gap-2">
           <Package size={14} className="text-purple-400" /> Implementation Architecture
         </h3>
 
@@ -1282,7 +1282,7 @@ function TorTab() {
               <div className="mt-3 space-y-2">
                 {group.files.map((f) => (
                   <div key={f.name}>
-                    <code className="text-white text-[10px] font-medium">{f.name}</code>
+                    <code className="text-main text-[10px] font-medium">{f.name}</code>
                     <p className="text-muted text-[10px] leading-relaxed">{f.desc}</p>
                   </div>
                 ))}
@@ -1301,10 +1301,10 @@ function TorTab() {
           <div>
             <h4 className="text-sm font-bold text-orange-400 mb-1">Privacy Is Not Anonymity</h4>
             <p className="text-muted text-xs leading-relaxed">
-              Even with all three layers enabled, Entropy does <strong className="text-white">not</strong> guarantee full anonymity.
+              Even with all three layers enabled, Entropy does <strong className="text-main">not</strong> guarantee full anonymity.
               WebRTC data-channel traffic still flows directly between peers (or via TURN) without
               Tor routing. Metadata such as timing, chunk access patterns, and Nostr pubkey linkage
-              can still be used for correlation. Treat these features as <strong className="text-white">defense-in-depth</strong>,
+              can still be used for correlation. Treat these features as <strong className="text-main">defense-in-depth</strong>,
               not as a replacement for a dedicated anonymity tool.
             </p>
           </div>

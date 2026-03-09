@@ -72,7 +72,7 @@ export function Feed() {
                 className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                   sortMode === m
                     ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border bg-transparent text-muted hover:text-white"
+                    : "border-border bg-transparent text-muted hover:text-main"
                 }`}
               >
                 {m === "chronological" && "Latest"}
@@ -90,13 +90,13 @@ export function Feed() {
           {filter === "entropy" ? (
             <>
               <Zap size={28} className="text-muted" />
-              <h2 className="text-lg font-semibold text-white">No Entropy posts yet</h2>
+              <h2 className="text-lg font-semibold text-main">No Entropy posts yet</h2>
               <p className="max-w-md text-sm text-muted">Connect to more relays or follow some users to see their publications.</p>
             </>
           ) : (
             <>
               <Globe size={28} className="text-muted" />
-              <h2 className="text-lg font-semibold text-white">Nothing in the open network yet</h2>
+              <h2 className="text-lg font-semibold text-main">Nothing in the open network yet</h2>
               <p className="max-w-md text-sm text-muted">Connect to more relays to see posts from across Nostr.</p>
             </>
           )}

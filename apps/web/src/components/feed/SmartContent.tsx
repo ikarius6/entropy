@@ -38,7 +38,7 @@ function CollapsibleJSON({ raw }: { raw: string }) {
         <span className="ml-auto text-[10px] text-muted/60 shrink-0">JSON</span>
       </button>
       {expanded && (
-        <pre className="code-block max-h-[400px] overflow-x-auto overflow-y-auto border-x-0 border-b-0 rounded-none border-t px-3 pb-3 pt-3 font-mono text-xs leading-relaxed text-white/80">
+        <pre className="code-block max-h-[400px] overflow-x-auto overflow-y-auto border-x-0 border-b-0 rounded-none border-t px-3 pb-3 pt-3 font-mono text-xs leading-relaxed text-surface/80">
           {parsed ? JSON.stringify(parsed, null, 2) : raw.trim()}
         </pre>
       )}
@@ -61,7 +61,7 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
               src={m.url}
               alt=""
               loading="lazy"
-              className="max-h-[400px] rounded-md border border-border bg-black/20 object-contain"
+              className="max-h-[400px] rounded-md border border-border bg-inverted/20 object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
           </a>
@@ -71,7 +71,7 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
             src={m.url}
             controls
             preload="metadata"
-            className="max-h-[400px] w-full rounded-md border border-border bg-black/20"
+            className="max-h-[400px] w-full rounded-md border border-border bg-inverted/20"
           />
         )
       )}
@@ -96,7 +96,7 @@ function LinkChips({ urls }: { urls: ParsedUrl[] }) {
             href={l.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-md border border-border bg-white/[0.02] px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-white/[0.04] hover:text-white"
+            className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-md border border-border bg-white/[0.02] px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-white/[0.04] hover:text-main"
           >
             <ExternalLink size={11} className="shrink-0" />
             {hostname}
@@ -123,12 +123,12 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
     </a>
   ),
   // Prevent giant headings from random markdown — cap at a reasonable style
-  h1: ({ children }: Record<string, unknown>) => <span className="font-bold text-white">{children as ReactNode}</span>,
-  h2: ({ children }: Record<string, unknown>) => <span className="font-bold text-white">{children as ReactNode}</span>,
-  h3: ({ children }: Record<string, unknown>) => <span className="font-semibold text-white">{children as ReactNode}</span>,
-  h4: ({ children }: Record<string, unknown>) => <span className="font-semibold text-white/90">{children as ReactNode}</span>,
-  h5: ({ children }: Record<string, unknown>) => <span className="font-medium text-white/90">{children as ReactNode}</span>,
-  h6: ({ children }: Record<string, unknown>) => <span className="font-medium text-white/80">{children as ReactNode}</span>,
+  h1: ({ children }: Record<string, unknown>) => <span className="font-bold text-main">{children as ReactNode}</span>,
+  h2: ({ children }: Record<string, unknown>) => <span className="font-bold text-main">{children as ReactNode}</span>,
+  h3: ({ children }: Record<string, unknown>) => <span className="font-semibold text-main">{children as ReactNode}</span>,
+  h4: ({ children }: Record<string, unknown>) => <span className="font-semibold text-surface/90">{children as ReactNode}</span>,
+  h5: ({ children }: Record<string, unknown>) => <span className="font-medium text-surface/90">{children as ReactNode}</span>,
+  h6: ({ children }: Record<string, unknown>) => <span className="font-medium text-surface/80">{children as ReactNode}</span>,
   // Code blocks
   code: ({ children, className }: Record<string, unknown>) => {
     const isInline = !className;
@@ -143,7 +143,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   },
   // Blockquote
   blockquote: ({ children }: Record<string, unknown>) => (
-    <blockquote className="my-1 border-l-2 border-primary/35 pl-3 text-white/75">{children as ReactNode}</blockquote>
+    <blockquote className="my-1 border-l-2 border-primary/35 pl-3 text-surface/75">{children as ReactNode}</blockquote>
   ),
   // Lists
   ul: ({ children }: Record<string, unknown>) => <ul className="list-disc list-inside space-y-0.5 my-1">{children as ReactNode}</ul>,
@@ -156,7 +156,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
       src={src as string}
       alt={(alt as string) || ""}
       loading="lazy"
-      className="my-1 max-h-[400px] rounded-md border border-border bg-black/20 object-contain"
+      className="my-1 max-h-[400px] rounded-md border border-border bg-inverted/20 object-contain"
       onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
     />
   ),
@@ -201,7 +201,7 @@ export function SmartContent({ content, compact = false }: SmartContentProps) {
   }, [content, urls, compact]);
 
   return (
-    <div className="smart-content break-words text-[0.95rem] leading-7 text-white/90">
+    <div className="smart-content break-words text-[0.95rem] leading-7 text-surface/90">
       {textForMd && <MarkdownBody text={textForMd} />}
       {!compact && <MediaEmbeds urls={urls} />}
       {!compact && <LinkChips urls={urls} />}

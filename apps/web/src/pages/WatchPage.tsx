@@ -192,8 +192,8 @@ export default function WatchPage() {
         {/* Media rendering — gated by credits */}
         {isMedia && chunkMap && (
           <CreditGate gate={gate} contentTitle={chunkMap.title} mimeType={chunkMap.mimeType}>
-            <div className="mt-1 overflow-hidden rounded-md border border-border bg-black/35">
-              <div className="flex min-h-[280px] w-full items-center justify-center bg-black/55">
+            <div className="mt-1 overflow-hidden rounded-md border border-border bg-inverted/35">
+              <div className="flex min-h-[280px] w-full items-center justify-center bg-inverted/55">
                 {blobStatus === "loading" && (
                   <div className="flex flex-col items-center gap-3 py-16">
                     <Loader2 className="animate-spin text-primary" size={40} />
@@ -258,7 +258,7 @@ export default function WatchPage() {
             </button>
 
             {Object.entries(reactionCounts).filter(([emoji]) => emoji !== "❤️").sort(([,a], [,b]) => b - a).map(([emoji, count]) => (
-              <button key={emoji} onClick={() => react(emoji)} className="inline-flex items-center gap-1 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-white">
+              <button key={emoji} onClick={() => react(emoji)} className="inline-flex items-center gap-1 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-main">
                 {emoji} {count}
               </button>
             ))}
@@ -296,7 +296,7 @@ export default function WatchPage() {
                 }
                 await navigator.clipboard.writeText(url);
               }}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-white"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-main"
             >
               <Share2 size={16} /> Share
             </button>
