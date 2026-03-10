@@ -41,6 +41,11 @@ export const FRAGMENT_SIZE = 64 * 1024;
  *  CHUNK_DATA_HEADER is rejected immediately as a potential memory bomb. */
 export const MAX_CHUNK_RECEIVE_BYTES = 7 * 1024 * 1024;
 
+/** Maximum bytes for a transfer receipt JSON payload.  A receipt is a small
+ *  Nostr event — 8 KB is generous.  Rejects oversized payloads before
+ *  JSON.parse to prevent memory abuse from a crafted jsonLength field. */
+export const MAX_RECEIPT_JSON_BYTES = 8 * 1024;
+
 export type ChunkErrorReason = "NOT_FOUND" | "INSUFFICIENT_CREDIT" | "BUSY";
 
 export type ChunkRequestMessage = {
@@ -301,6 +306,13 @@ export function decodeTransferReceipt(buffer: ArrayBuffer): TransferReceiptMessa
   const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
   const jsonLength = view.getUint32(offset, false);
   offset += 4;
+
+  if (jsonLength > MAX_RECEIPT_JSON_BYTES) {
+    throw new Error(
+      `Transfer receipt JSON payload is ${jsonLength} bytes, ` +
+      `exceeding the ${MAX_RECEIPT_JSON_BYTES} byte limit.`
+    );
+  }
 
   const endOffset = offset + jsonLength;
 
