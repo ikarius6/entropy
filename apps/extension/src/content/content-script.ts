@@ -126,7 +126,39 @@ window.addEventListener("message", async (event: MessageEvent) => {
 });
 
 // ---------------------------------------------------------------------------
+// Origin allowlist cache — determines which pages may use the runtime bridge.
+// Loaded once at injection time, then kept in sync via storage.onChanged.
+// ---------------------------------------------------------------------------
+
+const ALLOWLIST_STORAGE_KEY = "nip07SignAllowlist";
+let cachedAllowedOrigins: string[] = [];
+
+(async function loadAllowlist() {
+  try {
+    const result = await browser.storage.local.get(ALLOWLIST_STORAGE_KEY);
+    const stored = result[ALLOWLIST_STORAGE_KEY];
+    if (Array.isArray(stored)) {
+      cachedAllowedOrigins = stored as string[];
+    }
+  } catch {
+    // Storage may be unavailable in restricted contexts — deny all by default.
+  }
+})();
+
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[ALLOWLIST_STORAGE_KEY]) {
+    const newValue = changes[ALLOWLIST_STORAGE_KEY].newValue;
+    cachedAllowedOrigins = Array.isArray(newValue) ? (newValue as string[]) : [];
+  }
+});
+
+function isOriginTrusted(): boolean {
+  return cachedAllowedOrigins.includes(window.location.origin);
+}
+
+// ---------------------------------------------------------------------------
 // Bridge: relay window.postMessage requests to the service worker
+// Only forwards messages when the page origin is in the trusted allowlist.
 // ---------------------------------------------------------------------------
 
 window.addEventListener("message", async (event: MessageEvent) => {
@@ -135,6 +167,18 @@ window.addEventListener("message", async (event: MessageEvent) => {
   }
 
   if (!isEntropyRuntimeMessage(event.data)) {
+    return;
+  }
+
+  // SEC-04/05/06: Block runtime messages from untrusted origins.
+  if (!isOriginTrusted()) {
+    postResponseToPage({
+      source: ENTROPY_EXTENSION_SOURCE,
+      type: "EXTENSION_RESPONSE",
+      requestId: event.data.requestId,
+      requestType: event.data.type,
+      error: `Origin "${window.location.origin}" is not in the Entropy trusted origins list.`
+    });
     return;
   }
 

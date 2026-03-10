@@ -205,7 +205,7 @@ export default function SettingsPage() {
       const result = await addSignOrigin(trimmed);
       setAllowlist(result.origins);
       setNewOrigin("");
-      success("Origin added", `${trimmed} can now sign Nostr events.`);
+      success("Origin added", `${trimmed} is now a trusted origin.`);
     } catch (err) {
       error("Failed to add origin", err instanceof Error ? err.message : String(err));
     } finally {
@@ -218,7 +218,7 @@ export default function SettingsPage() {
     try {
       const result = await removeSignOrigin(origin);
       setAllowlist(result.origins);
-      success("Origin removed", `${origin} can no longer sign events.`);
+      success("Origin removed", `${origin} is no longer trusted.`);
     } catch (err) {
       error("Failed to remove origin", err instanceof Error ? err.message : String(err));
     } finally {
@@ -712,9 +712,9 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 border-b border-border pb-3">
           <Globe className="text-primary" />
           <div>
-            <h2 className="text-[1.05rem] font-semibold">Trusted Origins (NIP-07 Signing)</h2>
+            <h2 className="text-[1.05rem] font-semibold">Trusted Origins</h2>
             <p className="text-xs text-muted mt-0.5">
-              Only pages from these origins can call <code>window.nostr.signEvent()</code>.
+              Only pages from these origins can communicate with the Entropy extension — including NIP-07 signing, chunk storage, identity export, and all other privileged operations.
             </p>
           </div>
         </div>
