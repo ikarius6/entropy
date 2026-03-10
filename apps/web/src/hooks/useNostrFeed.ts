@@ -24,6 +24,8 @@ interface UseNostrFeedOptions {
 // global discovery posts. 3 600 s = 1 hour boost.
 const FOLLOW_BOOST_SECONDS = 3_600;
 
+const EMPTY_PREFS: UserTagPreference[] = [];
+
 export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const { pubkey, relayPool, relayUrls, cacheChunkMap, networkTags } = useEntropyStore();
   const { follows: myFollows } = useContactList(pubkey);
@@ -44,7 +46,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const [isLoading, setIsLoading] = useState(false);
 
   const feedMode = options.feedMode ?? "chronological";
-  const userPrefs = options.userPrefs ?? [];
+  const userPrefs = options.userPrefs ?? EMPTY_PREFS;
 
   // Keep latest values in refs so flush() inside subscription closures sees current state
   const feedModeRef = useRef(feedMode);
