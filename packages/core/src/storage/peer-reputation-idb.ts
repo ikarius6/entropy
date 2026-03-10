@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 
 import {
+  DEFAULT_BAN_DURATION_MS,
   DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD,
   type PeerReputationStore
 } from "../credits/peer-reputation";
@@ -12,6 +13,8 @@ export const INDEXEDDB_PEER_REPUTATION_VERSION = 1;
 export interface CreateIndexedDbPeerReputationStoreOptions {
   dbName?: string;
   failedVerificationBanThreshold?: number;
+  /** How long a ban lasts in ms. Set to `Infinity` for permanent bans. */
+  banDurationMs?: number;
   nowMs?: () => number;
 }
 
@@ -59,6 +62,8 @@ export class IndexedDbPeerReputationStore implements PeerReputationStore {
 
   private readonly failedVerificationBanThreshold: number;
 
+  private readonly banDurationMs: number;
+
   private readonly nowMs: () => number;
 
   constructor(options: CreateIndexedDbPeerReputationStoreOptions = {}) {
@@ -71,6 +76,7 @@ export class IndexedDbPeerReputationStore implements PeerReputationStore {
       options.dbName ?? DEFAULT_INDEXEDDB_PEER_REPUTATION_NAME
     );
     this.failedVerificationBanThreshold = threshold;
+    this.banDurationMs = options.banDurationMs ?? DEFAULT_BAN_DURATION_MS;
     this.nowMs = options.nowMs ?? (() => Date.now());
   }
 
@@ -93,7 +99,22 @@ export class IndexedDbPeerReputationStore implements PeerReputationStore {
 
   async isBanned(pubkey: string): Promise<boolean> {
     assertPubkey(pubkey);
-    return (await this.db.peers.get(pubkey))?.banned ?? false;
+    const peer = await this.db.peers.get(pubkey);
+    if (!peer || !peer.banned) return false;
+
+    // Legacy records without bannedAt or bans that have expired → auto-unban
+    if (this.banDurationMs !== Infinity) {
+      const expired = peer.bannedAt == null || (this.nowMs() - peer.bannedAt >= this.banDurationMs);
+      if (expired) {
+        peer.banned = false;
+        peer.bannedAt = undefined;
+        peer.failedVerifications = 0;
+        await this.db.peers.put(peer);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   async recordSuccess(pubkey: string, bytes: number): Promise<PeerRecord> {
@@ -118,6 +139,7 @@ export class IndexedDbPeerReputationStore implements PeerReputationStore {
 
     if (peer.failedVerifications >= this.failedVerificationBanThreshold) {
       peer.banned = true;
+      peer.bannedAt = this.nowMs();
     }
 
     await this.db.peers.put(peer);
@@ -129,6 +151,8 @@ export class IndexedDbPeerReputationStore implements PeerReputationStore {
 
     const peer = await this.getOrCreate(pubkey);
     peer.banned = banned;
+    peer.bannedAt = banned ? this.nowMs() : undefined;
+    if (!banned) peer.failedVerifications = 0;
     peer.lastSeen = this.nowMs();
 
     await this.db.peers.put(peer);

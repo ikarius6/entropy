@@ -2,8 +2,13 @@ import type { PeerRecord } from "../storage/db";
 
 export const DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD = 3;
 
+/** Default ban duration: 30 minutes. */
+export const DEFAULT_BAN_DURATION_MS = 30 * 60 * 1000;
+
 export interface CreatePeerReputationStoreOptions {
   failedVerificationBanThreshold?: number;
+  /** How long a ban lasts in ms. Set to `Infinity` for permanent bans. */
+  banDurationMs?: number;
   nowMs?: () => number;
   seedPeers?: PeerRecord[];
 }
@@ -49,6 +54,8 @@ class InMemoryPeerReputationStore implements PeerReputationStore {
 
   private readonly failedVerificationBanThreshold: number;
 
+  private readonly banDurationMs: number;
+
   private readonly nowMs: () => number;
 
   constructor(options: CreatePeerReputationStoreOptions = {}) {
@@ -57,6 +64,7 @@ class InMemoryPeerReputationStore implements PeerReputationStore {
     assertPositiveInteger(threshold, "failedVerificationBanThreshold");
 
     this.failedVerificationBanThreshold = threshold;
+    this.banDurationMs = options.banDurationMs ?? DEFAULT_BAN_DURATION_MS;
     this.nowMs = options.nowMs ?? (() => Date.now());
 
     for (const peer of options.seedPeers ?? []) {
@@ -79,7 +87,22 @@ class InMemoryPeerReputationStore implements PeerReputationStore {
 
   async isBanned(pubkey: string): Promise<boolean> {
     assertPubkey(pubkey);
-    return this.peers.get(pubkey)?.banned ?? false;
+    const peer = this.peers.get(pubkey);
+    if (!peer || !peer.banned) return false;
+
+    // Legacy records without bannedAt or bans that have expired → auto-unban
+    if (this.banDurationMs !== Infinity) {
+      const expired = peer.bannedAt == null || (this.nowMs() - peer.bannedAt >= this.banDurationMs);
+      if (expired) {
+        peer.banned = false;
+        peer.bannedAt = undefined;
+        peer.failedVerifications = 0;
+        this.peers.set(pubkey, peer);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   async recordSuccess(pubkey: string, bytes: number): Promise<PeerRecord> {
@@ -104,6 +127,7 @@ class InMemoryPeerReputationStore implements PeerReputationStore {
 
     if (peer.failedVerifications >= this.failedVerificationBanThreshold) {
       peer.banned = true;
+      peer.bannedAt = this.nowMs();
     }
 
     this.peers.set(pubkey, peer);
@@ -115,6 +139,8 @@ class InMemoryPeerReputationStore implements PeerReputationStore {
 
     const peer = this.getOrCreate(pubkey);
     peer.banned = banned;
+    peer.bannedAt = banned ? this.nowMs() : undefined;
+    if (!banned) peer.failedVerifications = 0;
     peer.lastSeen = this.nowMs();
 
     this.peers.set(pubkey, peer);

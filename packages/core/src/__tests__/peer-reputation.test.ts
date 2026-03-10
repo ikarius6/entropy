@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createPeerReputationStore,
+  DEFAULT_BAN_DURATION_MS,
   DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD
 } from "../credits/peer-reputation";
 
@@ -73,6 +74,88 @@ describe("peer-reputation", () => {
     const peers = await store.listPeers();
 
     expect(peers.map((peer) => peer.pubkey)).toEqual(["peer-2", "peer-3", "peer-1"]);
+  });
+
+  it("auto-unbans peer after ban duration expires", async () => {
+    let now = 1_000_000;
+    const store = createPeerReputationStore({
+      banDurationMs: 5_000,
+      nowMs: () => now
+    });
+
+    // Ban the peer via failed verifications
+    for (let i = 0; i < DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD; i++) {
+      await store.recordFailedVerification("peer-exp");
+    }
+    await expect(store.isBanned("peer-exp")).resolves.toBe(true);
+
+    // Still banned before duration elapses
+    now = 1_004_999;
+    await expect(store.isBanned("peer-exp")).resolves.toBe(true);
+
+    // Expired after duration
+    now = 1_005_000;
+    await expect(store.isBanned("peer-exp")).resolves.toBe(false);
+
+    // Peer record should be reset
+    const peer = await store.getPeer("peer-exp");
+    expect(peer!.banned).toBe(false);
+    expect(peer!.failedVerifications).toBe(0);
+    expect(peer!.bannedAt).toBeUndefined();
+  });
+
+  it("treats legacy banned peers (no bannedAt) as expired", async () => {
+    const store = createPeerReputationStore({
+      seedPeers: [{
+        pubkey: "legacy-peer",
+        successfulTransfers: 5,
+        failedVerifications: 3,
+        totalBytesExchanged: 10_000,
+        lastSeen: 999,
+        banned: true
+        // no bannedAt → legacy record
+      }]
+    });
+
+    // Should be treated as expired immediately
+    await expect(store.isBanned("legacy-peer")).resolves.toBe(false);
+  });
+
+  it("permanent bans (Infinity) never expire", async () => {
+    let now = 1_000_000;
+    const store = createPeerReputationStore({
+      banDurationMs: Infinity,
+      nowMs: () => now
+    });
+
+    for (let i = 0; i < DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD; i++) {
+      await store.recordFailedVerification("perma-peer");
+    }
+    await expect(store.isBanned("perma-peer")).resolves.toBe(true);
+
+    // Even far in the future, still banned
+    now = 999_999_999_999;
+    await expect(store.isBanned("perma-peer")).resolves.toBe(true);
+  });
+
+  it("setBanned(false) resets failedVerifications and bannedAt", async () => {
+    const store = createPeerReputationStore({ nowMs: () => 5000 });
+
+    for (let i = 0; i < DEFAULT_FAILED_VERIFICATION_BAN_THRESHOLD; i++) {
+      await store.recordFailedVerification("reset-peer");
+    }
+    const banned = await store.getPeer("reset-peer");
+    expect(banned!.banned).toBe(true);
+    expect(banned!.bannedAt).toBe(5000);
+
+    const unbanned = await store.setBanned("reset-peer", false);
+    expect(unbanned.banned).toBe(false);
+    expect(unbanned.failedVerifications).toBe(0);
+    expect(unbanned.bannedAt).toBeUndefined();
+  });
+
+  it("default ban duration is 30 minutes", () => {
+    expect(DEFAULT_BAN_DURATION_MS).toBe(30 * 60 * 1000);
   });
 
   it("validates pubkey and byte input", async () => {

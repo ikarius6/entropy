@@ -11,6 +11,8 @@ export interface PeerRecord {
   totalBytesExchanged: number;
   lastSeen: number;
   banned: boolean;
+  /** Epoch ms when the peer was banned. Used for ban expiration. */
+  bannedAt?: number;
 }
 
 export interface EntropyDb {
