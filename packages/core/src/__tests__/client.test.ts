@@ -2,6 +2,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { Relay, RelayPool, type NostrEvent, type NostrFilter } from "../nostr/client";
 
+// Stub signature verification — these tests exercise relay plumbing, not crypto.
+vi.mock("../nostr/identity", () => ({
+  verifyEventSignature: () => true
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers — minimal mock for WebSocket
 // ---------------------------------------------------------------------------

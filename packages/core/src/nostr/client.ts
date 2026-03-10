@@ -1,4 +1,5 @@
 import type { NostrEventDraft } from "./events";
+import { verifyEventSignature } from "./identity";
 import { logger } from "../logger";
 
 // ---------------------------------------------------------------------------
@@ -199,6 +200,17 @@ export class Relay {
         const [subId, event] = rest as [string, NostrEvent];
         const hasListener = this.eventListeners.has(subId);
         logger.log(`[Relay] ${this.url} EVENT for sub=${subId}, hasListener=${hasListener}, kind=${event?.kind}, from=${event?.pubkey?.slice(0, 8)}…`);
+
+        if (!event || !event.id || !event.sig || !event.pubkey) {
+          logger.warn(`[Relay] ${this.url} dropping malformed event (missing id/sig/pubkey)`);
+          break;
+        }
+
+        if (!verifyEventSignature(event)) {
+          logger.warn(`[Relay] ${this.url} dropping event with invalid signature id=${event.id.slice(0, 12)}… from=${event.pubkey.slice(0, 8)}…`);
+          break;
+        }
+
         this.eventListeners.get(subId)?.(event);
         break;
       }
