@@ -10,6 +10,10 @@ export interface DelegateSeedingPayload {
   title?: string;
 }
 
+export interface NetworkTagsPayload {
+  tags: string[];
+}
+
 function isColdStorageAssignmentPayload(value: unknown): value is ColdStorageAssignmentPayload {
   if (!isRecord(value)) {
     return false;
@@ -297,7 +301,8 @@ export type EntropyRuntimePayload =
   | ChunkDataPayload
   | CheckLocalChunksResultPayload
   | TagContentResultPayload
-  | SignAllowlistPayload;
+  | SignAllowlistPayload
+  | NetworkTagsPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -439,6 +444,17 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "REMOVE_SIGN_ORIGIN";
       payload: SignOriginPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_NETWORK_TAGS";
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "SET_NETWORK_TAGS";
+      payload: NetworkTagsPayload;
     };
 
 export type EntropyRuntimeResponse =
@@ -527,6 +543,12 @@ export type EntropyRuntimeResponse =
       payload: SignAllowlistPayload;
     }
   | {
+      ok: true;
+      requestId: string;
+      type: "GET_NETWORK_TAGS" | "SET_NETWORK_TAGS";
+      payload: NetworkTagsPayload;
+    }
+  | {
       ok: false;
       requestId: string;
       type: EntropyRuntimeMessage["type"];
@@ -588,7 +610,9 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "SET_PRIVACY_SETTINGS" ||
     value === "GET_SIGN_ALLOWLIST" ||
     value === "ADD_SIGN_ORIGIN" ||
-    value === "REMOVE_SIGN_ORIGIN"
+    value === "REMOVE_SIGN_ORIGIN" ||
+    value === "GET_NETWORK_TAGS" ||
+    value === "SET_NETWORK_TAGS"
   );
 }
 
@@ -906,7 +930,19 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isRecord(value.payload) && typeof (value.payload as Record<string, unknown>).origin === "string";
   }
 
+  if (value.type === "SET_NETWORK_TAGS") {
+    return isNetworkTagsPayload(value.payload);
+  }
+
   return true;
+}
+
+export function isNetworkTagsPayload(value: unknown): value is NetworkTagsPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Array.isArray(value.tags) && value.tags.every((t) => typeof t === "string");
 }
 
 function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], payload: unknown): boolean {
@@ -968,6 +1004,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
     return isRecord(payload) && Array.isArray((payload as Record<string, unknown>).origins);
   }
 
+  if (requestType === "GET_NETWORK_TAGS" || requestType === "SET_NETWORK_TAGS") {
+    return isNetworkTagsPayload(payload);
+  }
+
   return isNodeStatusPayload(payload);
 }
 
@@ -1016,6 +1056,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
 
     if (value.type === "TAG_CONTENT") {
       return isTagContentResultPayload(value.payload);
+    }
+
+    if (value.type === "GET_NETWORK_TAGS" || value.type === "SET_NETWORK_TAGS") {
+      return isNetworkTagsPayload(value.payload);
     }
 
     return value.payload === undefined || isNodeStatusPayload(value.payload);

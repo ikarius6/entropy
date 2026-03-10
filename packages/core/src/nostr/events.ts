@@ -1,13 +1,14 @@
 import {
   ENTROPY_CHUNK_MAP_KIND,
   ENTROPY_TAG,
+  DEFAULT_NETWORK_TAG,
   buildEntropyChunkMapTags,
   parseEntropyChunkMapTags,
   type EntropyChunkMap,
   type NostrTag
 } from "./nip-entropy";
 
-export { ENTROPY_CHUNK_MAP_KIND, ENTROPY_TAG };
+export { ENTROPY_CHUNK_MAP_KIND, ENTROPY_TAG, DEFAULT_NETWORK_TAG };
 
 export interface NostrEventDraft {
   kind: number;
@@ -20,6 +21,7 @@ export interface BuildEntropyChunkMapEventParams {
   chunkMap: EntropyChunkMap;
   content?: string;
   createdAt?: number;
+  networkTags?: string[];
 }
 
 export function buildEntropyChunkMapEvent(
@@ -29,7 +31,7 @@ export function buildEntropyChunkMapEvent(
     kind: ENTROPY_CHUNK_MAP_KIND,
     created_at: params.createdAt ?? Math.floor(Date.now() / 1000),
     content: params.content ?? "",
-    tags: buildEntropyChunkMapTags(params.chunkMap)
+    tags: buildEntropyChunkMapTags(params.chunkMap, params.networkTags)
   };
 }
 

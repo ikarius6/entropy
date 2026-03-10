@@ -42,5 +42,7 @@ export {
   type PrivacySettingsPayload,
   isPrivacySettingsPayload,
   type SignAllowlistPayload,
-  type SignOriginPayload
+  type SignOriginPayload,
+  type NetworkTagsPayload,
+  isNetworkTagsPayload
 } from "@entropy/core";

@@ -31,12 +31,14 @@ import {
   type ExportIdentityPayload,
   type SignedEventPayload,
   type ChunkDataPayload,
-  type TagContentResultPayload
+  type TagContentResultPayload,
+  type NetworkTagsPayload
 } from "../shared/messaging";
 import { hasDelegatedChunks, storeChunkPayload, addContentTagFromUser } from "./chunk-ingest";
 import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { exportIdentity, getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
 import { getSignAllowlist, addSignOrigin, removeSignOrigin, seedSignAllowlist } from "./sign-allowlist";
+import { getNetworkTags, setNetworkTags } from "./network-tags-store";
 import { startP2PSeeding, fetchChunkP2P } from "./p2p-bridge";
 import type { PeerChunkResult } from "./p2p-bridge";
 
@@ -221,10 +223,12 @@ async function publishSeederAnnouncement(
   chunkCount: number
 ): Promise<void> {
   try {
+    const networkTags = await getNetworkTags();
     const signed = await signNostrEvent(
       buildSeederAnnouncementEvent({
         rootHash,
-        chunkCount
+        chunkCount,
+        networkTags
       })
     );
 
@@ -906,6 +910,28 @@ browser.runtime.onMessage.addListener(
               payload: { origins }
             };
             return removeResponse;
+          }
+
+          case "GET_NETWORK_TAGS": {
+            const tags = await getNetworkTags();
+            const tagsResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "GET_NETWORK_TAGS",
+              payload: { tags }
+            };
+            return tagsResponse;
+          }
+
+          case "SET_NETWORK_TAGS": {
+            const tags = await setNetworkTags(message.payload.tags);
+            const setTagsResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "SET_NETWORK_TAGS",
+              payload: { tags }
+            };
+            return setTagsResponse;
           }
 
         }

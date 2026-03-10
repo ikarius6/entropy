@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useContactList } from "./useContactList";
 import { KINDS } from "../lib/constants";
-import { ENTROPY_TAG, parseEntropyChunkMapTags, scoreContentRelevance } from "@entropy/core";
+import { parseEntropyChunkMapTags, scoreContentRelevance } from "@entropy/core";
 import type { NostrEvent, ContentTag, UserTagPreference } from "@entropy/core";
 import type { FeedItem } from "../types/nostr";
 
@@ -25,7 +25,7 @@ interface UseNostrFeedOptions {
 const FOLLOW_BOOST_SECONDS = 3_600;
 
 export function useNostrFeed(options: UseNostrFeedOptions = {}) {
-  const { pubkey, relayPool, relayUrls, cacheChunkMap } = useEntropyStore();
+  const { pubkey, relayPool, relayUrls, cacheChunkMap, networkTags } = useEntropyStore();
   const { follows: myFollows } = useContactList(pubkey);
 
   const kinds = options.kinds ?? [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP, KINDS.REPOST];
@@ -38,6 +38,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const authorsKey = options.authors?.join(",") ?? "";
   const followsKey = [...followSet].sort().join(",");
   const kindsKey = kinds.join(",");
+  const networkTagsKey = networkTags.join(",");
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -246,7 +247,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
       if (mediaKinds.length > 0) {
         subs.push(relayPool.subscribe(
-          [{ kinds: mediaKinds, limit, "#t": [ENTROPY_TAG], ...authorFilter }],
+          [{ kinds: mediaKinds, limit, "#t": networkTags, ...authorFilter }],
           (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
           onEose
         ));
@@ -277,7 +278,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       if (followSet.size > 0) {
         // 1. Follows + self (boosted)
         subs.push(relayPool.subscribe(
-          [{ kinds, limit, ...(entropyOnly ? { "#t": [ENTROPY_TAG] } : {}), authors: [...followSet] }],
+          [{ kinds, limit, ...(entropyOnly ? { "#t": networkTags } : {}), authors: [...followSet] }],
           (event: NostrEvent) => { ingestEvent(event, FOLLOW_BOOST_SECONDS); flush(); },
           onEose
         ));
@@ -285,7 +286,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
 
       // 2. Global discovery (no author filter, no boost)
       subs.push(relayPool.subscribe(
-        [{ kinds, limit, ...(entropyOnly ? { "#t": [ENTROPY_TAG] } : {}) }],
+        [{ kinds, limit, ...(entropyOnly ? { "#t": networkTags } : {}) }],
         (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
         onEose
       ));
@@ -296,7 +297,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       subs.forEach((s) => s.unsubscribe());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, limit, entropyOnly]);
+  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, networkTagsKey, limit, entropyOnly]);
 
   const loadMore = () => {
     console.log("[feed] loadMore not yet implemented");

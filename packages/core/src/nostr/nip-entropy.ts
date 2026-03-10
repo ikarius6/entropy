@@ -22,10 +22,12 @@ export interface EntropyChunkMap {
 const FALLBACK_CHUNK_SIZE = 5 * 1024 * 1024;
 
 export const ENTROPY_TAG = "entropy";
+export const DEFAULT_NETWORK_TAG = ENTROPY_TAG;
 
-export function buildEntropyChunkMapTags(chunkMap: EntropyChunkMap): NostrTag[] {
+export function buildEntropyChunkMapTags(chunkMap: EntropyChunkMap, networkTags?: string[]): NostrTag[] {
+  const resolvedTags = networkTags && networkTags.length > 0 ? networkTags : [ENTROPY_TAG];
   const tags: NostrTag[] = [
-    ["t", ENTROPY_TAG],
+    ...resolvedTags.map((t) => ["t", t] as NostrTag),
     ["x-hash", chunkMap.rootHash],
     ["size", String(chunkMap.size)],
     ["chunk-size", String(chunkMap.chunkSize)]

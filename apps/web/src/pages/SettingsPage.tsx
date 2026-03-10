@@ -9,12 +9,12 @@ import { EditProfileModal } from "../components/profile/EditProfileModal";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { exportIdentity, importKeypair } from "../lib/extension-bridge";
 import { THEME_OPTIONS, type Theme } from "../lib/theme-options";
-import { sortPreferencesByRelevance } from "@entropy/core";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X, Moon, Sun, Laptop } from "lucide-react";
+import { sortPreferencesByRelevance, DEFAULT_NETWORK_TAG } from "@entropy/core";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X, Moon, Sun, Laptop, Network, AlertTriangle } from "lucide-react";
 import { getSignAllowlist, addSignOrigin, removeSignOrigin } from "../lib/extension-bridge";
 
 export default function SettingsPage() {
-  const { pubkey, relayUrls, initRelays } = useEntropyStore();
+  const { pubkey, relayUrls, initRelays, networkTags, setNetworkTags } = useEntropyStore();
   const { profile } = useNostrProfile(pubkey);
   const { usedBytes, quotaBytes, usagePercent, setQuota, evictLRU } = useQuotaManager();
   const { success, error } = useToast();
@@ -25,6 +25,52 @@ export default function SettingsPage() {
   const [quotaGB, setQuotaGB] = useState(quotaBytes / (1024 * 1024 * 1024));
   const [identityBusy, setIdentityBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Network tags (sub-networks) state
+  const [newTag, setNewTag] = useState("");
+  const [showEntropyWarning, setShowEntropyWarning] = useState(false);
+  const [pendingRemoveTag, setPendingRemoveTag] = useState<string | null>(null);
+  const hasDefaultTag = networkTags.includes(DEFAULT_NETWORK_TAG);
+
+  const handleAddTag = () => {
+    const tag = newTag.trim().toLowerCase();
+    if (!tag) return;
+    if (networkTags.includes(tag)) {
+      error("Duplicate tag", `"${tag}" is already in your network list.`);
+      return;
+    }
+    setNetworkTags([...networkTags, tag]);
+    setNewTag("");
+    success("Network added", `Now publishing and discovering content on "${tag}".`);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    if (tag === DEFAULT_NETWORK_TAG) {
+      setShowEntropyWarning(true);
+      setPendingRemoveTag(tag);
+      return;
+    }
+    const updated = networkTags.filter(t => t !== tag);
+    setNetworkTags(updated);
+    success("Network removed", `Stopped publishing on "${tag}".`);
+  };
+
+  const confirmRemoveDefaultTag = () => {
+    if (pendingRemoveTag) {
+      const updated = networkTags.filter(t => t !== pendingRemoveTag);
+      setNetworkTags(updated);
+      success("Default network removed", `You are no longer on the "${DEFAULT_NETWORK_TAG}" main network.`);
+    }
+    setShowEntropyWarning(false);
+    setPendingRemoveTag(null);
+  };
+
+  const handleRestoreDefault = () => {
+    if (!networkTags.includes(DEFAULT_NETWORK_TAG)) {
+      setNetworkTags([DEFAULT_NETWORK_TAG, ...networkTags]);
+      success("Default restored", `Re-joined the "${DEFAULT_NETWORK_TAG}" main network.`);
+    }
+  };
 
   // NIP-07 allowlist state
   const [allowlist, setAllowlist] = useState<string[]>([]);
@@ -375,6 +421,127 @@ export default function SettingsPage() {
           </button>
         </div>
       </section>
+
+      {/* Sub-Networks Section */}
+      <section className="panel flex flex-col gap-4">
+        <div className="flex items-center gap-3 border-b border-border pb-3">
+          <Network className="text-primary" />
+          <div>
+            <h2 className="text-[1.05rem] font-semibold">Sub-Networks</h2>
+            <p className="text-xs text-muted mt-0.5">
+              Control which Nostr <code>#t</code> tags your node publishes and discovers content on.
+            </p>
+          </div>
+        </div>
+
+        <p className="text-sm text-muted">
+          Each tag defines an isolated sub-network. Content published with multiple tags is visible to anyone subscribed to <strong>any</strong> of them.
+        </p>
+
+        <ul className="flex flex-col gap-2">
+          {networkTags.map((tag) => (
+            <li
+              key={tag}
+              className="surface-subtle flex items-center justify-between gap-3 px-4 py-2.5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <code className="break-all text-sm text-primary">#{tag}</code>
+                {tag === DEFAULT_NETWORK_TAG && (
+                  <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                    default
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => handleRemoveTag(tag)}
+                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-red-500/20 hover:text-red-400"
+                title={`Remove #${tag}`}
+              >
+                <X size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {!hasDefaultTag && (
+          <div className="flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-yellow-400" />
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-yellow-300">
+                You are not on the main Entropy network
+              </span>
+              <span className="text-xs text-muted">
+                Content from the default <code>#{DEFAULT_NETWORK_TAG}</code> network won't appear in your feed, and your posts won't be visible to users on the main network.
+              </span>
+              <button
+                onClick={handleRestoreDefault}
+                className="mt-2 self-start inline-flex items-center gap-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/20"
+              >
+                <RotateCcw size={12} />
+                Restore #{DEFAULT_NETWORK_TAG}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-1">
+          <input
+            type="text"
+            placeholder="my-network"
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value.replace(/\s+/g, "-"))}
+            onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
+            className="input-base flex-1 px-3 py-2 text-sm font-mono"
+          />
+          <button
+            onClick={handleAddTag}
+            disabled={!newTag.trim()}
+            className="button-primary px-4 py-2 text-sm disabled:opacity-50"
+          >
+            <Plus size={15} />
+            Add
+          </button>
+        </div>
+      </section>
+
+      {/* Warning modal when removing default tag */}
+      {showEntropyWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-border bg-panel p-6 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle size={24} className="mt-0.5 shrink-0 text-yellow-400" />
+              <div>
+                <h3 className="text-lg font-semibold text-main">Leave the main network?</h3>
+                <p className="mt-2 text-sm text-muted">
+                  Removing <code>#{DEFAULT_NETWORK_TAG}</code> means:
+                </p>
+                <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
+                  <li>• Your posts won't be seen by main network users</li>
+                  <li>• You won't see content from the main network</li>
+                  <li>• Fewer seeders available — playback may degrade</li>
+                </ul>
+                <p className="mt-3 text-xs text-muted/70">
+                  You can always re-add <code>#{DEFAULT_NETWORK_TAG}</code> later to rejoin.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowEntropyWarning(false); setPendingRemoveTag(null); }}
+                className="button-secondary px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveDefaultTag}
+                className="inline-flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+              >
+                Remove anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Your Algorithm Section */}
       <section className="panel flex flex-col gap-4">

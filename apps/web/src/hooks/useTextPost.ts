@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
-import { ENTROPY_TAG } from "@entropy/core";
 
 export type TextPostStage = "idle" | "signing" | "publishing" | "done" | "error";
 
@@ -19,7 +18,7 @@ export interface ReplyTo {
 const IDLE: TextPostState = { stage: "idle", error: null };
 
 export function useTextPost() {
-  const { relayPool } = useEntropyStore();
+  const { relayPool, networkTags } = useEntropyStore();
   const [state, setState] = useState<TextPostState>(IDLE);
 
   const publish = async (content: string, replyTo?: ReplyTo) => {
@@ -40,7 +39,7 @@ export function useTextPost() {
             ["e", replyTo.parentId, "", "reply"],
             ["p", replyTo.authorPubkey],
           ]
-        : [["t", ENTROPY_TAG]];
+        : networkTags.map(t => ["t", t]);
 
       const draft = {
         kind: 1,

@@ -35,7 +35,9 @@ import {
   type TagContentPayload,
   type TagContentResultPayload,
   type SignAllowlistPayload,
-  type SignOriginPayload
+  type SignOriginPayload,
+  type NetworkTagsPayload,
+  isNetworkTagsPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
@@ -72,6 +74,7 @@ function buildNoPayloadMessage(
     | "EXPORT_IDENTITY"
     | "GET_PRIVACY_SETTINGS"
     | "GET_SIGN_ALLOWLIST"
+    | "GET_NETWORK_TAGS"
 ): EntropyRuntimeMessage {
   return { source: ENTROPY_WEB_SOURCE, requestId, type };
 }
@@ -276,6 +279,16 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<TagContentResultPayload>;
 export function sendExtensionRequest(
+  type: "GET_NETWORK_TAGS",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<NetworkTagsPayload>;
+export function sendExtensionRequest(
+  type: "SET_NETWORK_TAGS",
+  payload: NetworkTagsPayload,
+  timeoutMs?: number
+): Promise<NetworkTagsPayload>;
+export function sendExtensionRequest(
   type: ExtensionRequestType,
   payload?:
     | DelegateSeedingPayload
@@ -286,9 +299,10 @@ export function sendExtensionRequest(
     | SetSeedingActivePayload
     | ReleaseColdAssignmentPayload
     | PrivacySettingsPayload
-    | TagContentPayload,
+    | TagContentPayload
+    | NetworkTagsPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | PrivacySettingsPayload | TagContentResultPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | PrivacySettingsPayload | TagContentResultPayload | NetworkTagsPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -437,6 +451,29 @@ export function sendExtensionRequest(
     return sendBridgeMessage(
       tagMsg,
       (p) => (isTagContentResultPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "GET_NETWORK_TAGS") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isNetworkTagsPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "SET_NETWORK_TAGS") {
+    const ntPayload = payload as unknown as NetworkTagsPayload;
+    const ntMsg: EntropyRuntimeMessage = {
+      source: ENTROPY_WEB_SOURCE,
+      requestId,
+      type: "SET_NETWORK_TAGS",
+      payload: ntPayload
+    };
+    return sendBridgeMessage(
+      ntMsg,
+      (p) => (isNetworkTagsPayload(p) ? p : null),
       timeoutMs
     );
   }

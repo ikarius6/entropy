@@ -9,6 +9,7 @@ export interface BuildSeederAnnouncementParams {
   chunkCount: number;
   createdAt?: number;
   content?: string;
+  networkTags?: string[];
 }
 
 export interface SeederAnnouncement {
@@ -52,7 +53,9 @@ export function buildSeederAnnouncementEvent(
     created_at: params.createdAt ?? Math.floor(Date.now() / 1000),
     content: params.content ?? "",
     tags: [
-      ["t", ENTROPY_TAG],
+      ...(params.networkTags && params.networkTags.length > 0
+        ? params.networkTags.map((t) => ["t", t])
+        : [["t", ENTROPY_TAG]]),
       ["x", rootHash],
       ["chunks", String(chunkCount)]
     ]

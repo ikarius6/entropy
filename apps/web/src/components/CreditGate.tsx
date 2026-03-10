@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Lock, Upload, Share2, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { parseEntropyChunkMapTags, ENTROPY_TAG } from "@entropy/core";
+import { parseEntropyChunkMapTags } from "@entropy/core";
 import type { NostrEvent, EntropyChunkMap, RelayPool } from "@entropy/core";
 import { checkLocalChunks, delegateSeeding } from "../lib/extension-bridge";
 import { useEntropyStore } from "../stores/entropy-store";
@@ -28,13 +28,14 @@ const SEED_CAP_BYTES = 50 * 1024 * 1024;
 /** Fetch additional kind:7001 chunk maps from relays using a one-shot subscription (EOSE-based). */
 function fetchChunkMapsFromRelays(
   relayPool: RelayPool,
+  networkTags: string[],
   timeoutMs = 5000
 ): Promise<EntropyChunkMap[]> {
   return new Promise((resolve) => {
     const maps: EntropyChunkMap[] = [];
 
     const sub = relayPool.subscribe(
-      [{ kinds: [KINDS.ENTROPY_CHUNK_MAP], [`#t`]: [ENTROPY_TAG], limit: 20 }],
+      [{ kinds: [KINDS.ENTROPY_CHUNK_MAP], [`#t`]: networkTags, limit: 20 }],
       (event: NostrEvent) => {
         try {
           maps.push(parseEntropyChunkMapTags(event.tags));
@@ -97,6 +98,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
 
   const chunkMapCache = useEntropyStore((s) => s.chunkMapCache);
   const relayPool = useEntropyStore((s) => s.relayPool);
+  const networkTags = useEntropyStore((s) => s.networkTags);
 
   const isVideo = mimeType?.startsWith("video/");
   const isImage = mimeType?.startsWith("image/");
@@ -120,7 +122,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
       // 2. If few maps in cache, also fetch from relays (EOSE-based, 5s cap)
       const cachedCount = candidates.length;
       if (cachedCount < 10) {
-        const fetched = await fetchChunkMapsFromRelays(relayPool);
+        const fetched = await fetchChunkMapsFromRelays(relayPool, networkTags);
         const seen = new Set(candidates.map((m) => m.rootHash));
         for (const m of fetched) {
           if (!seen.has(m.rootHash)) {

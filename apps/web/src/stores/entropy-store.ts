@@ -1,7 +1,26 @@
 import { create } from 'zustand';
-import { RelayPool } from '@entropy/core';
+import { RelayPool, DEFAULT_NETWORK_TAG } from '@entropy/core';
 import type { EntropyChunkMap } from '@entropy/core';
 import type { NostrProfile, FeedItem } from '../types/nostr';
+import { sendExtensionRequest } from '../lib/extension-bridge';
+
+const NETWORK_TAGS_STORAGE_KEY = 'entropy-network-tags';
+
+function loadNetworkTags(): string[] {
+  try {
+    const raw = localStorage.getItem(NETWORK_TAGS_STORAGE_KEY);
+    if (!raw) return [DEFAULT_NETWORK_TAG];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_NETWORK_TAG];
+    return parsed.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0);
+  } catch {
+    return [DEFAULT_NETWORK_TAG];
+  }
+}
+
+function saveNetworkTags(tags: string[]): void {
+  localStorage.setItem(NETWORK_TAGS_STORAGE_KEY, JSON.stringify(tags));
+}
 
 interface ActivePlayback {
   rootHash: string;
@@ -24,6 +43,9 @@ interface EntropyState {
   // Profile Cache
   profiles: Record<string, NostrProfile>;
   
+  // Network Tags (sub-networks)
+  networkTags: string[];
+
   // Feed
   feedEvents: FeedItem[];
   feedLoading: boolean;
@@ -41,6 +63,7 @@ interface EntropyState {
   cacheProfile: (pubkey: string, profile: NostrProfile) => void;
   setFeedEvents: (events: FeedItem[]) => void;
   setFeedLoading: (loading: boolean) => void;
+  setNetworkTags: (tags: string[]) => void;
   cacheChunkMap: (chunkMap: EntropyChunkMap) => void;
   startPlayback: (rootHash: string, chunkMap: EntropyChunkMap) => void;
 }
@@ -55,6 +78,8 @@ export const useEntropyStore = create<EntropyState>((set, get) => ({
   
   profiles: {},
   
+  networkTags: loadNetworkTags(),
+
   feedEvents: [],
   feedLoading: false,
 
@@ -92,6 +117,17 @@ export const useEntropyStore = create<EntropyState>((set, get) => ({
   
   setFeedLoading: (loading: boolean) => {
     set({ feedLoading: loading });
+  },
+
+  setNetworkTags: (tags: string[]) => {
+    const cleaned = tags.filter(t => t.trim().length > 0).map(t => t.trim().toLowerCase());
+    const final = cleaned.length > 0 ? [...new Set(cleaned)] : [DEFAULT_NETWORK_TAG];
+    saveNetworkTags(final);
+    set({ networkTags: final });
+    // Fire-and-forget sync to extension service worker
+    sendExtensionRequest('SET_NETWORK_TAGS', { tags: final }).catch(() => {
+      // Extension may not be installed — ignore
+    });
   },
 
   cacheChunkMap: (chunkMap: EntropyChunkMap) => {

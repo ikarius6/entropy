@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
-import { ENTROPY_TAG, parseEntropyChunkMapTags } from "@entropy/core";
+import { parseEntropyChunkMapTags } from "@entropy/core";
 import type { NostrEvent } from "@entropy/core";
 import type { FeedItem } from "../types/nostr";
 import { KINDS } from "../lib/constants";
@@ -13,7 +13,7 @@ interface UseRepliesResult {
 }
 
 export function useReplies(eventId: string): UseRepliesResult {
-  const { relayPool, relayUrls, cacheChunkMap } = useEntropyStore();
+  const { relayPool, relayUrls, cacheChunkMap, networkTags } = useEntropyStore();
   const [replies, setReplies] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -38,7 +38,7 @@ export function useReplies(eventId: string): UseRepliesResult {
     subRef.current = relayPool.subscribe(
       [
         { kinds: [KINDS.TEXT_NOTE], "#e": [eventId], limit: 100 },
-        { kinds: [KINDS.ENTROPY_CHUNK_MAP], "#e": [eventId], "#t": [ENTROPY_TAG], limit: 50 },
+        { kinds: [KINDS.ENTROPY_CHUNK_MAP], "#e": [eventId], "#t": networkTags, limit: 50 },
       ],
       (event: NostrEvent) => {
         if (accRef.current.has(event.id)) return;
