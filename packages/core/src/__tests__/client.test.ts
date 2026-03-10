@@ -85,7 +85,7 @@ describe("Relay", () => {
     expect(relay.getStatus()).toBe("connecting");
 
     // Wait for the microtask that opens the mock socket
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
     expect(relay.getStatus()).toBe("connected");
     relay.disconnect();
@@ -104,7 +104,7 @@ describe("Relay", () => {
     expect(ws.sentMessages).toHaveLength(0);
 
     // Open the socket
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
     expect(ws.sentMessages).toHaveLength(1);
 
     const parsed = JSON.parse(ws.sentMessages[0]);
@@ -115,7 +115,7 @@ describe("Relay", () => {
   it("subscribes and receives events from the relay", async () => {
     const relay = new Relay("wss://relay.example.com");
     relay.connect();
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
     const received: NostrEvent[] = [];
     const filters: NostrFilter[] = [{ kinds: [7001] }];
@@ -133,7 +133,7 @@ describe("Relay", () => {
   it("calls the EOSE callback when the relay signals end of stored events", async () => {
     const relay = new Relay("wss://relay.example.com");
     relay.connect();
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
     const eoseCalled = vi.fn();
     relay.subscribe("sub-1", [{ kinds: [7001] }], () => {}, eoseCalled);
@@ -147,7 +147,7 @@ describe("Relay", () => {
   it("stops receiving events after closing a subscription", async () => {
     const relay = new Relay("wss://relay.example.com");
     relay.connect();
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
     const received: NostrEvent[] = [];
     relay.subscribe("sub-1", [{ kinds: [7001] }], (event) => received.push(event));

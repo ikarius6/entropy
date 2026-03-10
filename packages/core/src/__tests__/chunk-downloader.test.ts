@@ -30,7 +30,10 @@ describe("chunk-downloader", () => {
     onSignal: vi.fn(() => vi.fn()),
   } as unknown as SignalingChannel;
 
-  const mockRelayPool = {} as unknown as RelayPool;
+  const mockRelayPool = {
+    getRelayCount: vi.fn(() => 0),
+    subscribe: vi.fn(),
+  } as unknown as RelayPool;
 
   type DownloaderInternals = {
     inFlightChunks: Map<number, { peerId: string; timestamp: number }>;
