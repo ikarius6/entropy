@@ -35,6 +35,12 @@ export const MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES = 4 * 1024 * 1024;
 export const DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES = 256 * 1024;
 export const FRAGMENT_SIZE = 64 * 1024;
 
+/** Maximum bytes a chunk receiver will accept for a single assembled chunk.
+ *  Default: 7 MB — covers the 5 MB default chunk size with 20% keyframe
+ *  alignment tolerance, plus extra headroom.  Anything above this from a
+ *  CHUNK_DATA_HEADER is rejected immediately as a potential memory bomb. */
+export const MAX_CHUNK_RECEIVE_BYTES = 7 * 1024 * 1024;
+
 export type ChunkErrorReason = "NOT_FOUND" | "INSUFFICIENT_CREDIT" | "BUSY";
 
 export type ChunkRequestMessage = {
@@ -416,7 +422,7 @@ export interface ChunkReceiver {
   receive(buffer: ArrayBuffer): ChunkTransferMessage | null;
 }
 
-export function createChunkReceiver(): ChunkReceiver {
+export function createChunkReceiver(maxBytes: number = MAX_CHUNK_RECEIVE_BYTES): ChunkReceiver {
   let accumulating = false;
   let targetChunkHash = "";
   let totalLength = 0;
@@ -470,7 +476,16 @@ export function createChunkReceiver(): ChunkReceiver {
 
         const hashResult = readHash(input, 1);
         const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
-        totalLength = view.getUint32(1 + HASH_BYTES, false);
+        const declaredLength = view.getUint32(1 + HASH_BYTES, false);
+
+        if (declaredLength > maxBytes) {
+          throw new Error(
+            `Chunk data header declares ${declaredLength} bytes, ` +
+            `exceeding the receiver limit of ${maxBytes} bytes.`
+          );
+        }
+
+        totalLength = declaredLength;
         targetChunkHash = hashResult.hash;
         receivedLength = 0;
         fragments = [];
