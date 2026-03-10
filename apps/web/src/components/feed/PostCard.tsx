@@ -165,7 +165,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
               {profile?.name || profile?.displayName || "Anonymous Node"}
             </Link>
             <span className="font-mono text-[0.76rem] text-muted">{displayItem.pubkey.slice(0, 8)}...</span>
-            <span className="text-sm text-muted">• {formatTime(timeAgo)}</span>
+            <Link to={isMedia && displayItem.chunkMap ? `/watch/${displayItem.chunkMap.rootHash}` : `/watch/${displayItem.id}`} className="text-sm text-muted hover:underline">• {formatTime(timeAgo)}</Link>
           </div>
         </div>
       </div>

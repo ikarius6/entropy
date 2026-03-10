@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useEffect, useState } from "react";
 import { useChunkDownload } from "../hooks/useChunkDownload";
@@ -171,9 +171,9 @@ export default function WatchPage() {
           <div className="flex items-start gap-3">
             <AvatarBadge profile={profile} pubkey={event.pubkey} size="md" />
             <div className="min-w-0 flex flex-1 flex-col gap-1">
-              <span className="text-[1.05rem] font-semibold tracking-tight">
+              <Link to={`/profile/${event.pubkey}`} className="text-[1.05rem] font-semibold tracking-tight hover:underline">
                 {profile?.name || profile?.displayName || "Anonymous Node"}
-              </span>
+              </Link>
               <span className="font-mono text-[0.78rem] text-muted">{event.pubkey.slice(0, 12)}...</span>
             </div>
             <span className="text-right text-sm text-muted">
