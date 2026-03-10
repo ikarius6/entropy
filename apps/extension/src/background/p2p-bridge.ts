@@ -68,7 +68,7 @@ export interface P2PBridgeOptions {
   relayPool: RelayPool;
   relayUrls: string[];
   myPubkey: string;
-  privkeyHex: string;
+  privkeyHex?: string;
   chunkStore: ChunkStore;
   signEvent: SignEventFn;
   privacySettings?: PrivacySettingsPayload;
@@ -136,8 +136,7 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
     await browser.runtime.sendMessage({
       type: "P2P_INIT",
       relayUrls: options.relayUrls,
-      pubkey: options.myPubkey,
-      privkey: options.privkeyHex
+      pubkey: options.myPubkey
     });
   }
 }

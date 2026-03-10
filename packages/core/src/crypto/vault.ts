@@ -17,12 +17,11 @@
  */
 
 // ---------------------------------------------------------------------------
-// Internal password — NOT a user passphrase.
-// This is a fixed, code-level secret that makes the ciphertext unreadable
-// via plain storage inspection, while remaining deterministically derivable
-// so the key survives browser restarts without user interaction.
+// Legacy password — kept ONLY for one-time migration of existing vault entries
+// that were encrypted before the per-install secret was introduced.
+// New installations never use this value.
 // ---------------------------------------------------------------------------
-const VAULT_PASSWORD = "entropy-vault-v1";
+export const VAULT_LEGACY_PASSWORD = "entropy-vault-v1";
 const PBKDF2_ITERATIONS = 200_000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
@@ -77,13 +76,13 @@ function randomBytes(length: number): ArrayBuffer {
 // Core crypto operations
 // ---------------------------------------------------------------------------
 
-async function deriveKey(salt: ArrayBuffer): Promise<CryptoKey> {
+async function deriveKey(salt: ArrayBuffer, password: string): Promise<CryptoKey> {
   const subtle = getSubtle();
   const encoder = new TextEncoder();
 
   const keyMaterial = await subtle.importKey(
     "raw",
-    encoder.encode(VAULT_PASSWORD),
+    encoder.encode(password),
     { name: "PBKDF2" },
     false,
     ["deriveKey"]
@@ -107,11 +106,11 @@ async function deriveKey(salt: ArrayBuffer): Promise<CryptoKey> {
  * Encrypt a plaintext string and return a `VaultEntry` ready to be stored.
  * A fresh salt and IV are generated on every call.
  */
-export async function vaultEncrypt(plaintext: string): Promise<VaultEntry> {
+export async function vaultEncrypt(plaintext: string, password: string): Promise<VaultEntry> {
   const subtle = getSubtle();
   const saltBuf = randomBytes(SALT_BYTES);
   const ivBuf = randomBytes(IV_BYTES);
-  const key = await deriveKey(saltBuf);
+  const key = await deriveKey(saltBuf, password);
   const encoded = new TextEncoder().encode(plaintext);
 
   const ciphertext = await subtle.encrypt(
@@ -132,14 +131,14 @@ export async function vaultEncrypt(plaintext: string): Promise<VaultEntry> {
  * Decrypt a `VaultEntry` and return the original plaintext string.
  * Throws if the entry is malformed or the authentication tag is invalid.
  */
-export async function vaultDecrypt(entry: VaultEntry): Promise<string> {
+export async function vaultDecrypt(entry: VaultEntry, password: string): Promise<string> {
   const subtle = getSubtle();
   // Convert all Uint8Array results to plain ArrayBuffer via .slice(0) to satisfy
   // SubtleCrypto's strict BufferSource typing (rules out SharedArrayBuffer).
   const saltBuf = fromBase64Url(entry.salt).buffer.slice(0) as ArrayBuffer;
   const ivBuf   = fromBase64Url(entry.iv).buffer.slice(0)   as ArrayBuffer;
   const ctBuf   = fromBase64Url(entry.ct).buffer.slice(0)   as ArrayBuffer;
-  const key = await deriveKey(saltBuf);
+  const key = await deriveKey(saltBuf, password);
 
   let decrypted: ArrayBuffer;
   try {

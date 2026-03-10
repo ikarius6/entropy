@@ -33,7 +33,6 @@ interface ActivePlayback {
 interface EntropyState {
   // Identity
   pubkey: string | null;
-  privkey: string | null;
   profile: NostrProfile | null;
   
   // Relays
@@ -58,7 +57,7 @@ interface EntropyState {
   
   // Actions
   initRelays: (urls: string[]) => Promise<void>;
-  setIdentity: (pubkey: string, privkey?: string) => void;
+  setIdentity: (pubkey: string) => void;
   setProfile: (profile: NostrProfile) => void;
   cacheProfile: (pubkey: string, profile: NostrProfile) => void;
   setFeedEvents: (events: FeedItem[]) => void;
@@ -70,7 +69,6 @@ interface EntropyState {
 
 export const useEntropyStore = create<EntropyState>((set, get) => ({
   pubkey: null,
-  privkey: null,
   profile: null,
   
   relayPool: null,
@@ -93,8 +91,8 @@ export const useEntropyStore = create<EntropyState>((set, get) => ({
     set({ relayUrls: urls, relayPool: pool });
   },
   
-  setIdentity: (pubkey: string, privkey?: string) => {
-    set({ pubkey, privkey: privkey || null });
+  setIdentity: (pubkey: string) => {
+    set({ pubkey: pubkey || null });
   },
 
   setProfile: (profile: NostrProfile) => {

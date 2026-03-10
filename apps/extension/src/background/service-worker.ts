@@ -320,7 +320,7 @@ async function bootstrapBackground(): Promise<void> {
     relayPool: getRelayPool(),
     relayUrls,
     myPubkey: identity.pubkey,
-    privkeyHex: identity.privkey,
+    privkeyHex: identity.privkey, // Only used for Firefox direct-WebRTC path (NIP-44 encryption)
     chunkStore,
     signEvent: signNostrEvent,
     privacySettings,
@@ -418,6 +418,23 @@ browser.runtime.onMessage.addListener(
         const chunks = await chunkStore.listChunksByRoot(rootHash);
         return { canServe: chunks.length > 0 };
       }) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
+    }
+
+    // Handle P2P_SIGN_EVENT from offscreen document — signs a Nostr event draft
+    // using the identity stored in the service worker. The privkey never leaves this context.
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      (message as { type: string }).type === "P2P_SIGN_EVENT"
+    ) {
+      const msg = message as unknown as { draft: Parameters<typeof signNostrEvent>[0] };
+      return signNostrEvent(msg.draft)
+        .then((signed) => ({ ok: true, event: signed }))
+        .catch((err) => ({
+          ok: false,
+          error: err instanceof Error ? err.message : "P2P_SIGN_EVENT failed"
+        })) as Promise<unknown> as Promise<EntropyRuntimeResponse>;
     }
 
     // Handle authorization checks from offscreen document before serving chunk requests

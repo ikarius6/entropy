@@ -6,6 +6,7 @@ import {
   vaultEncrypt,
   vaultDecrypt,
   isVaultEntry,
+  VAULT_LEGACY_PASSWORD,
   type NostrEvent,
   type NostrEventDraft,
   type NostrKeypair,
@@ -26,6 +27,11 @@ const VAULT_KEY = "entropyIdentityV2";
  *  never need to decrypt just to display "which identity is active". */
 const PUBKEY_KEY = "entropyPubkey";
 
+/** Per-installation random secret used as the vault password.
+ *  Generated once on first use and stored separately from the vault entry.
+ *  This replaces the hardcoded password that was visible in the source code. */
+const VAULT_SECRET_KEY = "entropyVaultSecret";
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -37,6 +43,7 @@ interface LegacyStorageSchema {
 interface VaultStorageSchema {
   [VAULT_KEY]?: VaultEntry;
   [PUBKEY_KEY]?: string;
+  [VAULT_SECRET_KEY]?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,9 +51,40 @@ interface VaultStorageSchema {
 // ---------------------------------------------------------------------------
 
 let cachedIdentity: NostrKeypair | null = null;
+let cachedVaultSecret: string | null = null;
 
 function cloneIdentity(identity: NostrKeypair): NostrKeypair {
   return { pubkey: identity.pubkey, privkey: identity.privkey };
+}
+
+// ---------------------------------------------------------------------------
+// Per-install vault secret management
+// ---------------------------------------------------------------------------
+
+/** Generate a 32-byte random hex string to use as the vault password. */
+function generateVaultSecret(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Read (or create) the per-installation vault secret. Cached in memory. */
+async function getVaultSecret(): Promise<string> {
+  if (cachedVaultSecret) return cachedVaultSecret;
+
+  const result = (await browser.storage.local.get(VAULT_SECRET_KEY)) as VaultStorageSchema;
+  const stored = result[VAULT_SECRET_KEY];
+
+  if (typeof stored === "string" && stored.length > 0) {
+    cachedVaultSecret = stored;
+    return stored;
+  }
+
+  // First use on this installation — generate and persist.
+  const secret = generateVaultSecret();
+  await browser.storage.local.set({ [VAULT_SECRET_KEY]: secret });
+  cachedVaultSecret = secret;
+  return secret;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +94,8 @@ function cloneIdentity(identity: NostrKeypair): NostrKeypair {
 async function persistIdentity(identity: NostrKeypair): Promise<void> {
   cachedIdentity = cloneIdentity(identity);
 
-  const entry = await vaultEncrypt(identity.privkey);
+  const secret = await getVaultSecret();
+  const entry = await vaultEncrypt(identity.privkey, secret);
 
   await browser.storage.local.set({
     [VAULT_KEY]: entry,
@@ -86,25 +125,44 @@ async function readStoredIdentity(): Promise<NostrKeypair | null> {
   if (isVaultEntry(entry)) {
     // Happy path: v2 encrypted identity already exists.
     const storedPubkey = vaultResult[PUBKEY_KEY];
+    const secret = await getVaultSecret();
 
+    // Try decrypting with the per-install secret first.
+    let privkey: string | null = null;
     try {
-      const privkey = await vaultDecrypt(entry);
-      const derivedPubkey = pubkeyFromPrivkey(privkey);
-
-      // Guard: derived pubkey must match what we stored unencrypted.
-      if (storedPubkey && derivedPubkey !== storedPubkey) {
-        // Storage inconsistency — treat as corrupt and return null.
+      privkey = await vaultDecrypt(entry, secret);
+    } catch {
+      // Per-install secret failed — this entry may have been encrypted with
+      // the legacy hardcoded password (pre-SEC-01 migration).
+      try {
+        privkey = await vaultDecrypt(entry, VAULT_LEGACY_PASSWORD);
+      } catch {
+        // Neither key works — treat as corrupt.
         return null;
       }
+    }
 
-      const identity: NostrKeypair = { pubkey: derivedPubkey, privkey };
-      cachedIdentity = identity;
-      return cloneIdentity(identity);
-    } catch {
-      // Decryption failure (corrupt / tampered entry) — return null so the
-      // caller can generate a fresh keypair.
+    const derivedPubkey = pubkeyFromPrivkey(privkey);
+
+    // Guard: derived pubkey must match what we stored unencrypted.
+    if (storedPubkey && derivedPubkey !== storedPubkey) {
+      // Storage inconsistency — treat as corrupt and return null.
       return null;
     }
+
+    const identity: NostrKeypair = { pubkey: derivedPubkey, privkey };
+    cachedIdentity = identity;
+
+    // Re-encrypt with the per-install secret if we used the legacy password.
+    // This is a one-time migration that runs transparently.
+    try {
+      await vaultDecrypt(entry, secret);
+    } catch {
+      // Legacy entry — re-encrypt with the per-install secret.
+      await persistIdentity(identity);
+    }
+
+    return cloneIdentity(identity);
   }
 
   // ---------------------------------------------------------------------------

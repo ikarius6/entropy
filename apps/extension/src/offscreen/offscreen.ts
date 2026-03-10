@@ -2,9 +2,8 @@
 import {
   RelayPool,
   createIndexedDbChunkStore,
-  signEvent,
+  type NostrEvent,
   type NostrEventDraft,
-  type NostrKeypair,
   type ChunkStore
 } from "@entropy/core";
 import { startSignalingListener } from "../background/signaling-listener";
@@ -16,7 +15,7 @@ import { logger } from "@entropy/core";
 // State
 // ---------------------------------------------------------------------------
 
-let identity: NostrKeypair | null = null;
+let myPubkey: string | null = null;
 let relayPool: RelayPool | null = null;
 let chunkStore: ChunkStore | null = null;
 let stopSignaling: (() => void) | null = null;
@@ -29,7 +28,6 @@ interface P2PInitMessage {
   type: "P2P_INIT";
   relayUrls: string[];
   pubkey: string;
-  privkey: string;
 }
 
 interface P2PFetchChunkMessage {
@@ -49,12 +47,28 @@ function isP2PMessage(msg: unknown): msg is P2PMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Signing helper
+// Signing helper — delegates to the service worker (privkey never leaves SW)
 // ---------------------------------------------------------------------------
 
-function signNostrEvent(draft: NostrEventDraft) {
-  if (!identity) throw new Error("[offscreen] Identity not initialized");
-  return signEvent(draft, identity.privkey);
+let signRequestCounter = 0;
+
+async function signNostrEvent(draft: NostrEventDraft): Promise<NostrEvent> {
+  if (!myPubkey) throw new Error("[offscreen] Identity not initialized");
+
+  signRequestCounter++;
+  const requestId = `sign-${signRequestCounter}-${Date.now()}`;
+
+  const response = await chrome.runtime.sendMessage({
+    type: "P2P_SIGN_EVENT",
+    requestId,
+    draft
+  }) as { ok?: boolean; event?: NostrEvent; error?: string };
+
+  if (!response || !response.ok || !response.event) {
+    throw new Error(response?.error ?? "[offscreen] P2P_SIGN_EVENT failed");
+  }
+
+  return response.event;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,13 +114,13 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
 
   // If already initialized with the same identity, skip re-init to avoid
   // tearing down active PeerConnections mid-handshake.
-  if (identity && identity.pubkey === msg.pubkey && relayPool && stopSignaling) {
+  if (myPubkey && myPubkey === msg.pubkey && relayPool && stopSignaling) {
     logger.log("[offscreen] already seeding with same identity, skipping re-init");
     return;
   }
 
-  identity = { pubkey: msg.pubkey, privkey: msg.privkey };
-  logger.log("[offscreen] identity received:", identity.pubkey.slice(0, 8) + "…");
+  myPubkey = msg.pubkey;
+  logger.log("[offscreen] pubkey received:", myPubkey.slice(0, 8) + "…");
 
   chunkStore = createIndexedDbChunkStore();
 
@@ -116,7 +130,7 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
   stopSignaling?.();
   stopSignaling = startSignalingListener(
     relayPool,
-    identity.pubkey,
+    myPubkey,
     (peerPubkey, channel) => {
       logger.log("[offscreen] peer connected for seeding:", peerPubkey.slice(0, 8) + "…");
       handleDataChannel(
@@ -136,7 +150,7 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
         {
           authorizeRequest: authorizeChunkRequest,
           signEvent: signNostrEvent,
-          myPubkey: identity!.pubkey
+          myPubkey: myPubkey!
         }
       );
     },
@@ -151,7 +165,7 @@ async function handleInit(msg: P2PInitMessage): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleFetchChunk(msg: P2PFetchChunkMessage): Promise<{ data: number[] } | null> {
-  if (!identity || !relayPool) {
+  if (!myPubkey || !relayPool) {
     logger.warn("[offscreen] not initialized, cannot fetch chunk");
     return null;
   }
@@ -162,7 +176,7 @@ async function handleFetchChunk(msg: P2PFetchChunkMessage): Promise<{ data: numb
     chunkHash: msg.chunkHash,
     rootHash: msg.rootHash,
     gatekeeperPubkey: msg.gatekeeperPubkey,
-    myPubkey: identity.pubkey,
+    myPubkey: myPubkey,
     relayPool,
     signEvent: signNostrEvent,
     onPeerFailedVerification: async (peerPubkey) => {

@@ -104,8 +104,13 @@ describe("identity-store (encrypted)", () => {
     const vaultEntry = __getMockStorageValue("entropyIdentityV2");
     expect(isVaultEntry(vaultEntry)).toBe(true);
 
+    // Read the per-install vault secret that identity-store generated.
+    const vaultSecret = __getMockStorageValue("entropyVaultSecret") as string;
+    expect(typeof vaultSecret).toBe("string");
+    expect(vaultSecret.length).toBeGreaterThan(0);
+
     // Decrypt and verify the stored privkey matches what was generated.
-    const decryptedPrivkey = await vaultDecrypt(vaultEntry as Parameters<typeof vaultDecrypt>[0]);
+    const decryptedPrivkey = await vaultDecrypt(vaultEntry as Parameters<typeof vaultDecrypt>[0], vaultSecret);
     expect(decryptedPrivkey).toBe(first.privkey);
 
     // Second call in the same SW instance hits the in-memory cache.
