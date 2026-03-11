@@ -17,6 +17,7 @@ export * from "./transport/nat-traversal";
 export * from "./transport/chunk-transfer";
 export * from "./transport/chunk-downloader";
 export * from "./transport/seeder-discovery";
+export * from "./transport/popularity-discovery";
 export * from "./transport/transmuxer";
 export * from "./credits/proof-of-upstream";
 export * from "./credits/verify-receipt";

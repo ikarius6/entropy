@@ -1,11 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Lock, Upload, Share2, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { parseEntropyChunkMapTags } from "@entropy/core";
-import type { NostrEvent, EntropyChunkMap, RelayPool } from "@entropy/core";
-import { checkLocalChunks, delegateSeeding } from "../lib/extension-bridge";
+import { Lock, Upload, Share2, Loader2, CheckCircle, AlertCircle, Download } from "lucide-react";
+import { discoverPopularContent } from "@entropy/core";
+import type { EntropyChunkMap, PopularContent } from "@entropy/core";
+import { checkLocalChunks, delegateSeeding, getChunk, storeChunk } from "../lib/extension-bridge";
 import { useEntropyStore } from "../stores/entropy-store";
-import { KINDS } from "../lib/constants";
 import type { CreditGateState } from "../hooks/useCreditGate";
 
 interface CreditGateProps {
@@ -25,37 +24,74 @@ function formatBytes(bytes: number): string {
 /** 50 MB cap on how many bytes we volunteer to seed in one click */
 const SEED_CAP_BYTES = 50 * 1024 * 1024;
 
-/** Fetch additional kind:7001 chunk maps from relays using a one-shot subscription (EOSE-based). */
-function fetchChunkMapsFromRelays(
-  relayPool: RelayPool,
-  networkTags: string[],
-  timeoutMs = 5000
-): Promise<EntropyChunkMap[]> {
-  return new Promise((resolve) => {
-    const maps: EntropyChunkMap[] = [];
+type SeedPhase =
+  | "idle"
+  | "discovering"
+  | "downloading"
+  | "seeding"
+  | "done"
+  | "error";
 
-    const sub = relayPool.subscribe(
-      [{ kinds: [KINDS.ENTROPY_CHUNK_MAP], [`#t`]: networkTags, limit: 20 }],
-      (event: NostrEvent) => {
-        try {
-          maps.push(parseEntropyChunkMapTags(event.tags));
-        } catch {
-          // skip malformed events
-        }
+interface DownloadProgress {
+  currentItem: number;
+  totalItems: number;
+  currentChunk: number;
+  totalChunks: number;
+  contentTitle?: string;
+}
+
+/**
+ * Download all chunks for a chunk map via the extension bridge (P2P fallback),
+ * store them, then delegate seeding.  Returns true on success.
+ */
+async function downloadAndSeedContent(
+  chunkMap: EntropyChunkMap,
+  onChunkProgress: (downloaded: number, total: number) => void
+): Promise<boolean> {
+  const totalChunks = chunkMap.chunks.length;
+  let downloaded = 0;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const hash = chunkMap.chunks[i];
+
+    // Try to get the chunk from the extension (local store → P2P fallback)
+    const chunkData = await getChunk(
+      {
+        hash,
+        rootHash: chunkMap.rootHash,
+        gatekeepers: chunkMap.gatekeepers
       },
-      () => {
-        // EOSE — we have the initial batch, stop here
-        sub.unsubscribe();
-        resolve(maps);
-      }
+      15_000
     );
 
-    // Safety timeout in case EOSE never fires
-    setTimeout(() => {
-      sub.unsubscribe();
-      resolve(maps);
-    }, timeoutMs);
+    if (!chunkData) {
+      // Could not retrieve this chunk — skip this content
+      return false;
+    }
+
+    // Store the chunk in the extension's IndexedDB
+    await storeChunk({
+      hash: chunkData.hash,
+      rootHash: chunkData.rootHash,
+      index: chunkData.index,
+      data: chunkData.data
+    });
+
+    downloaded++;
+    onChunkProgress(downloaded, totalChunks);
+  }
+
+  // All chunks downloaded — delegate seeding
+  await delegateSeeding({
+    rootHash: chunkMap.rootHash,
+    chunkHashes: chunkMap.chunks,
+    size: chunkMap.size,
+    chunkSize: chunkMap.chunkSize,
+    mimeType: chunkMap.mimeType ?? "",
+    title: chunkMap.title
   });
+
+  return true;
 }
 
 /**
@@ -92,13 +128,15 @@ interface LockedOverlayProps {
 }
 
 function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
-  const [seedState, setSeedState] = useState<"idle" | "seeding" | "done" | "error">("idle");
+  const [seedPhase, setSeedPhase] = useState<SeedPhase>("idle");
   const [seedError, setSeedError] = useState<string | null>(null);
   const [seededCount, setSeededCount] = useState(0);
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [discovered, setDiscovered] = useState<PopularContent[]>([]);
 
-  const chunkMapCache = useEntropyStore((s) => s.chunkMapCache);
   const relayPool = useEntropyStore((s) => s.relayPool);
   const networkTags = useEntropyStore((s) => s.networkTags);
+  const cancelledRef = useRef(false);
 
   const isVideo = mimeType?.startsWith("video/");
   const isImage = mimeType?.startsWith("image/");
@@ -108,88 +146,125 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
   const handleSeedNetwork = useCallback(async () => {
     if (!relayPool) {
       setSeedError("No relay connection — open the feed first.");
-      setSeedState("error");
+      setSeedPhase("error");
       return;
     }
 
-    setSeedState("seeding");
+    cancelledRef.current = false;
+    setSeedPhase("discovering");
     setSeedError(null);
+    setProgress(null);
+    setDiscovered([]);
 
     try {
-      // 1. Start with chunk maps already seen in the feed
-      let candidates = Object.values(chunkMapCache);
+      // ── Phase 1: Discover popular content with few seeders ──
+      const popular = await discoverPopularContent(relayPool, networkTags, {
+        timeoutMs: 8_000,
+        seederTimeoutMs: 4_000,
+        maxCandidates: 30
+      });
 
-      // 2. If few maps in cache, also fetch from relays (EOSE-based, 5s cap)
-      const cachedCount = candidates.length;
-      if (cachedCount < 10) {
-        const fetched = await fetchChunkMapsFromRelays(relayPool, networkTags);
-        const seen = new Set(candidates.map((m) => m.rootHash));
-        for (const m of fetched) {
-          if (!seen.has(m.rootHash)) {
-            candidates.push(m);
-            seen.add(m.rootHash);
+      if (popular.length === 0) {
+        setSeedError("No content found on the network — try again later.");
+        setSeedPhase("error");
+        return;
+      }
+
+      setDiscovered(popular);
+
+      // ── Phase 2: Select items up to SEED_CAP, preferring already-local ──
+      // Check which are already fully stored locally (fast path)
+      const localChecks = await Promise.allSettled(
+        popular.map(async (pc) => {
+          const result = await checkLocalChunks(pc.chunkMap.chunks);
+          return { pc, allLocal: result.local === result.total && result.total > 0 };
+        })
+      );
+
+      const fullyLocal: PopularContent[] = [];
+      const needsDownload: PopularContent[] = [];
+
+      for (const check of localChecks) {
+        if (check.status === "fulfilled") {
+          if (check.value.allLocal) {
+            fullyLocal.push(check.value.pc);
+          } else {
+            needsDownload.push(check.value.pc);
           }
         }
       }
 
-      if (candidates.length === 0) {
-        setSeedError("No content found to seed — browse the feed first or try again later.");
-        setSeedState("error");
-        return;
-      }
-
-      // 3. Filter to ONLY chunk maps whose chunks are fully stored locally.
-      //    DELEGATE_SEEDING requires the extension to already have the data.
-      const localChecks = await Promise.allSettled(
-        candidates.map(async (map) => {
-          const result = await checkLocalChunks(map.chunks);
-          return { map, result };
-        })
-      );
-
-      const localMaps = localChecks
-        .filter(
-          (r): r is PromiseFulfilledResult<{ map: EntropyChunkMap; result: { total: number; local: number; localBytes: number } }> =>
-            r.status === "fulfilled" && r.value.result.local === r.value.result.total && r.value.result.total > 0
-        )
-        .map((r) => r.value.map);
-
-      if (localMaps.length === 0) {
-        setSeedError(
-          "Your node hasn't cached these chunks locally yet. " +
-          "Download some content first — once it's in your node's storage, " +
-          "you can seed it to earn credits."
-        );
-        setSeedState("error");
-        return;
-      }
-
-      // 4. Shuffle and pick up to the 50 MB cap
-      const shuffled = [...localMaps].sort(() => Math.random() - 0.5);
-      const selected: EntropyChunkMap[] = [];
+      // Pick items: local first (free), then by demand score, up to cap
+      const selected: { pc: PopularContent; needsDownload: boolean }[] = [];
       let totalBytes = 0;
-      for (const map of shuffled) {
+
+      for (const pc of fullyLocal) {
         if (totalBytes >= SEED_CAP_BYTES) break;
-        selected.push(map);
-        totalBytes += map.size;
+        selected.push({ pc, needsDownload: false });
+        totalBytes += pc.chunkMap.size;
       }
 
-      // 5. Delegate — extension already has these chunks, so no IndexedDB error
-      await Promise.all(
-        selected.map((map) =>
-          delegateSeeding({
-            rootHash: map.rootHash,
-            chunkHashes: map.chunks,
-            size: map.size,
-            chunkSize: map.chunkSize,
-            mimeType: map.mimeType ?? "",
-            title: map.title,
-          })
-        )
-      );
+      for (const pc of needsDownload) {
+        if (totalBytes >= SEED_CAP_BYTES) break;
+        selected.push({ pc, needsDownload: true });
+        totalBytes += pc.chunkMap.size;
+      }
 
-      setSeededCount(selected.length);
-      setSeedState("done");
+      if (selected.length === 0) {
+        setSeedError("Could not find seedable content — try again later.");
+        setSeedPhase("error");
+        return;
+      }
+
+      // ── Phase 3: Download missing chunks & delegate seeding ──
+      setSeedPhase("downloading");
+      let successCount = 0;
+
+      for (let i = 0; i < selected.length; i++) {
+        if (cancelledRef.current) break;
+
+        const { pc, needsDownload: mustDownload } = selected[i];
+
+        setProgress({
+          currentItem: i + 1,
+          totalItems: selected.length,
+          currentChunk: 0,
+          totalChunks: pc.chunkMap.chunks.length,
+          contentTitle: pc.chunkMap.title
+        });
+
+        if (mustDownload) {
+          const ok = await downloadAndSeedContent(pc.chunkMap, (dl, total) => {
+            setProgress((prev) =>
+              prev ? { ...prev, currentChunk: dl, totalChunks: total } : prev
+            );
+          });
+
+          if (ok) successCount++;
+        } else {
+          // Already local — just delegate seeding
+          await delegateSeeding({
+            rootHash: pc.chunkMap.rootHash,
+            chunkHashes: pc.chunkMap.chunks,
+            size: pc.chunkMap.size,
+            chunkSize: pc.chunkMap.chunkSize,
+            mimeType: pc.chunkMap.mimeType ?? "",
+            title: pc.chunkMap.title
+          });
+          successCount++;
+        }
+      }
+
+      if (successCount === 0) {
+        setSeedError(
+          "Could not download content from peers — they may be offline. Try again later."
+        );
+        setSeedPhase("error");
+        return;
+      }
+
+      setSeededCount(successCount);
+      setSeedPhase("done");
       void gate.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -199,9 +274,9 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
           ? "Entropy extension not found — install the browser extension to seed content."
           : msg
       );
-      setSeedState("error");
+      setSeedPhase("error");
     }
-  }, [chunkMapCache, relayPool, gate]);
+  }, [relayPool, networkTags, gate]);
 
   return (
     <div className="credit-gate credit-gate--locked">
@@ -256,31 +331,66 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
 
         <span className="text-xs text-muted my-2">or</span>
 
-        {/* Option 2 — Seed network content */}
-        {seedState === "idle" && (
+        {/* Option 2 — Seed popular network content */}
+        {seedPhase === "idle" && (
           <button onClick={() => void handleSeedNetwork()} className="credit-gate__btn credit-gate__btn--ad">
             <Share2 size={16} />
-            Seed Content from the Network
+            Seed Popular Content
           </button>
         )}
 
-        {seedState === "seeding" && (
+        {seedPhase === "discovering" && (
           <div className="credit-gate__ad-player">
             <div className="credit-gate__ad-content">
               <Loader2 size={28} className="animate-spin text-primary" />
-              <p className="text-sm font-medium mt-2">Finding content to seed…</p>
+              <p className="text-sm font-medium mt-2">Discovering popular content…</p>
               <p className="text-xs text-muted mt-1">
-                Fetching chunk maps and delegating to your node
+                Finding high-demand content with few seeders
               </p>
             </div>
           </div>
         )}
 
-        {seedState === "done" && (
+        {seedPhase === "downloading" && progress && (
+          <div className="credit-gate__ad-player">
+            <div className="credit-gate__ad-content">
+              <Download size={28} className="text-primary" />
+              <p className="text-sm font-medium mt-2">
+                Downloading {progress.currentItem}/{progress.totalItems}
+                {progress.contentTitle ? ` — ${progress.contentTitle}` : ""}
+              </p>
+              <div className="w-full bg-surface rounded-full h-1.5 mt-2">
+                <div
+                  className="bg-primary h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.round((progress.currentChunk / Math.max(progress.totalChunks, 1)) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted mt-1">
+                Chunk {progress.currentChunk}/{progress.totalChunks}
+              </p>
+              {discovered.length > 0 && (
+                <p className="text-xs text-muted mt-1">
+                  Found {discovered.length} items — top pick has {discovered[0].seederCount} seeder{discovered[0].seederCount !== 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {seedPhase === "seeding" && (
+          <div className="credit-gate__ad-player">
+            <div className="credit-gate__ad-content">
+              <Loader2 size={28} className="animate-spin text-primary" />
+              <p className="text-sm font-medium mt-2">Delegating to your node…</p>
+            </div>
+          </div>
+        )}
+
+        {seedPhase === "done" && (
           <div className="credit-gate__ad-complete">
             <CheckCircle size={24} className="text-green-400" />
             <p className="text-sm font-medium">
-              Now seeding {seededCount} item{seededCount !== 1 ? "s" : ""}!
+              Now seeding {seededCount} popular item{seededCount !== 1 ? "s" : ""}!
             </p>
             <p className="text-xs text-muted">
               Credits will increase as peers download from you.
@@ -295,12 +405,12 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
           </div>
         )}
 
-        {seedState === "error" && (
+        {seedPhase === "error" && (
           <div className="credit-gate__ad-complete">
             <AlertCircle size={24} className="text-red-400" />
             <p className="text-xs text-muted mt-1">{seedError}</p>
             <button
-              onClick={() => setSeedState("idle")}
+              onClick={() => setSeedPhase("idle")}
               className="credit-gate__btn credit-gate__btn--refresh"
             >
               Try Again
