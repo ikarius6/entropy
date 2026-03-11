@@ -14,9 +14,7 @@ export function TopBar({ onConnect, connectError, isConnecting }: TopBarProps) {
     <header className="app-topbar sticky top-0 z-20">
       <div className="app-frame flex h-full items-center justify-between px-4 md:px-6">
         <Link to="/" className="flex items-center gap-3 text-inherit no-underline">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-panel text-sm font-semibold text-primary">
-            E
-          </div>
+          <img src="/logo.svg" alt="Entropy logo" className="h-8 w-8" />
           <div className="flex flex-col leading-none">
             <span className="text-[1.05rem] font-semibold tracking-tight">Entropy</span>
             <span className="text-[0.72rem] text-muted">p2p network</span>
