@@ -937,6 +937,26 @@ browser.runtime.onMessage.addListener(
             return tagResponse;
           }
 
+          case "GET_CONTENT_TAGS": {
+            const contentTags = await tagStore.getContentTags(message.payload.rootHash);
+            const tagAction = await tagStore.getTagAction(message.payload.rootHash);
+            const getTagsResponse: EntropyRuntimeResponse = {
+              ok: true,
+              requestId: message.requestId,
+              type: "GET_CONTENT_TAGS",
+              payload: {
+                tags: contentTags.map((t) => ({
+                  name: t.name,
+                  counter: t.counter,
+                  updatedAt: t.updatedAt
+                })),
+                userTagged: tagAction !== null,
+                userTag: tagAction?.tag
+              }
+            };
+            return getTagsResponse;
+          }
+
           case "GET_PRIVACY_SETTINGS": {
             const privacy = await getPrivacySettings();
             return privacySettingsResponse(message.requestId, message.type, privacy);

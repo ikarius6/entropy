@@ -191,6 +191,16 @@ export interface TagContentResultPayload {
   tags: Array<{ name: string; counter: number; updatedAt: number }>;
 }
 
+export interface GetContentTagsPayload {
+  rootHash: string;
+}
+
+export interface GetContentTagsResultPayload {
+  tags: Array<{ name: string; counter: number; updatedAt: number }>;
+  userTagged: boolean;
+  userTag?: string;
+}
+
 export interface CreditHistoryItem {
   id: string;
   peerPubkey: string;
@@ -345,6 +355,7 @@ export type EntropyRuntimePayload =
   | ChunkDataPayload
   | CheckLocalChunksResultPayload
   | TagContentResultPayload
+  | GetContentTagsResultPayload
   | SignAllowlistPayload
   | NetworkTagsPayload
   | DownloadForSeedingProgressPayload
@@ -477,6 +488,12 @@ export type EntropyRuntimeMessage =
   | {
       source: typeof ENTROPY_WEB_SOURCE;
       requestId: string;
+      type: "GET_CONTENT_TAGS";
+      payload: GetContentTagsPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
       type: "GET_SIGN_ALLOWLIST";
     }
   | {
@@ -590,6 +607,12 @@ export type EntropyRuntimeResponse =
   | {
       ok: true;
       requestId: string;
+      type: "GET_CONTENT_TAGS";
+      payload: GetContentTagsResultPayload;
+    }
+  | {
+      ok: true;
+      requestId: string;
       type: "GET_PRIVACY_SETTINGS" | "SET_PRIVACY_SETTINGS";
       payload: PrivacySettingsPayload;
     }
@@ -674,6 +697,7 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "CHECK_LOCAL_CHUNKS" ||
     value === "EXPORT_IDENTITY" ||
     value === "TAG_CONTENT" ||
+    value === "GET_CONTENT_TAGS" ||
     value === "GET_PRIVACY_SETTINGS" ||
     value === "SET_PRIVACY_SETTINGS" ||
     value === "GET_SIGN_ALLOWLIST" ||
@@ -870,6 +894,30 @@ function isTagContentPayload(value: unknown): value is TagContentPayload {
   );
 }
 
+function isGetContentTagsPayload(value: unknown): value is GetContentTagsPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.rootHash === "string" && value.rootHash.length > 0;
+}
+
+export function isGetContentTagsResultPayload(value: unknown): value is GetContentTagsResultPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.tags) &&
+    value.tags.every((t) => {
+      if (!isRecord(t)) return false;
+      return typeof t.name === "string" && typeof t.counter === "number" && typeof t.updatedAt === "number";
+    }) &&
+    typeof value.userTagged === "boolean" &&
+    (value.userTag === undefined || typeof value.userTag === "string")
+  );
+}
+
 export function isTagContentResultPayload(value: unknown): value is TagContentResultPayload {
   if (!isRecord(value)) {
     return false;
@@ -990,6 +1038,10 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
 
   if (value.type === "TAG_CONTENT") {
     return isTagContentPayload(value.payload);
+  }
+
+  if (value.type === "GET_CONTENT_TAGS") {
+    return isGetContentTagsPayload(value.payload);
   }
 
   if (value.type === "SET_PRIVACY_SETTINGS") {
@@ -1124,6 +1176,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
     return isTagContentResultPayload(payload);
   }
 
+  if (requestType === "GET_CONTENT_TAGS") {
+    return isGetContentTagsResultPayload(payload);
+  }
+
   if (requestType === "SIGN_EVENT") {
     return isRecord(payload) && typeof payload.id === "string" && typeof payload.sig === "string";
   }
@@ -1196,6 +1252,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
 
     if (value.type === "TAG_CONTENT") {
       return isTagContentResultPayload(value.payload);
+    }
+
+    if (value.type === "GET_CONTENT_TAGS") {
+      return isGetContentTagsResultPayload(value.payload);
     }
 
     if (value.type === "GET_NETWORK_TAGS" || value.type === "SET_NETWORK_TAGS") {

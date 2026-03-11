@@ -7,6 +7,7 @@ import { useCreditGate } from "../hooks/useCreditGate";
 import { CreditGate } from "../components/CreditGate";
 import { VideoPlayer } from "../components/player/VideoPlayer";
 import { Server, Download, ShieldCheck, Loader2, Heart, Share2, Repeat2 } from "lucide-react";
+import { SeederTagInput } from "../components/SeederTagInput";
 import { parseEntropyChunkMapTags, type EntropyChunkMap, type NostrEvent } from "@entropy/core";
 import { KINDS } from "../lib/constants";
 import { AvatarBadge } from "../components/profile/ProfileHeader";
@@ -239,6 +240,13 @@ export default function WatchPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Seeder tag input — visible after full download */}
+              {blobStatus === "ready" && (
+                <div className="border-t border-border bg-white/[0.02] px-3 py-2.5">
+                  <SeederTagInput rootHash={chunkMap.rootHash} />
+                </div>
+              )}
             </div>
           </CreditGate>
         )}

@@ -1,5 +1,6 @@
 import {
   mergeContentTags,
+  addContentTag,
   type ChunkStore,
   type StoreChunkPayload,
   type StoredChunk,
@@ -72,7 +73,6 @@ export async function addContentTagFromUser(
     return { added: false, tags };
   }
 
-  const { addContentTag } = await import("@entropy/core");
   const currentTags = await tagStore.getContentTags(rootHash);
   const updated = addContentTag(currentTags, tagName);
   await tagStore.setContentTags(rootHash, updated);

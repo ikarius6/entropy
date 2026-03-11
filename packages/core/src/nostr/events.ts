@@ -1,14 +1,18 @@
 import {
   ENTROPY_CHUNK_MAP_KIND,
+  ENTROPY_TAG_VOTE_KIND,
   ENTROPY_TAG,
   DEFAULT_NETWORK_TAG,
   buildEntropyChunkMapTags,
   parseEntropyChunkMapTags,
+  buildTagVoteTags,
+  parseTagVoteTags,
   type EntropyChunkMap,
   type NostrTag
 } from "./nip-entropy";
 
-export { ENTROPY_CHUNK_MAP_KIND, ENTROPY_TAG, DEFAULT_NETWORK_TAG };
+export { ENTROPY_CHUNK_MAP_KIND, ENTROPY_TAG_VOTE_KIND, ENTROPY_TAG, DEFAULT_NETWORK_TAG };
+export { buildTagVoteTags, parseTagVoteTags };
 
 export interface NostrEventDraft {
   kind: number;

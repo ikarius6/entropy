@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff, Repeat2, CornerUpLeft } from "lucide-react";
+import { SeederTagInput } from "../SeederTagInput";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap, ContentTag, UserSignalType } from "@entropy/core";
+import { useContentTags } from "../../hooks/useContentTags";
 import { AvatarBadge } from "../profile/ProfileHeader";
 import { useNostrProfile } from "../../hooks/useNostrProfile";
 import { useChunkBlob } from "../../hooks/useChunkBlob";
@@ -90,14 +92,24 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
     if (!showReplies) setShowComposer(false);
   };
 
-  // Extract content tags from the chunk map (if any) for signal emission
-  const contentTags: ContentTag[] = isMedia && displayItem.chunkMap
+  // Extract content tags from the chunk map (uploader tags in Nostr event)
+  const eventTags: ContentTag[] = isMedia && displayItem.chunkMap
     ? (displayItem.chunkMap as EntropyChunkMap).entropyTags ?? []
     : [];
 
+  // Nostr tag-vote subscription (seeder-added tags, available to ALL users)
+  const rootHash = isMedia && displayItem.chunkMap ? displayItem.chunkMap.rootHash : null;
+  const { tags: voteTags } = useContentTags(rootHash);
+
   const emitSignal = (signal: UserSignalType) => {
-    if (onSignal && contentTags.length > 0) {
-      onSignal(contentTags, signal);
+    if (!onSignal) return;
+    // Merge uploader tags (event) with seeder tags (Nostr votes), deduplicated
+    const merged = new Map<string, ContentTag>();
+    for (const t of eventTags) merged.set(t.name, t);
+    for (const t of voteTags) merged.set(t.name, t);
+    const allTags = [...merged.values()];
+    if (allTags.length > 0) {
+      onSignal(allTags, signal);
     }
   };
 
@@ -181,6 +193,10 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
       {isMedia && displayItem.chunkMap && (
         <CreditGate gate={gate} contentTitle={displayItem.chunkMap.title} mimeType={displayItem.chunkMap.mimeType}>
           <MediaPost chunkMap={displayItem.chunkMap} blobUrl={blobUrl} blobStatus={blobStatus} blobProgress={blobProgress} />
+          {/* Seeder tag input — visible after full download */}
+          {blobStatus === "ready" && (
+            <SeederTagInput rootHash={displayItem.chunkMap.rootHash} compact />
+          )}
         </CreditGate>
       )}
 
@@ -264,7 +280,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
         )}
 
         {/* Not interested */}
-        {contentTags.length > 0 && (
+        {eventTags.length > 0 && (
           <button
             onClick={() => emitSignal("not_interested")}
             title="Not interested in this type of content"

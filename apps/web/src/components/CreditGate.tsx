@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Lock, Upload, Share2, Loader2, CheckCircle, AlertCircle, Download } from "lucide-react";
+import { SeederTagInput } from "./SeederTagInput";
 import { discoverPopularContent } from "@entropy/core";
 import type { PopularContent } from "@entropy/core";
 import {
@@ -87,6 +88,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
   const [seededCount, setSeededCount] = useState(0);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [discovered, setDiscovered] = useState<PopularContent[]>([]);
+  const [seededItems, setSeededItems] = useState<Array<{ rootHash: string; title: string }>>([]);
 
   const relayPool = useEntropyStore((s) => s.relayPool);
   const networkTags = useEntropyStore((s) => s.networkTags);
@@ -119,6 +121,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
     setSeedError(null);
     setProgress(null);
     setDiscovered([]);
+    setSeededItems([]);
 
     try {
       // ── Phase 1: Discover popular content with few seeders ──
@@ -222,6 +225,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
               gatekeepers: pc.chunkMap.gatekeepers
             });
             successCount++;
+            setSeededItems(prev => [...prev, { rootHash: pc.chunkMap.rootHash, title: pc.chunkMap.title ?? "" }]);
           } catch (dlErr) {
             console.warn("[CreditGate] downloadForSeeding failed:", dlErr);
           } finally {
@@ -238,6 +242,7 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
             title: pc.chunkMap.title
           });
           successCount++;
+          setSeededItems(prev => [...prev, { rootHash: pc.chunkMap.rootHash, title: pc.chunkMap.title ?? "" }]);
         }
       }
 
@@ -381,6 +386,21 @@ function LockedOverlay({ gate, contentTitle, mimeType }: LockedOverlayProps) {
             <p className="text-xs text-muted">
               Credits will increase as peers download from you.
             </p>
+
+            {/* Tag seeded content — one hidden tag per item */}
+            {seededItems.length > 0 && (
+              <div className="w-full mt-3 flex flex-col gap-3">
+                {seededItems.map((item) => (
+                  <div key={item.rootHash} className="flex flex-col gap-1">
+                    <span className="text-xs text-muted truncate" title={item.title}>
+                      {item.title || item.rootHash.slice(0, 12) + "…"}
+                    </span>
+                    <SeederTagInput rootHash={item.rootHash} compact />
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button
               onClick={() => void gate.refresh()}
               className="credit-gate__btn credit-gate__btn--refresh"

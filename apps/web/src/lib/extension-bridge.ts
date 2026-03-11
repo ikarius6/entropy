@@ -14,6 +14,7 @@ import {
   isNodeStatusPayload,
   isEntropyRuntimePushMessage,
   isTagContentResultPayload,
+  isGetContentTagsResultPayload,
   type ColdStorageStatusPayload,
   type CreditSummaryPayload,
   type CreditHistoryPayload,
@@ -36,6 +37,7 @@ import {
   type ChunkDataPayload,
   type TagContentPayload,
   type TagContentResultPayload,
+  type GetContentTagsResultPayload,
   type SignAllowlistPayload,
   type SignOriginPayload,
   type NetworkTagsPayload,
@@ -561,6 +563,22 @@ export function exportIdentity(): Promise<ExportIdentityPayload> {
 
 export function tagContent(rootHash: string, tag: string): Promise<TagContentResultPayload> {
   return sendExtensionRequest("TAG_CONTENT", { rootHash, tag });
+}
+
+export function getContentTags(rootHash: string, timeoutMs = 3000): Promise<GetContentTagsResultPayload> {
+  const requestId = createEntropyRequestId("web");
+  const message: EntropyRuntimeMessage = {
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "GET_CONTENT_TAGS",
+    payload: { rootHash }
+  };
+
+  return sendBridgeMessage(
+    message,
+    (p) => (isGetContentTagsResultPayload(p) ? p : null),
+    timeoutMs
+  );
 }
 
 export function checkLocalChunks(hashes: string[], timeoutMs = 3000): Promise<CheckLocalChunksResultPayload> {

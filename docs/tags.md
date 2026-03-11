@@ -1,12 +1,12 @@
 # Entropy — Sistema de Tags Ocultos para Contenido y Preferencias
 
-> Plan de diseño para un mecanismo de etiquetado invisible que permite categorización orgánica del contenido y filtrado personalizado del feed sin exponer los tags a los usuarios.
+> Mecanismo de etiquetado invisible que permite categorización orgánica del contenido y filtrado personalizado del feed sin exponer los tags a los usuarios.
 
 ---
 
 ## 1. Principio Fundamental
 
-Los tags son **metadatos internos** del contenido, nunca visibles en la UI. Esto previene manipulación por parte de los usuarios (spam de tags populares, SEO gaming, etc.). La categorización emerge de forma orgánica: quien sube y quienes seedean completo un contenido contribuyen tags que reflejan lo que el contenido realmente es.
+Los tags son **metadatos internos** del contenido, nunca visibles en la UI de consumo. El input de tagging sí es visible para uploaders y seeders completos, pero los tags resultantes nunca se muestran como metadata del contenido a los consumidores. Esto previene manipulación (spam de tags populares, SEO gaming, etc.). La categorización emerge de forma orgánica: quien sube y quienes seedean completo un contenido contribuyen tags que reflejan lo que el contenido realmente es.
 
 ---
 
@@ -27,18 +27,22 @@ interface ContentTag {
 - Sin caracteres especiales excepto `-` y `_`
 - Validación regex: `/^[a-z0-9áéíóúñü][a-z0-9áéíóúñü _-]{0,18}[a-z0-9áéíóúñü]$/` (o 1 solo carácter mínimo)
 
+Implementación: `packages/core/src/tags/tag-validation.ts` (`validateTagName`, `normalizeTagName`)
+
 ---
 
 ## 3. Tags en el Contenido (Content Tags)
 
 ### 3.1 Quién puede asignar tags
 
-| Actor | Momento | Tags permitidos |
-|---|---|---|
-| **Uploader** (autor) | Al subir el contenido | **1 tag opcional** junto con título/descripción |
-| **Seeder completo** | Al terminar de seedear **todos** los chunks de un contenido | **1 tag** |
+| Actor | Momento | Tags permitidos | Mecanismo |
+|---|---|---|---|
+| **Uploader** (autor) | Al subir el contenido | **1 tag opcional** junto con título/descripción | Se incluye en el evento kind:7001 como `["entropy-tag", ...]` |
+| **Seeder completo** | Al terminar de seedear **todos** los chunks | **1 tag** | Publica evento Nostr kind:37001 (tag vote) + almacena en extensión via `TAG_CONTENT` |
 
-> Un seeder solo puede tagear un contenido **una vez**. Se registra localmente qué contenidos ya se tagearon para evitar duplicados.
+> Un seeder solo puede tagear un contenido **una vez**. La deduplicación opera en dos niveles:
+> - **Nostr (kind:37001):** Es un evento parameterized replaceable — el relay mantiene solo el último por autor + `d`-tag (rootHash).
+> - **Extensión (IndexedDB):** `UserTagActionRecord` registra localmente qué contenidos ya se tagearon.
 
 ### 3.2 Ciclo de vida de un tag en un contenido
 
@@ -46,31 +50,25 @@ interface ContentTag {
  Uploader sube video + tag "música"
          │
          ▼
- ContentTags = [{ name: "música", counter: 1, updatedAt: 1700000000 }]
+ Evento kind:7001 tiene: ["entropy-tag", "música", "1", "T1"]
          │
          │  Seeder A completa seed → tag "música"
+         │  → Publica evento kind:37001 con ["entropy-tag", "música"]
+         │  → TAG_CONTENT a extensión (P2P propagation)
          ▼
- ContentTags = [{ name: "música", counter: 2, updatedAt: 1700003600 }]
-         │                                          ↑ counter +1, fecha actualizada
+ Cualquier usuario que subscribe kind:37001 #d:[rootHash]
+ ve: { música: 2 votos (uploader + Seeder A) }
          │
          │  Seeder B completa seed → tag "reggaeton"
+         │  → Publica evento kind:37001 con ["entropy-tag", "reggaeton"]
          ▼
- ContentTags = [
-   { name: "música",    counter: 2, updatedAt: 1700003600 },
-   { name: "reggaeton", counter: 1, updatedAt: 1700007200 }
- ]
-         │
-         │  Seeder C completa seed → tag "música"
-         ▼
- ContentTags = [
-   { name: "música",    counter: 3, updatedAt: 1700010800 },
-   { name: "reggaeton", counter: 1, updatedAt: 1700007200 }
- ]
+ Subscripción kind:37001 muestra:
+   { música: 2 votos, reggaeton: 1 voto }
 ```
 
-### 3.3 Límite de 30 tags y política de reemplazo
+### 3.3 Límite de 30 tags y política de reemplazo (P2P local)
 
-Cada contenido puede tener un **máximo de 30 tags**. Cuando llega un tag nuevo (nombre que no existe aún) y ya hay 30 tags:
+En el almacenamiento local de la extensión (IndexedDB), cada contenido puede tener un **máximo de 30 tags**. Cuando llega un tag nuevo y ya hay 30:
 
 ```
  Nuevo tag "electrónica" llega, 30 tags ya existen
@@ -88,30 +86,24 @@ Cada contenido puede tener un **máximo de 30 tags**. Cuando llega un tag nuevo 
  └──────────────────────────────────────────────────────────┘
 ```
 
-**Ejemplo:**
+Implementación: `packages/core/src/tags/content-tags.ts` (`addContentTag`, `mergeContentTags`)
 
-```
-Tags actuales (30 en total), el más débil es:
-  { name: "random", counter: 1, updatedAt: 1699900000 }
-
-Nuevo tag: { name: "electrónica", counter: 1, updatedAt: 1700020000 }
-
-→ counter nuevo (1) >= counter candidato (1) → REEMPLAZAR
-→ "random" sale, "electrónica" entra
-
-Esto preserva:
-  ✓ Tags con counter alto (populares) → nunca se reemplazan fácilmente
-  ✓ Tags recientes con mismo counter → sobreviven sobre los antiguos
-  ✓ El tag pool se renueva orgánicamente
-```
+> **Nota:** Este límite aplica al almacenamiento P2P local. Los tag votes en Nostr (kind:37001) no tienen este límite — la agregación se hace en el cliente al subscribir.
 
 ---
 
 ## 4. Transporte: Cómo viajan los tags
 
-### 4.1 Tags en el Chunk Map (kind:7001)
+Los tags viajan por **dos canales complementarios**:
 
-El uploader puede incluir su tag inicial en el evento Nostr. Se añade un tag Nostr `entropy-tag`:
+| Canal | Alcance | Contenido |
+|---|---|---|
+| **Nostr (relays)** | Todos los usuarios conectados | Tag del uploader (kind:7001) + tag votes de seeders (kind:37001) |
+| **P2P (WebRTC)** | Solo peers que intercambian chunks | Tags acumulados localmente (TAG_UPDATE binary) |
+
+### 4.1 Tags del uploader en el Chunk Map (kind:7001)
+
+El uploader puede incluir su tag inicial en el evento Nostr. Se serializa como tag Nostr `entropy-tag`:
 
 ```json
 {
@@ -127,18 +119,45 @@ El uploader puede incluir su tag inicial en el evento Nostr. Se añade un tag No
 }
 ```
 
-Formato del tag Nostr: `["entropy-tag", "<name>", "<counter>", "<updatedAt>"]`
+Formato: `["entropy-tag", "<name>", "<counter>", "<updatedAt>"]`
 
-> **Nota:** Los tags `entropy-tag` en el evento kind:7001 son la semilla inicial. La evolución de los tags ocurre fuera del relay.
+Implementación: `packages/core/src/nostr/nip-entropy.ts` (`buildEntropyChunkMapTags`, `parseEntropyChunkMapTags`)
 
-### 4.2 Tags como metadato P2P (fuera de Nostr)
+### 4.2 Tag votes de seeders (kind:37001) — Mecanismo principal
 
-Cuando un peer solicita un contenido o completa un seed, los tags actualizados se intercambian **vía el canal WebRTC existente** usando un nuevo tipo de mensaje en el protocolo de chunk transfer:
+Cuando un seeder agrega un tag, se publica un **evento Nostr parameterized replaceable** (NIP-33):
+
+```json
+{
+  "kind": 37001,
+  "content": "",
+  "tags": [
+    ["d", "<root_hash>"],
+    ["t", "entropy"],
+    ["x-hash", "<root_hash>"],
+    ["entropy-tag", "<tag_name>"]
+  ]
+}
+```
+
+**Características:**
+- **Parameterized replaceable:** El relay mantiene solo el último evento por `pubkey` + `d`-tag. Un usuario solo puede tener un voto activo por contenido.
+- **Descubrible:** Cualquier usuario puede subscribir `{ kinds: [37001], "#d": ["<rootHash>"] }` para obtener todos los tag votes de un contenido.
+- **Sin P2P necesario:** Los tags llegan a todos los usuarios via relays, incluso si nunca descargaron el contenido.
+
+Implementación:
+- Builder/parser: `packages/core/src/nostr/nip-entropy.ts` (`buildTagVoteTags`, `parseTagVoteTags`)
+- Publicación: `apps/web/src/components/SeederTagInput.tsx` (firma via NIP-07 `window.nostr.signEvent`)
+- Subscripción: `apps/web/src/hooks/useContentTags.ts` (hook que agrega votos por pubkey)
+
+### 4.3 Tags como metadato P2P — Mecanismo secundario
+
+Adicionalmente, los tags se intercambian vía WebRTC durante transferencia de chunks usando TAG_UPDATE:
 
 ```
- TAG_UPDATE (type=4)
+ TAG_UPDATE (type=0x08)
  ┌──────┬──────────────┬────────────┬──────────────────────────────────┐
- │ 0x04 │ root_hash    │ tag_count  │ tag_entries[]                    │
+ │ 0x08 │ root_hash    │ tag_count  │ tag_entries[]                    │
  │ 1B   │ 32B (SHA256) │ 1B (u8)   │ variable                         │
  └──────┴──────────────┴────────────┴──────────────────────────────────┘
 
@@ -149,13 +168,17 @@ Cuando un peer solicita un contenido o completa un seed, los tags actualizados s
  └───────────┴──────────────┴──────────────┴───────────────────────┘
 ```
 
-### 4.3 Flujo de sincronización de tags
+Implementación: `packages/core/src/tags/tag-transfer.ts` (`encodeTagUpdate`, `decodeTagUpdate`)
+
+El P2P propaga tags acumulados con counters (útil para la política de reemplazo local), mientras que Nostr propaga votos individuales por usuario. Ambos mecanismos coexisten: el P2P enriquece el almacenamiento local de la extensión, y Nostr garantiza que todos los usuarios vean los tags sin necesidad de descargar el contenido.
+
+### 4.4 Flujo de sincronización P2P (merge local)
 
 ```
  Seeder A tiene contenido X con tags [música:3, rock:2]
  Seeder B tiene contenido X con tags [música:2, pop:1]
          │
-         │  Durante transferencia de chunks o al completar seed,
+         │  Durante transferencia de chunks,
          │  ambos intercambian TAG_UPDATE messages
          ▼
  ┌──────────────────────────────────────────────────────────┐
@@ -173,6 +196,8 @@ Cuando un peer solicita un contenido o completa un seed, los tags actualizados s
  └──────────────────────────────────────────────────────────┘
 ```
 
+Implementación: `packages/core/src/tags/content-tags.ts` (`mergeContentTags`)
+
 ---
 
 ## 5. Preferencias de Usuario (User Tag Preferences)
@@ -189,22 +214,43 @@ interface UserTagPreference {
 }
 ```
 
-El usuario tiene una lista local de **UserTagPreference** almacenada en IndexedDB (nunca se publica a Nostr).
+El usuario tiene una lista local de **UserTagPreference** almacenada en `localStorage` (nunca se publica a Nostr).
+
+Implementación: `apps/web/src/hooks/useTagPreferences.ts` (hook con `recordSignal` callback)
 
 ### 5.2 Señales que modifican preferencias
 
-| Acción del usuario | Efecto sobre los tags del contenido |
-|---|---|
-| **Like** un post | `+1` al score de cada tag del contenido |
-| **Share** un post | `+2` al score de cada tag del contenido |
-| **Watch >50%** de un video | `+1` al score de cada tag |
-| **Seed completo** de un contenido | `+1` al score de cada tag |
-| **"No me interesa"** en un post | `-1` al score de cada tag del contenido |
-| **Block/Mute** un autor | `-3` al score de cada tag del último contenido visto |
+| Acción del usuario | Efecto sobre los tags del contenido | Implementación |
+|---|---|---|
+| **Like** un post | `+1` al score de cada tag del contenido | `PostCard.tsx` → `emitSignal("like")` |
+| **Share** un post | `+2` al score de cada tag del contenido | `PostCard.tsx` → `emitSignal("share")` |
+| **"No me interesa"** en un post | `-1` al score de cada tag del contenido | `PostCard.tsx` → `emitSignal("not_interested")` |
 
-> Los valores de peso son configurables y se pueden ajustar con el tiempo.
+> Los valores de peso están definidos en `packages/core/src/tags/user-preferences.ts` (`SIGNAL_WEIGHTS`).
 
-### 5.3 Ejemplo de evolución de preferencias
+### 5.3 Fuente de tags para señales
+
+Cuando el usuario interactúa con un post, `PostCard` combina tags de **dos fuentes** antes de emitir la señal:
+
+```
+ PostCard renderiza un kind:7001
+         │
+         ├─ eventTags: tags del uploader (extraídos del evento Nostr)
+         │  → (displayItem.chunkMap as EntropyChunkMap).entropyTags
+         │
+         ├─ voteTags: tag votes de seeders (subscripción kind:37001)
+         │  → useContentTags(rootHash).tags
+         │
+         ▼
+ emitSignal(): merge deduplicado (por nombre, voteTags tiene prioridad)
+         │
+         ▼
+ onSignal(mergedTags, "like") → useTagPreferences.recordSignal()
+```
+
+Esto garantiza que las preferencias del usuario reflejan **todos** los tags conocidos del contenido, incluyendo los agregados por seeders después de la publicación original.
+
+### 5.4 Ejemplo de evolución de preferencias
 
 ```
  Usuario da like a video con tags [música:5, rock:3, en-vivo:1]
@@ -233,9 +279,9 @@ El usuario tiene una lista local de **UserTagPreference** almacenada en IndexedD
    reggaeton → score: -1, updatedAt: now ← negativo = señal de rechazo
 ```
 
-### 5.4 Límite de preferencias
+### 5.5 Límite de preferencias
 
-Las preferencias de usuario también se limitan a **100 tags**. Política de evicción:
+Las preferencias de usuario se limitan a **100 tags**. Política de evicción:
 1. Cuando llegan nuevos tags y hay 100, eliminar el tag con menor `|score|` y `updatedAt` más antiguo.
 2. Tags con score 0 y sin actividad reciente (>30 días) se purgan automáticamente.
 
@@ -268,6 +314,8 @@ function scoreContent(
 }
 ```
 
+Implementación: `packages/core/src/tags/tag-scoring.ts` (`scoreContent`)
+
 ### 6.2 Ordenamiento del feed
 
 ```
@@ -276,10 +324,11 @@ function scoreContent(
          ▼
  ┌──────────────────────────────────────────────────────────┐
  │  Para cada kind:7001:                                    │
- │    1. Extraer contentTags (del evento + cache P2P)       │
- │    2. Calcular relevanceScore con preferencias           │
- │    3. Calcular recencyScore = 1 / (ahora - created_at)   │
- │    4. finalScore = α·relevanceScore + β·recencyScore     │
+ │    1. Extraer contentTags del evento (uploader tags)     │
+ │    2. Merge con tag votes (kind:37001 subscription)      │
+ │    3. Calcular relevanceScore con preferencias           │
+ │    4. Calcular recencyScore = 1 / (ahora - created_at)   │
+ │    5. finalScore = α·relevanceScore + β·recencyScore     │
  │       (α=0.6, β=0.4 por defecto, ajustable)             │
  │                                                          │
  │  Ordenar feed por finalScore DESC                        │
@@ -293,20 +342,22 @@ function scoreContent(
 
 | Modo | Comportamiento |
 |---|---|
-| **Cronológico** | Sin filtrado por tags, orden por `created_at` |
-| **Para ti** (default) | Ordenado por `finalScore` usando preferencias |
-| **Explorar** | Muestra contenido con tags populares (counter alto) que el usuario NO ha visto |
+| **Latest** | Sin filtrado por tags, orden por `created_at` |
+| **For You** (default) | Ordenado por `finalScore` usando preferencias |
+| **Explore** | Muestra contenido con tags populares (counter alto) que el usuario NO ha visto |
+
+Implementación: `apps/web/src/hooks/useNostrFeed.ts` + `apps/web/src/components/feed/Feed.tsx`
 
 ---
 
 ## 7. Almacenamiento
 
-### 7.1 IndexedDB — Nuevas tablas
+### 7.1 IndexedDB (extensión) — Tablas de tags
 
 ```typescript
-// En @entropy/core — Dexie schema
+// En packages/core/src/tags/tag-store.ts — Dexie schema
 
-// Tags de un contenido específico
+// Tags de un contenido específico (almacenamiento P2P local)
 interface ContentTagRecord {
   id: string;           // `${rootHash}:${tagName}` — PK compuesto
   rootHash: string;     // Hash raíz del contenido
@@ -315,14 +366,14 @@ interface ContentTagRecord {
   updatedAt: number;    // Epoch seconds
 }
 
-// Preferencias del usuario
+// Preferencias del usuario (web app — localStorage, no IndexedDB)
 interface UserTagPreferenceRecord {
   name: string;         // PK — Tag name normalizado
   score: number;        // Puntaje acumulado
   updatedAt: number;    // Última modificación
 }
 
-// Registro de qué contenidos ya tageó este usuario (evitar duplicados)
+// Registro de qué contenidos ya tageó este usuario (deduplicación)
 interface UserTagActionRecord {
   rootHash: string;     // PK — Hash del contenido
   tag: string;          // Tag que asignó
@@ -330,52 +381,56 @@ interface UserTagActionRecord {
 }
 ```
 
-**Índices Dexie:**
+### 7.2 Persistencia por capa
 
-```typescript
-contentTags: '&id, rootHash, name, counter, updatedAt'
-userTagPreferences: '&name, score, updatedAt'
-userTagActions: '&rootHash'
-```
-
-### 7.2 Persistencia
-
-- **Content tags**: Se persisten en IndexedDB y se sincronizan vía P2P durante intercambios.
-- **User preferences**: Solo locales, nunca salen del dispositivo.
-- **Tag actions**: Solo locales, para deduplicación.
+| Dato | Dónde | Cómo |
+|---|---|---|
+| **Content tags (P2P)** | Extensión IndexedDB | `TagStore.setContentTags()` — se sincronizan vía TAG_UPDATE P2P |
+| **Tag votes (Nostr)** | Relays Nostr | Eventos kind:37001 — se leen via subscripción `useContentTags` |
+| **User preferences** | Web app `localStorage` | `useTagPreferences` hook — nunca salen del dispositivo |
+| **Tag actions** | Extensión IndexedDB | `TagStore.recordTagAction()` — deduplicación local |
 
 ---
 
 ## 8. Implementación por Módulos
 
-### 8.1 `@entropy/core` — Nuevos módulos
+### 8.1 `@entropy/core`
 
 | Archivo | Responsabilidad |
 |---|---|
+| `src/nostr/nip-entropy.ts` | Constantes `ENTROPY_TAG_VOTE_KIND` (37001), `buildTagVoteTags`, `parseTagVoteTags`, `buildEntropyChunkMapTags` (incluye `entropy-tag`) |
+| `src/nostr/events.ts` | Re-exports de kinds y builders; `buildEntropyChunkMapEvent` |
 | `src/tags/content-tags.ts` | CRUD de ContentTag[], merge, política de reemplazo (cap 30) |
-| `src/tags/user-preferences.ts` | CRUD de UserTagPreference[], señales, evicción (cap 100) |
+| `src/tags/user-preferences.ts` | Señales (`applySignal`), pesos (`SIGNAL_WEIGHTS`), evicción (cap 100) |
 | `src/tags/tag-scoring.ts` | Algoritmo de scoring de contenido contra preferencias |
 | `src/tags/tag-validation.ts` | Normalización y validación de tag names |
 | `src/tags/tag-transfer.ts` | Encode/decode de TAG_UPDATE para protocolo binario P2P |
-| `src/storage/tag-store.ts` | Persistencia en IndexedDB (ContentTagRecord, UserTagPreferenceRecord, UserTagActionRecord) |
+| `src/tags/tag-store.ts` | Persistencia en IndexedDB (`IndexedDbTagStore`) |
+| `src/types/extension-bridge.ts` | Mensajes bridge: `TAG_CONTENT`, `GET_CONTENT_TAGS` |
 
-### 8.2 `@entropy/web` — Cambios
+### 8.2 `@entropy/web`
 
-| Archivo | Cambio |
+| Archivo | Responsabilidad |
 |---|---|
-| `src/hooks/useTagPreferences.ts` | Hook para leer/escribir preferencias locales |
-| `src/hooks/useNostrFeed.ts` | Integrar scoring por tags al ordenar el feed |
-| Upload pipeline | Agregar campo opcional de tag (input con límite 20 chars) |
-| PostCard actions | Like/share/not-interested → actualizar preferencias |
-| Settings page | Modo de feed (cronológico / para ti / explorar) |
+| `src/hooks/useContentTags.ts` | **Hook principal.** Subscribe a kind:37001 por rootHash. Agrega votos por pubkey → retorna `{ tags, userTagged, userTag }` |
+| `src/hooks/useTagPreferences.ts` | Lee/escribe preferencias en localStorage. Expone `recordSignal(contentTags, signal)` |
+| `src/hooks/useNostrFeed.ts` | Integra scoring por tags al ordenar el feed (modos Latest / For You / Explore) |
+| `src/components/SeederTagInput.tsx` | UI para seeders. Publica evento kind:37001 via NIP-07 + `TAG_CONTENT` bridge (P2P). Usa `useContentTags` para detectar voto previo |
+| `src/components/feed/PostCard.tsx` | Merge `eventTags` (kind:7001) + `voteTags` (`useContentTags`) → `emitSignal()` al like/share/not_interested |
+| `src/components/CreditGate.tsx` | Muestra `SeederTagInput` al completar seed via credit gate |
+| `src/pages/WatchPage.tsx` | Muestra `SeederTagInput` al completar descarga |
+| `src/pages/UploadPage.tsx` | Campo de tag opcional al subir contenido |
+| `src/components/feed/Feed.tsx` | Selector de modo de feed, pasa `recordSignal` a cada PostCard |
+| `src/lib/extension-bridge.ts` | Funciones bridge: `tagContent()`, `getContentTags()` |
+| `src/lib/constants.ts` | `KINDS.ENTROPY_TAG_VOTE = 37001` |
 
-### 8.3 `@entropy/extension` — Cambios
+### 8.3 `@entropy/extension`
 
-| Archivo | Cambio |
+| Archivo | Responsabilidad |
 |---|---|
-| `background/chunk-server.ts` | Enviar TAG_UPDATE al completar transferencia |
-| `background/chunk-ingest.ts` | Almacenar content tags recibidos vía P2P |
-| Bridge protocol | Nuevo mensaje `TAG_CONTENT` para que la web envíe un tag al completar seed |
+| `background/chunk-server.ts` | Envía TAG_UPDATE al completar transferencia de chunks |
+| `background/chunk-ingest.ts` | `addContentTagFromUser()` — almacena tag + registra acción de deduplicación |
+| `background/service-worker.ts` | Handlers para `TAG_CONTENT` y `GET_CONTENT_TAGS` bridge messages |
 
 ---
 
@@ -383,43 +438,52 @@ userTagActions: '&rootHash'
 
 | Amenaza | Mitigación |
 |---|---|
-| **Tag spam** (un user crea miles de contenidos con el mismo tag) | Tags son por contenido, no globales; el counter solo sube cuando **diferentes** seeders confirman |
-| **Sybil attack** (crear peers falsos para inflar counter) | Solo peers que completan seed de **todos** los chunks pueden tagear; el costo de ancho de banda desincentiva Sybil |
-| **Tag visible = manipulable** | Tags **nunca** se muestran en la UI; el usuario no sabe qué tags tiene un contenido |
-| **Reverse engineering de tags** | Los tags viajan en P2P (no en relay público); un observador externo solo ve el tag inicial del evento kind:7001 |
-| **Gaming de preferencias** | Las preferencias son locales; no hay incentivo para manipular tu propio perfil |
+| **Tag spam** (un user crea miles de contenidos con el mismo tag) | Tags son por contenido, no globales; kind:37001 es parameterized replaceable → un voto por usuario por contenido |
+| **Sybil attack** (crear identidades falsas para inflar counter) | Los votos kind:37001 requieren una identidad Nostr firmada; el costo de crear identidades + seedear todos los chunks desincentiva Sybil |
+| **Tag visible = manipulable** | El input de tagging es visible solo para seeders, pero los tags resultantes **nunca** se muestran como metadata del contenido a consumidores |
+| **Observabilidad en relays** | Los eventos kind:37001 son visibles en relays públicos. Un observador puede ver qué tags se votaron para cada contenido. Esto es un trade-off aceptable: la categorización orgánica requiere que los votos sean descubribles, y los tags individuales no revelan información sensible |
+| **Gaming de preferencias** | Las preferencias son 100% locales (localStorage); no hay incentivo para manipular tu propio perfil |
 
 ---
 
 ## 10. Flujo Completo (Ejemplo E2E)
 
 ```
- 1. Alice sube un video y opcionalmente escribe tag "surf"
-    → ContentTags: [{ name: "surf", counter: 1, updatedAt: T1 }]
+ 1. Alice sube un video y escribe tag "surf" en UploadPage
+    → useUploadPipeline incluye entropyTags en el EntropyChunkMap
     → Evento kind:7001 publicado con ["entropy-tag", "surf", "1", "T1"]
+    → tagContent("surf") almacena en extensión para P2P
 
  2. Bob descarga el video (ve el evento en su feed)
-    → Bob seedea todos los chunks
-    → Al completar, Bob puede agregar 1 tag → escribe "playa"
-    → ContentTags: [surf:1, playa:1]
-    → Bob envía TAG_UPDATE a peers durante futuros intercambios
+    → Bob seedea todos los chunks via CreditGate
+    → Al completar, SeederTagInput aparece → Bob escribe "playa"
+    → SeederTagInput publica evento kind:37001:
+      { kind: 37001, tags: [["d", rootHash], ["entropy-tag", "playa"], ...] }
+    → Firmado via window.nostr.signEvent (NIP-07) → publicado a relays
+    → tagContent("playa") almacena en extensión para P2P
 
  3. Carol descarga el video, seedea completo → tag "surf"
-    → ContentTags: [surf:2, playa:1]  (surf counter incrementa)
+    → Publica kind:37001 con ["entropy-tag", "surf"]
+    → Ahora hay 2 eventos kind:37001 + el tag original del kind:7001
 
- 4. 50 personas más seedean y tagean, mix de "surf", "ocean", "travel", etc.
-    → ContentTags evoluciona orgánicamente, cap en 30 tags
-    → Tags débiles (counter bajo + antiguos) se reemplazan
+ 4. 50 personas más seedean y tagean
+    → 50 eventos kind:37001 publicados en relays
+    → useContentTags(rootHash) agrega: { surf: 30, playa: 8, ocean: 5, ... }
+    → Tags evolucionan orgánicamente sin límite de 30 (Nostr)
+    → La política de cap 30 solo aplica al almacenamiento P2P local
 
- 5. Dave navega el feed:
-    → Dave antes dio like a contenido con tags [surf:5, travel:3]
-    → Sus preferencias: { surf: +3, travel: +2 }
-    → El video de Alice tiene tags [surf:30, playa:8, ocean:5, travel:3]
-    → relevanceScore = 3 × log2(31) + 2 × log2(4) = ~18.8
-    → El video aparece alto en el feed "Para ti" de Dave
+ 5. Dave navega el feed (nunca descargó este contenido):
+    → PostCard monta → useContentTags subscribe kind:37001 #d:[rootHash]
+    → Recibe todos los tag votes de relays → voteTags = [surf:30, playa:8, ...]
+    → PostCard merge: eventTags (kind:7001) + voteTags (kind:37001)
+    → Dave da like:
+      emitSignal("like") → onSignal([surf:30, playa:8, ocean:5, ...], "like")
+      → useTagPreferences.recordSignal() actualiza:
+        { surf: +1, playa: +1, ocean: +1, ... }
 
- 6. Dave marca "no me interesa" en un video de cocina con tags [recetas:10, cocina:5]
-    → Sus preferencias: { recetas: -1, cocina: -1 }
+ 6. Dave marca "no me interesa" en un video de cocina
+    → PostCard merge eventTags + voteTags → [recetas:10, cocina:5]
+    → emitSignal("not_interested") → { recetas: -1, cocina: -1 }
     → Futuros videos de cocina aparecen más abajo o se filtran
 ```
 
@@ -433,7 +497,7 @@ userTagActions: '&rootHash'
 - [x] `user-preferences.ts` — señales, cap 100, evicción
 - [x] `tag-scoring.ts` — scoring de contenido
 - [x] `tag-store.ts` — persistencia IndexedDB
-- [x] Tests unitarios para todos los módulos (54 tests)
+- [x] Tests unitarios para todos los módulos
 
 ### Fase B — Transporte P2P ✅
 - [x] `tag-transfer.ts` — encode/decode binario TAG_UPDATE
@@ -441,6 +505,7 @@ userTagActions: '&rootHash'
 - [x] Integrar recepción de TAG_UPDATE en `chunk-ingest.ts`
 - [x] Merge de tags recibidos con tags locales
 - [x] `TAG_CONTENT` bridge message + service-worker handler
+- [x] `GET_CONTENT_TAGS` bridge message + service-worker handler
 - [x] `entropy-tag` en `nip-entropy.ts` (build/parse kind:7001)
 
 ### Fase C — Web App Integration ✅
@@ -450,10 +515,20 @@ userTagActions: '&rootHash'
 - [x] Integrar scoring en `useNostrFeed` (for_you / explore modes)
 - [x] Acciones de Like/Share/Not-interested → actualizar preferencias (`PostCard.tsx`)
 - [x] Selector de modo de feed: Latest / For You / Explore (`Feed.tsx`)
-- [ ] Tests E2E del flujo completo
 
-### Fase D — Refinamiento
+### Fase D — Propagación Nostr de Seeder Tags ✅
+- [x] `ENTROPY_TAG_VOTE_KIND = 37001` — evento parameterized replaceable (NIP-33)
+- [x] `buildTagVoteTags` / `parseTagVoteTags` en `nip-entropy.ts`
+- [x] `ENTROPY_TAG_VOTE: 37001` en `KINDS` constants
+- [x] `useContentTags` hook — subscribe kind:37001, agrega votos por pubkey
+- [x] `SeederTagInput` refactorizado: publica kind:37001 + TAG_CONTENT (P2P backup)
+- [x] `PostCard` refactorizado: merge `eventTags` + `voteTags` en `emitSignal()`
+- [x] Detección de voto previo via `useContentTags.userTagged`
+- [x] Tests: `tag-vote-event.test.ts` (11 tests), `useContentTags.test.ts` (14 tests)
+
+### Fase E — Refinamiento
 - [ ] Ajuste de pesos (α, β, signal weights) basado en uso real
 - [ ] Purga automática de preferencias stale (>30 días, score 0)
 - [ ] Analytics locales: mostrar al usuario resumen de "tus intereses" (sin revelar tags específicos por contenido)
 - [ ] Modo "Explorar" con tags trending (counter alto reciente)
+- [ ] Tests E2E del flujo completo

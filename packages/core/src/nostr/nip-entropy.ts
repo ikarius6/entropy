@@ -1,5 +1,12 @@
 export const ENTROPY_CHUNK_MAP_KIND = 7001;
 
+/**
+ * Parameterized replaceable event (NIP-33, kind 30000–39999).
+ * Each user can have ONE tag vote per rootHash (d-tag = rootHash).
+ * Relays automatically keep only the latest per author + d-tag.
+ */
+export const ENTROPY_TAG_VOTE_KIND = 37001;
+
 export type NostrTag = string[];
 
 export interface EntropyContentTag {
@@ -130,4 +137,39 @@ export function parseEntropyChunkMapTags(tags: NostrTag[]): EntropyChunkMap {
     gatekeepers,
     entropyTags: entropyTags.length > 0 ? entropyTags : undefined
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tag vote events (kind 37001 — parameterized replaceable)
+// ---------------------------------------------------------------------------
+
+export interface TagVoteEvent {
+  rootHash: string;
+  tagName: string;
+}
+
+export function buildTagVoteTags(rootHash: string, tagName: string, networkTags?: string[]): NostrTag[] {
+  const resolvedTags = networkTags && networkTags.length > 0 ? networkTags : [ENTROPY_TAG];
+  return [
+    ["d", rootHash],
+    ...resolvedTags.map((t) => ["t", t] as NostrTag),
+    ["x-hash", rootHash],
+    ["entropy-tag", tagName],
+  ];
+}
+
+export function parseTagVoteTags(tags: NostrTag[]): TagVoteEvent {
+  let rootHash = "";
+  let tagName = "";
+
+  for (const tag of tags) {
+    if (tag[0] === "d" && tag[1]) rootHash = tag[1];
+    if (tag[0] === "entropy-tag" && tag[1]) tagName = tag[1];
+  }
+
+  if (!rootHash) {
+    throw new Error("Tag vote event is missing the d tag (rootHash).");
+  }
+
+  return { rootHash, tagName };
 }
