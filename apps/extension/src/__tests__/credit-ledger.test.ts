@@ -315,17 +315,12 @@ describe("extension credit-ledger", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Regression: duplicate recordDownloadCredit for the same chunk causes double deduction
+  // Dedup: duplicate recordDownloadCredit for the same chunk is silently skipped
   // ---------------------------------------------------------------------------
 
-  it("REGRESSION: calling recordDownloadCredit twice for the same chunk deducts twice (ledger is append-only)", async () => {
-    // This test documents that the ledger itself does NOT deduplicate entries.
-    // The caller (service-worker GET_CHUNK handler) is responsible for calling
-    // recordDownloadCredit only once per unique P2P fetch, which is enforced by
-    // executing it inside the deduplicated inflightP2PFetches promise.
+  it("recordDownloadCredit deduplicates by chunkHash — second call is a no-op", async () => {
     const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
 
-    // Seed 2 MB of credits
     await recordUploadCredit({
       peerPubkey: "peer-seeder",
       bytes: 2_000_000,
@@ -337,7 +332,6 @@ describe("extension credit-ledger", () => {
     const before = await getCreditSummary();
     expect(before.balance).toBe(2_000_000);
 
-    // Simulate the bug: two concurrent download credits for the same chunk (~900 KB)
     const chunkSize = 900_000;
     await recordDownloadCredit({
       peerPubkey: "peer-provider",
@@ -347,20 +341,215 @@ describe("extension credit-ledger", () => {
       timestamp: 2
     });
 
+    // Second call for the same chunkHash — must be silently skipped
     await recordDownloadCredit({
       peerPubkey: "peer-provider",
       bytes: chunkSize,
       chunkHash: "content-chunk-abc",
       receiptSignature: "p2p-fetch",
-      timestamp: 2
+      timestamp: 3
     });
 
     const after = await getCreditSummary();
 
-    // Without deduplication at the caller, balance drops by 2x the chunk size
-    expect(after.totalDownloaded).toBe(chunkSize * 2);
-    expect(after.balance).toBe(2_000_000 - chunkSize * 2);
-    expect(after.entryCount).toBe(3); // 1 upload + 2 downloads
+    expect(after.totalDownloaded).toBe(chunkSize);
+    expect(after.balance).toBe(2_000_000 - chunkSize);
+    expect(after.entryCount).toBe(2); // 1 upload + 1 download (deduped)
+  });
+
+  it("dedup allows different chunks to be charged independently", async () => {
+    const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
+
+    await recordUploadCredit({
+      peerPubkey: "peer-seeder",
+      bytes: 5_000_000,
+      chunkHash: "seed-chunk",
+      receiptSignature: "sig-seed",
+      timestamp: 1
+    });
+
+    await recordDownloadCredit({
+      peerPubkey: "peer-a",
+      bytes: 1_000_000,
+      chunkHash: "chunk-alpha",
+      receiptSignature: "p2p-fetch",
+      timestamp: 2
+    });
+
+    await recordDownloadCredit({
+      peerPubkey: "peer-b",
+      bytes: 1_500_000,
+      chunkHash: "chunk-beta",
+      receiptSignature: "p2p-fetch",
+      timestamp: 3
+    });
+
+    const summary = await getCreditSummary();
+
+    expect(summary.totalDownloaded).toBe(2_500_000);
+    expect(summary.balance).toBe(2_500_000);
+    expect(summary.entryCount).toBe(3); // 1 upload + 2 distinct downloads
+  });
+
+  it("dedup returns current summary without modifying storage on duplicate", async () => {
+    const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
+
+    await recordUploadCredit({
+      peerPubkey: "peer-seeder",
+      bytes: 3_000_000,
+      chunkHash: "seed-chunk",
+      receiptSignature: "sig-seed",
+      timestamp: 1
+    });
+
+    const first = await recordDownloadCredit({
+      peerPubkey: "peer-provider",
+      bytes: 500_000,
+      chunkHash: "chunk-x",
+      receiptSignature: "p2p-fetch",
+      timestamp: 2
+    });
+
+    // The duplicate call should return a summary identical to the current state
+    const duplicate = await recordDownloadCredit({
+      peerPubkey: "peer-provider",
+      bytes: 500_000,
+      chunkHash: "chunk-x",
+      receiptSignature: "p2p-fetch",
+      timestamp: 3
+    });
+
+    expect(duplicate.balance).toBe(first.balance);
+    expect(duplicate.totalDownloaded).toBe(first.totalDownloaded);
+    expect(duplicate.entryCount).toBe(first.entryCount);
+
+    // Verify storage wasn't mutated
+    const fresh = await getCreditSummary();
+    expect(fresh.entryCount).toBe(2);
+  });
+
+  it("dedup does not block upload credits for the same chunkHash", async () => {
+    // Upload (earn) credits should never be deduped — a user can seed the
+    // same chunk to multiple peers and should earn for each.
+    const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
+
+    await recordUploadCredit({
+      peerPubkey: "peer-a",
+      bytes: 1_000_000,
+      chunkHash: "chunk-shared",
+      receiptSignature: "sig-1",
+      timestamp: 1
+    });
+
+    await recordDownloadCredit({
+      peerPubkey: "peer-b",
+      bytes: 500_000,
+      chunkHash: "chunk-shared",
+      receiptSignature: "p2p-fetch",
+      timestamp: 2
+    });
+
+    // Second upload for the same chunk (served to a different peer)
+    await recordUploadCredit({
+      peerPubkey: "peer-c",
+      bytes: 1_000_000,
+      chunkHash: "chunk-shared",
+      receiptSignature: "sig-2",
+      timestamp: 3
+    });
+
+    const summary = await getCreditSummary();
+
+    expect(summary.totalUploaded).toBe(2_000_000);
+    expect(summary.totalDownloaded).toBe(500_000);
+    expect(summary.balance).toBe(1_500_000);
+    expect(summary.entryCount).toBe(3);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Full scenario: the A-B-C bug from the issue report
+  // ---------------------------------------------------------------------------
+
+  it("scenario: B views content, seeds to A, refreshes — no double charge", async () => {
+    // Simulates the reported bug:
+    // 1. C uploads 1.5 MB content
+    // 2. B has 5 MB credits, views content → charged 1.5 MB → balance 3.5 MB
+    // 3. A comes online, fetches from B → B earns 1.5 MB back → balance 5 MB
+    // 4. B refreshes feed, chunks re-fetched → should NOT be charged again
+    const { recordUploadCredit, recordDownloadCredit, getCreditSummary } = await loadModule();
+
+    const contentSize = 1_500_000;
+
+    // B starts with 5 MB (earned from prior seeding)
+    await recordUploadCredit({
+      peerPubkey: "peer-prior",
+      bytes: 5_000_000,
+      chunkHash: "prior-seed",
+      receiptSignature: "sig-prior",
+      timestamp: 1
+    });
+
+    // B downloads content from C (1.5 MB) — two chunks
+    await recordDownloadCredit({
+      peerPubkey: "user-C",
+      bytes: 750_000,
+      chunkHash: "content-chunk-1",
+      receiptSignature: "p2p-fetch",
+      timestamp: 10
+    });
+    await recordDownloadCredit({
+      peerPubkey: "user-C",
+      bytes: 750_000,
+      chunkHash: "content-chunk-2",
+      receiptSignature: "p2p-fetch",
+      timestamp: 11
+    });
+
+    let summary = await getCreditSummary();
+    expect(summary.balance).toBe(5_000_000 - contentSize);
+
+    // A fetches from B → B earns 1.5 MB back
+    await recordUploadCredit({
+      peerPubkey: "user-A",
+      bytes: 750_000,
+      chunkHash: "content-chunk-1",
+      receiptSignature: "sig-serve-1",
+      timestamp: 20
+    });
+    await recordUploadCredit({
+      peerPubkey: "user-A",
+      bytes: 750_000,
+      chunkHash: "content-chunk-2",
+      receiptSignature: "sig-serve-2",
+      timestamp: 21
+    });
+
+    summary = await getCreditSummary();
+    expect(summary.balance).toBe(5_000_000);
+
+    // B refreshes feed — chunks evicted, re-fetched from P2P
+    // recordDownloadCredit fires again for the same chunks
+    await recordDownloadCredit({
+      peerPubkey: "user-C",
+      bytes: 750_000,
+      chunkHash: "content-chunk-1",
+      receiptSignature: "p2p-fetch-2",
+      timestamp: 30
+    });
+    await recordDownloadCredit({
+      peerPubkey: "user-C",
+      bytes: 750_000,
+      chunkHash: "content-chunk-2",
+      receiptSignature: "p2p-fetch-2",
+      timestamp: 31
+    });
+
+    summary = await getCreditSummary();
+    // With dedup fix: balance must still be 5 MB — no double charge
+    expect(summary.balance).toBe(5_000_000);
+    expect(summary.totalDownloaded).toBe(contentSize);
+    // Only 2 download entries, not 4
+    expect(summary.entryCount).toBe(5); // 3 uploads + 2 downloads
   });
 
   // ---------------------------------------------------------------------------

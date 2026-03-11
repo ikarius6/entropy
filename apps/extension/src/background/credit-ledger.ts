@@ -100,6 +100,20 @@ export async function recordDownloadCredit(entry: CreditEntryInput): Promise<Cre
   let entries = await readCreditEntries();
   entries = await enforceIntegrity(entries);
 
+  // Dedup guard: never charge twice for the same chunk.
+  // When chunks are evicted and re-fetched, the P2P layer fires another
+  // recordDownloadCredit for a chunkHash the user already paid for.
+  const alreadyCharged = entries.some(
+    (e) => e.direction === "down" && e.chunkHash === entry.chunkHash
+  );
+  if (alreadyCharged) {
+    logger.log(
+      "[credit-ledger] skipping duplicate download charge for chunk",
+      entry.chunkHash.slice(0, 12) + "…"
+    );
+    return toCreditSummaryPayload(entries);
+  }
+
   const ledger = createCreditLedger(entries);
   ledger.recordDownload(entry);
 
