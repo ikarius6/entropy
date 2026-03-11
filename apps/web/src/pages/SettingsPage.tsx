@@ -10,7 +10,7 @@ import { AvatarBadge } from "../components/profile/ProfileHeader";
 import { exportIdentity, importKeypair } from "../lib/extension-bridge";
 import { THEME_OPTIONS, type Theme } from "../lib/theme-options";
 import { sortPreferencesByRelevance, DEFAULT_NETWORK_TAG } from "@entropy/core";
-import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, ThumbsUp, ThumbsDown, Globe, Plus, X, Moon, Sun, Laptop, Network, AlertTriangle } from "lucide-react";
+import { Save, Trash2, Shield, Activity, HardDrive, UserCircle2, Pencil, Download, Upload, Sparkles, RotateCcw, Globe, Plus, X, Moon, Network, AlertTriangle, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { getSignAllowlist, addSignOrigin, removeSignOrigin } from "../lib/extension-bridge";
 
 export default function SettingsPage() {
@@ -544,90 +544,12 @@ export default function SettingsPage() {
       )}
 
       {/* Your Algorithm Section */}
-      <section className="panel flex flex-col gap-4">
-        <div className="flex items-center justify-between border-b border-border pb-3">
-          <div className="flex items-center gap-3">
-            <Sparkles className="text-primary" />
-            <h2 className="text-[1.05rem] font-semibold">Your Algorithm</h2>
-          </div>
-          {sortedPrefs.length > 0 && (
-            <button
-              onClick={handleResetPreferences}
-              className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-red-400"
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
-          )}
-        </div>
-
-        <p className="text-sm text-muted">
-          These are the hidden tags Entropy has learned from your activity. Positive scores boost content in your "For You" feed, negative scores suppress it.
-        </p>
-
-        {sortedPrefs.length === 0 ? (
-          <div className="empty-state flex flex-col items-center justify-center gap-2 py-8 text-center">
-            <Sparkles size={28} className="text-muted/40" />
-            <p className="text-muted text-sm">No preferences yet.</p>
-            <p className="text-muted/60 text-xs max-w-sm">
-              Like, share, or mark content as "not interested" to start building your personal algorithm.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {sortedPrefs.map((pref) => {
-              const isPositive = pref.score > 0;
-              const isNegative = pref.score < 0;
-              const barWidth = Math.min(100, (Math.abs(pref.score) / maxAbsScore) * 100);
-
-              return (
-                <div
-                  key={pref.name}
-                  className="surface-subtle group flex items-center gap-3 px-3 py-2.5"
-                >
-                  {/* Sentiment icon */}
-                  <div className={`shrink-0 ${
-                    isPositive ? "text-green-400" : isNegative ? "text-red-400" : "text-muted/40"
-                  }`}>
-                    {isPositive ? <ThumbsUp size={14} /> : isNegative ? <ThumbsDown size={14} /> : <span className="w-3.5 h-3.5 block rounded-full bg-current opacity-30" />}
-                  </div>
-
-                  {/* Tag name */}
-                  <span className="text-sm font-medium text-main min-w-[100px] truncate">
-                    {pref.name}
-                  </span>
-
-                  {/* Score bar */}
-                  <div className="flex-1 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 overflow-hidden rounded-sm bg-white/[0.05]">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          isPositive ? "bg-green-500/70" : isNegative ? "bg-red-500/70" : "bg-surface/20"
-                        }`}
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
-                    <span className={`text-xs font-mono w-8 text-right tabular-nums ${
-                      isPositive ? "text-green-400" : isNegative ? "text-red-400" : "text-muted"
-                    }`}>
-                      {isPositive ? "+" : ""}{pref.score}
-                    </span>
-                  </div>
-
-                  {/* Age */}
-                  <span className="w-14 shrink-0 text-right text-[10px] text-muted/50 opacity-0 transition-opacity group-hover:opacity-100">
-                    {formatAge(pref.updatedAt)}
-                  </span>
-                </div>
-              );
-            })}
-
-            <div className="text-xs text-muted/40 text-right pt-2 pr-3">
-              {sortedPrefs.length} tag{sortedPrefs.length !== 1 ? "s" : ""} learned
-            </div>
-          </div>
-        )}
-      </section>
+      <AlgorithmSection
+        sortedPrefs={sortedPrefs}
+        maxAbsScore={maxAbsScore}
+        onReset={handleResetPreferences}
+        formatAge={formatAge}
+      />
 
       {/* Storage & Quota Section */}
       <section className="panel flex flex-col gap-4">
@@ -768,5 +690,146 @@ export default function SettingsPage() {
       </section>
 
     </div>
+  );
+}
+
+// ─── Compact algorithm section ────────────────────────────────────────────────
+
+interface AlgorithmSectionProps {
+  sortedPrefs: { name: string; score: number; updatedAt: number }[];
+  maxAbsScore: number;
+  onReset: () => void;
+  formatAge: (ts: number) => string;
+}
+
+const COLLAPSED_LIMIT = 20;
+const SEARCH_THRESHOLD = 12;
+
+function AlgorithmSection({ sortedPrefs, maxAbsScore, onReset, formatAge }: AlgorithmSectionProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return sortedPrefs;
+    const q = search.trim().toLowerCase();
+    return sortedPrefs.filter((p) => p.name.toLowerCase().includes(q));
+  }, [sortedPrefs, search]);
+
+  const displayPrefs = expanded ? filtered : filtered.slice(0, COLLAPSED_LIMIT);
+  const hasMore = filtered.length > COLLAPSED_LIMIT;
+  const positiveCount = sortedPrefs.filter((p) => p.score > 0).length;
+  const negativeCount = sortedPrefs.filter((p) => p.score < 0).length;
+
+  return (
+    <section className="panel flex flex-col gap-4">
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex items-center gap-3">
+          <Sparkles className="text-primary" />
+          <div>
+            <h2 className="text-[1.05rem] font-semibold">Your Algorithm</h2>
+            {sortedPrefs.length > 0 && (
+              <p className="text-[11px] text-muted mt-0.5">
+                {sortedPrefs.length} tags · <span className="text-green-400">{positiveCount} boosted</span> · <span className="text-red-400">{negativeCount} suppressed</span>
+              </p>
+            )}
+          </div>
+        </div>
+        {sortedPrefs.length > 0 && (
+          <button
+            onClick={onReset}
+            className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-red-400"
+          >
+            <RotateCcw size={12} />
+            Reset
+          </button>
+        )}
+      </div>
+
+      <p className="text-sm text-muted">
+        Tags Entropy learned from your activity. Positive scores boost your feed, negative scores suppress content.
+      </p>
+
+      {sortedPrefs.length === 0 ? (
+        <div className="empty-state flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <Sparkles size={28} className="text-muted/40" />
+          <p className="text-muted text-sm">No preferences yet.</p>
+          <p className="text-muted/60 text-xs max-w-sm">
+            Like, share, or mark content as "not interested" to start building your personal algorithm.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {/* Search filter */}
+          {sortedPrefs.length > SEARCH_THRESHOLD && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                placeholder="Filter tags…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setExpanded(true); }}
+                className="input-base py-2 pl-8 pr-3 text-sm"
+              />
+            </div>
+          )}
+
+          {/* Chip cloud */}
+          <div
+            className="flex flex-wrap gap-1.5 overflow-y-auto pr-1"
+            style={{ maxHeight: expanded ? '400px' : '240px' }}
+          >
+            {displayPrefs.map((pref) => {
+              const isPositive = pref.score > 0;
+              const isNegative = pref.score < 0;
+              const intensity = Math.min(1, Math.abs(pref.score) / maxAbsScore);
+
+              const chipClass = isPositive
+                ? 'border-green-500/25 bg-green-500/8 text-green-400 hover:bg-green-500/15'
+                : isNegative
+                  ? 'border-red-500/25 bg-red-500/8 text-red-400 hover:bg-red-500/15'
+                  : 'border-border bg-white/[0.02] text-muted hover:bg-white/[0.05]';
+
+              return (
+                <div
+                  key={pref.name}
+                  className={`group relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors cursor-default ${chipClass}`}
+                  title={`${pref.name}: ${isPositive ? '+' : ''}${pref.score} · ${formatAge(pref.updatedAt)}`}
+                >
+                  {/* Tiny score bar indicator */}
+                  <span
+                    className={`inline-block h-1.5 rounded-full ${
+                      isPositive ? 'bg-green-400' : isNegative ? 'bg-red-400' : 'bg-muted/30'
+                    }`}
+                    style={{ width: `${Math.max(4, intensity * 20)}px` }}
+                  />
+                  <span className="max-w-[140px] truncate">{pref.name}</span>
+                  <span className="font-mono text-[10px] opacity-70 tabular-nums">
+                    {isPositive ? '+' : ''}{pref.score}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Expand / Collapse */}
+          {hasMore && !search && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="inline-flex items-center justify-center gap-1.5 self-center rounded-md border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-white/[0.03] hover:text-main"
+            >
+              {expanded ? (
+                <><ChevronUp size={13} /> Show less</>
+              ) : (
+                <><ChevronDown size={13} /> Show all {filtered.length} tags</>
+              )}
+            </button>
+          )}
+
+          {search && filtered.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted">No tags matching "{search}"</p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
