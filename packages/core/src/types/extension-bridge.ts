@@ -14,6 +14,24 @@ export interface NetworkTagsPayload {
   tags: string[];
 }
 
+export interface DownloadForSeedingPayload {
+  rootHash: string;
+  chunkHashes: string[];
+  chunkSize: number;
+  size: number;
+  mimeType: string;
+  title?: string;
+  gatekeepers?: string[];
+}
+
+export interface DownloadForSeedingProgressPayload {
+  rootHash: string;
+  downloadedChunks: number;
+  totalChunks: number;
+  phase: "downloading" | "seeding" | "done" | "error";
+  error?: string;
+}
+
 function isColdStorageAssignmentPayload(value: unknown): value is ColdStorageAssignmentPayload {
   if (!isRecord(value)) {
     return false;
@@ -179,7 +197,32 @@ export interface CreditHistoryItem {
   direction: "up" | "down";
   bytes: number;
   chunkHash: string;
+  rootHash?: string;
   timestamp: number;
+}
+
+export interface CreditHistoryEntryPayload {
+  id: string;
+  peerPubkey: string;
+  direction: "up" | "down";
+  bytes: number;
+  chunkHash: string;
+  rootHash?: string;
+  receiptSignature: string;
+  timestamp: number;
+  balanceAfter: number;
+}
+
+export interface CreditHistoryPayload {
+  entries: CreditHistoryEntryPayload[];
+  totalEntries: number;
+  currentBalance: number;
+  duplicateChunks: Array<{
+    chunkHash: string;
+    rootHash?: string;
+    count: number;
+    totalBytes: number;
+  }>;
 }
 
 export interface CreditSummaryPayload {
@@ -198,6 +241,7 @@ export interface CreditSummaryPayload {
     direction: "up" | "down";
     bytes: number;
     chunkHash: string;
+    rootHash?: string;
     timestamp: number;
   }>;
 }
@@ -302,7 +346,9 @@ export type EntropyRuntimePayload =
   | CheckLocalChunksResultPayload
   | TagContentResultPayload
   | SignAllowlistPayload
-  | NetworkTagsPayload;
+  | NetworkTagsPayload
+  | DownloadForSeedingProgressPayload
+  | CreditHistoryPayload;
 
 export type EntropyRuntimeMessage =
   | {
@@ -455,13 +501,24 @@ export type EntropyRuntimeMessage =
       requestId: string;
       type: "SET_NETWORK_TAGS";
       payload: NetworkTagsPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "DOWNLOAD_FOR_SEEDING";
+      payload: DownloadForSeedingPayload;
+    }
+  | {
+      source: typeof ENTROPY_WEB_SOURCE;
+      requestId: string;
+      type: "GET_CREDIT_HISTORY";
     };
 
 export type EntropyRuntimeResponse =
   | {
       ok: true;
       requestId: string;
-      type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK";
+      type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK" | "DOWNLOAD_FOR_SEEDING";
       payload?: NodeStatusPayload;
     }
   | {
@@ -549,6 +606,12 @@ export type EntropyRuntimeResponse =
       payload: NetworkTagsPayload;
     }
   | {
+      ok: true;
+      requestId: string;
+      type: "GET_CREDIT_HISTORY";
+      payload: CreditHistoryPayload;
+    }
+  | {
       ok: false;
       requestId: string;
       type: EntropyRuntimeMessage["type"];
@@ -574,6 +637,11 @@ export type EntropyRuntimePushMessage =
       source: typeof ENTROPY_EXTENSION_SOURCE;
       type: "CREDIT_UPDATE";
       payload: CreditSummaryPayload;
+    }
+  | {
+      source: typeof ENTROPY_EXTENSION_SOURCE;
+      type: "DOWNLOAD_FOR_SEEDING_PROGRESS";
+      payload: DownloadForSeedingProgressPayload;
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -612,7 +680,9 @@ function isEntropyRequestType(value: unknown): value is EntropyRuntimeMessage["t
     value === "ADD_SIGN_ORIGIN" ||
     value === "REMOVE_SIGN_ORIGIN" ||
     value === "GET_NETWORK_TAGS" ||
-    value === "SET_NETWORK_TAGS"
+    value === "SET_NETWORK_TAGS" ||
+    value === "DOWNLOAD_FOR_SEEDING" ||
+    value === "GET_CREDIT_HISTORY"
   );
 }
 
@@ -934,7 +1004,44 @@ export function isEntropyRuntimeMessage(value: unknown): value is EntropyRuntime
     return isNetworkTagsPayload(value.payload);
   }
 
+  if (value.type === "DOWNLOAD_FOR_SEEDING") {
+    return isDownloadForSeedingPayload(value.payload);
+  }
+
   return true;
+}
+
+function isDownloadForSeedingPayload(value: unknown): value is DownloadForSeedingPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.rootHash === "string" &&
+    Array.isArray(value.chunkHashes) &&
+    value.chunkHashes.every((h) => typeof h === "string") &&
+    typeof value.chunkSize === "number" &&
+    typeof value.size === "number" &&
+    typeof value.mimeType === "string"
+  );
+}
+
+export function isDownloadForSeedingProgressPayload(
+  value: unknown
+): value is DownloadForSeedingProgressPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.rootHash === "string" &&
+    typeof value.downloadedChunks === "number" &&
+    typeof value.totalChunks === "number" &&
+    (value.phase === "downloading" ||
+      value.phase === "seeding" ||
+      value.phase === "done" ||
+      value.phase === "error")
+  );
 }
 
 export function isNetworkTagsPayload(value: unknown): value is NetworkTagsPayload {
@@ -943,6 +1050,35 @@ export function isNetworkTagsPayload(value: unknown): value is NetworkTagsPayloa
   }
 
   return Array.isArray(value.tags) && value.tags.every((t) => typeof t === "string");
+}
+
+export function isCreditHistoryPayload(value: unknown): value is CreditHistoryPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(value.entries) ||
+    typeof value.totalEntries !== "number" ||
+    typeof value.currentBalance !== "number" ||
+    !Array.isArray(value.duplicateChunks)
+  ) {
+    return false;
+  }
+
+  return value.entries.every((entry) => {
+    if (!isRecord(entry)) return false;
+    return (
+      typeof entry.id === "string" &&
+      typeof entry.peerPubkey === "string" &&
+      (entry.direction === "up" || entry.direction === "down") &&
+      typeof entry.bytes === "number" &&
+      typeof entry.chunkHash === "string" &&
+      typeof entry.receiptSignature === "string" &&
+      typeof entry.timestamp === "number" &&
+      typeof entry.balanceAfter === "number"
+    );
+  });
 }
 
 function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], payload: unknown): boolean {
@@ -1008,6 +1144,10 @@ function isPayloadForRequestType(requestType: EntropyRuntimeMessage["type"], pay
     return isNetworkTagsPayload(payload);
   }
 
+  if (requestType === "GET_CREDIT_HISTORY") {
+    return isCreditHistoryPayload(payload);
+  }
+
   return isNodeStatusPayload(payload);
 }
 
@@ -1062,6 +1202,10 @@ export function isEntropyRuntimeResponse(value: unknown): value is EntropyRuntim
       return isNetworkTagsPayload(value.payload);
     }
 
+    if (value.type === "GET_CREDIT_HISTORY") {
+      return isCreditHistoryPayload(value.payload);
+    }
+
     return value.payload === undefined || isNodeStatusPayload(value.payload);
   }
 
@@ -1097,6 +1241,10 @@ export function isEntropyRuntimePushMessage(value: unknown): value is EntropyRun
 
   if (value.type === "CREDIT_UPDATE") {
     return isCreditSummaryPayload(value.payload);
+  }
+
+  if (value.type === "DOWNLOAD_FOR_SEEDING_PROGRESS") {
+    return isDownloadForSeedingProgressPayload(value.payload);
   }
 
   return false;

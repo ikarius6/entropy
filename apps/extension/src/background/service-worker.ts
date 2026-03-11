@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import {
   buildSeederAnnouncementEvent,
+  buildDemandSignalEvent,
   discoverSeeders,
   ENTROPY_SIGNALING_KIND_MAX,
   ENTROPY_SIGNALING_KIND_MIN,
@@ -32,10 +33,12 @@ import {
   type SignedEventPayload,
   type ChunkDataPayload,
   type TagContentResultPayload,
-  type NetworkTagsPayload
+  type NetworkTagsPayload,
+  type DownloadForSeedingProgressPayload,
+  type CreditHistoryPayload
 } from "../shared/messaging";
 import { hasDelegatedChunks, storeChunkPayload, addContentTagFromUser } from "./chunk-ingest";
-import { getCreditSummary, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
+import { getCreditSummary, getFullCreditHistory, recordUploadCredit, recordDownloadCredit } from "./credit-ledger";
 import { exportIdentity, getOrCreateKeypair, getPublicKey, importKeypair, signNostrEvent } from "./identity-store";
 import { getSignAllowlist, addSignOrigin, removeSignOrigin, seedSignAllowlist } from "./sign-allowlist";
 import { getNetworkTags, setNetworkTags } from "./network-tags-store";
@@ -136,7 +139,7 @@ function chunkDataResponse(
 
 function successResponse(
   requestId: string,
-  type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK",
+  type: "DELEGATE_SEEDING" | "GET_NODE_STATUS" | "HEARTBEAT" | "STORE_CHUNK" | "DOWNLOAD_FOR_SEEDING",
   payload?: NodeStatusPayload
 ): EntropyRuntimeResponse {
   return { ok: true, requestId, type, payload };
@@ -163,6 +166,13 @@ function exportIdentityResponse(
   payload: ExportIdentityPayload
 ): EntropyRuntimeResponse {
   return { ok: true, requestId, type: "EXPORT_IDENTITY", payload };
+}
+
+function creditHistoryResponse(
+  requestId: string,
+  payload: CreditHistoryPayload
+): EntropyRuntimeResponse {
+  return { ok: true, requestId, type: "GET_CREDIT_HISTORY", payload };
 }
 
 function nodeSettingsResponse(
@@ -204,6 +214,42 @@ function emitNodeStatusUpdate(status: NodeStatusPayload): void {
   void browser.runtime.sendMessage(update).catch(() => {
     // Ignore when there are no listeners yet.
   });
+}
+
+function emitDownloadForSeedingProgress(payload: DownloadForSeedingProgressPayload): void {
+  const update: EntropyRuntimePushMessage = {
+    source: ENTROPY_EXTENSION_SOURCE,
+    type: "DOWNLOAD_FOR_SEEDING_PROGRESS",
+    payload
+  };
+
+  void browser.runtime.sendMessage(update).catch(() => {
+    // Ignore when there are no listeners yet.
+  });
+}
+
+// Debounce demand signal publishing per rootHash (max 1 per 30s)
+const demandSignalTimestamps = new Map<string, number>();
+const DEMAND_SIGNAL_DEBOUNCE_MS = 30_000;
+
+function publishDemandSignal(rootHash: string): void {
+  const now = Date.now();
+  const lastSent = demandSignalTimestamps.get(rootHash) ?? 0;
+  if (now - lastSent < DEMAND_SIGNAL_DEBOUNCE_MS) return;
+  demandSignalTimestamps.set(rootHash, now);
+
+  void (async () => {
+    try {
+      const networkTags = await getNetworkTags();
+      const signed = await signNostrEvent(
+        buildDemandSignalEvent({ rootHash, networkTags })
+      );
+      getRelayPool().publish(signed);
+      logger.log("[demand-signal] published for", rootHash.slice(0, 12) + "\u2026");
+    } catch (err) {
+      logger.warn("[demand-signal] failed to publish:", err);
+    }
+  })();
 }
 
 function emitCreditUpdate(summary: CreditSummaryPayload): void {
@@ -349,7 +395,8 @@ async function bootstrapBackground(): Promise<void> {
       }
 
       return true;
-    }
+    },
+    onBusySent: publishDemandSignal
   });
 
   await publishDelegationSeederAnnouncements();
@@ -714,6 +761,11 @@ browser.runtime.onMessage.addListener(
             return creditResponse(message.requestId, message.type, summary);
           }
 
+          case "GET_CREDIT_HISTORY": {
+            const history = await getFullCreditHistory();
+            return creditHistoryResponse(message.requestId, history);
+          }
+
           case "GET_NODE_STATUS": {
             const status = await buildNodeStatus();
             emitNodeStatusUpdate(status);
@@ -949,6 +1001,169 @@ browser.runtime.onMessage.addListener(
               payload: { tags }
             };
             return setTagsResponse;
+          }
+
+          case "DOWNLOAD_FOR_SEEDING": {
+            const { rootHash, chunkHashes, chunkSize, size, mimeType, title, gatekeepers } = message.payload;
+            const identity = await getOrCreateKeypair();
+            const pool = getRelayPool();
+
+            // Discover seeders for this content
+            let dynamicGatekeepers: string[] = [];
+            try {
+              dynamicGatekeepers = await discoverSeeders(pool, rootHash, {
+                timeoutMs: 2_000,
+                minChunkCount: 1
+              });
+            } catch (discoveryErr) {
+              logger.warn("[DOWNLOAD_FOR_SEEDING] seeder discovery failed:", discoveryErr);
+            }
+
+            const candidateGatekeepers = [
+              ...new Set([...(gatekeepers ?? []), ...dynamicGatekeepers])
+            ].filter((gk) => gk !== identity.pubkey);
+
+            if (candidateGatekeepers.length === 0) {
+              throw new Error("No seeders found for this content.");
+            }
+
+            const totalChunks = chunkHashes.length;
+            let downloadedChunks = 0;
+
+            emitDownloadForSeedingProgress({
+              rootHash, downloadedChunks: 0, totalChunks, phase: "downloading"
+            });
+
+            // Distribute chunks round-robin across gatekeepers, then process
+            // each gatekeeper's queue sequentially.  This avoids opening
+            // parallel WebRTC connections to the same peer (which causes
+            // signaling collisions — answer/ICE events can't be disambiguated
+            // for the same rootHash+peerPubkey pair).
+            const gkQueues = new Map<string, { chunkHash: string; index: number }[]>();
+            for (const gk of candidateGatekeepers) {
+              gkQueues.set(gk, []);
+            }
+
+            for (let i = 0; i < totalChunks; i++) {
+              const chunkHash = chunkHashes[i];
+              // Skip if already stored locally
+              const existing = await chunkStore.getChunk(chunkHash);
+              if (existing) {
+                downloadedChunks++;
+                continue;
+              }
+              // Assign to the gatekeeper with the shortest queue (round-robin)
+              let shortest: string = candidateGatekeepers[0];
+              let shortestLen = Infinity;
+              for (const [gk, queue] of gkQueues) {
+                if (queue.length < shortestLen) {
+                  shortest = gk;
+                  shortestLen = queue.length;
+                }
+              }
+              gkQueues.get(shortest)!.push({ chunkHash, index: i });
+            }
+
+            emitDownloadForSeedingProgress({
+              rootHash, downloadedChunks, totalChunks, phase: "downloading"
+            });
+
+            // Process all gatekeeper queues in parallel (but sequential within each)
+            const queuePromises = [...gkQueues.entries()].map(async ([primaryGk, queue]) => {
+              const currentPrivacy = await getPrivacySettings();
+              for (const { chunkHash, index } of queue) {
+                let fetched = false;
+
+                // Try primary gatekeeper first, then fallback to others
+                const orderedGks = [primaryGk, ...candidateGatekeepers.filter((gk) => gk !== primaryGk)];
+                for (const gk of orderedGks) {
+                  const banned = await peerReputationStore.isBanned(gk);
+                  if (banned) continue;
+
+                  try {
+                    const result = await fetchChunkP2P({
+                      chunkHash,
+                      rootHash,
+                      gatekeeperPubkey: gk,
+                      myPubkey: identity.pubkey,
+                      relayPool: pool,
+                      signEvent: signNostrEvent,
+                      privacySettings: currentPrivacy,
+                      isPeerBanned: (pk) => peerReputationStore.isBanned(pk),
+                      onPeerTransferSuccess: async (pk, bytes) => {
+                        await peerReputationStore.recordSuccess(pk, bytes);
+                      },
+                      onPeerFailedVerification: async (pk) => {
+                        const updated = await peerReputationStore.recordFailedVerification(pk);
+                        if (updated.banned) {
+                          logger.warn("[DOWNLOAD_FOR_SEEDING] auto-banned peer", pk.slice(0, 8) + "\u2026");
+                        }
+                      }
+                    });
+
+                    if (result) {
+                      await chunkStore.storeChunk({
+                        hash: result.hash,
+                        rootHash: result.rootHash,
+                        index,
+                        data: result.data,
+                        createdAt: Date.now(),
+                        lastAccessed: Date.now(),
+                        pinned: false
+                      });
+                      downloadedChunks++;
+                      emitDownloadForSeedingProgress({
+                        rootHash, downloadedChunks, totalChunks, phase: "downloading"
+                      });
+                      fetched = true;
+                      break;
+                    }
+                  } catch (err) {
+                    logger.warn(`[DOWNLOAD_FOR_SEEDING] peer fetch from ${gk.slice(0, 8)}\u2026 failed:`, err);
+                  }
+                }
+
+                if (!fetched) {
+                  logger.warn(`[DOWNLOAD_FOR_SEEDING] failed to download chunk ${chunkHash.slice(0, 12)}\u2026`);
+                }
+              }
+            });
+
+            await Promise.allSettled(queuePromises);
+
+            if (downloadedChunks < totalChunks) {
+              emitDownloadForSeedingProgress({
+                rootHash,
+                downloadedChunks,
+                totalChunks,
+                phase: "error",
+                error: `Only downloaded ${downloadedChunks}/${totalChunks} chunks`
+              });
+              throw new Error(`Failed to download all chunks: ${downloadedChunks}/${totalChunks}`);
+            }
+
+            // Delegate seeding
+            emitDownloadForSeedingProgress({
+              rootHash, downloadedChunks, totalChunks, phase: "seeding"
+            });
+
+            await enqueueDelegation({
+              rootHash,
+              chunkHashes,
+              size,
+              chunkSize,
+              mimeType,
+              title
+            });
+            await publishSeederAnnouncement(rootHash, chunkHashes.length);
+
+            emitDownloadForSeedingProgress({
+              rootHash, downloadedChunks, totalChunks, phase: "done"
+            });
+
+            const status = await buildNodeStatus();
+            emitNodeStatusUpdate(status);
+            return successResponse(message.requestId, message.type, status);
           }
 
         }

@@ -2,6 +2,7 @@ import {
   createEntropyRequestId,
   ENTROPY_WEB_SOURCE,
   isCreditSummaryPayload,
+  isCreditHistoryPayload,
   isColdStorageStatusPayload,
   isExportIdentityPayload,
   isNodeMetricsPayload,
@@ -15,6 +16,7 @@ import {
   isTagContentResultPayload,
   type ColdStorageStatusPayload,
   type CreditSummaryPayload,
+  type CreditHistoryPayload,
   type CheckLocalChunksResultPayload,
   type DelegateSeedingPayload,
   type ExportIdentityPayload,
@@ -37,13 +39,17 @@ import {
   type SignAllowlistPayload,
   type SignOriginPayload,
   type NetworkTagsPayload,
-  isNetworkTagsPayload
+  isNetworkTagsPayload,
+  type DownloadForSeedingPayload,
+  type DownloadForSeedingProgressPayload,
+  isDownloadForSeedingProgressPayload
 } from "@entropy/core";
 
 export type ExtensionRequestType = EntropyRuntimeMessage["type"];
 export type {
   ColdStorageStatusPayload,
   CreditSummaryPayload,
+  CreditHistoryPayload,
   DelegateSeedingPayload,
   ExportIdentityPayload,
   ImportKeypairPayload,
@@ -56,7 +62,9 @@ export type {
   StoreChunkPayload,
   ServeChunkPayload,
   GetChunkPayload,
-  ChunkDataPayload
+  ChunkDataPayload,
+  DownloadForSeedingPayload,
+  DownloadForSeedingProgressPayload
 };
 
 export type { ColdStorageAssignmentPayload, NodeMetricsPayload, PrivacySettingsPayload, TagContentPayload, TagContentResultPayload, SignAllowlistPayload, SignOriginPayload, TurnServerConfig } from "@entropy/core";
@@ -67,6 +75,7 @@ function buildNoPayloadMessage(
     | "GET_NODE_STATUS"
     | "HEARTBEAT"
     | "GET_CREDIT_SUMMARY"
+    | "GET_CREDIT_HISTORY"
     | "GET_PUBLIC_KEY"
     | "GET_NODE_SETTINGS"
     | "GET_COLD_STORAGE_ASSIGNMENTS"
@@ -209,6 +218,11 @@ export function sendExtensionRequest(
   timeoutMs?: number
 ): Promise<CreditSummaryPayload>;
 export function sendExtensionRequest(
+  type: "GET_CREDIT_HISTORY",
+  payload?: undefined,
+  timeoutMs?: number
+): Promise<CreditHistoryPayload>;
+export function sendExtensionRequest(
   type: "STORE_CHUNK",
   payload: StoreChunkPayload,
   timeoutMs?: number
@@ -302,7 +316,7 @@ export function sendExtensionRequest(
     | TagContentPayload
     | NetworkTagsPayload,
   timeoutMs = 1600
-): Promise<NodeStatusPayload | CreditSummaryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | PrivacySettingsPayload | TagContentResultPayload | NetworkTagsPayload | undefined> {
+): Promise<NodeStatusPayload | CreditSummaryPayload | CreditHistoryPayload | PublicKeyPayload | ExportIdentityPayload | NodeSettingsPayload | ColdStorageStatusPayload | NodeMetricsPayload | PrivacySettingsPayload | TagContentResultPayload | NetworkTagsPayload | undefined> {
   const requestId = createEntropyRequestId("web");
 
   if (type === "DELEGATE_SEEDING") {
@@ -341,6 +355,14 @@ export function sendExtensionRequest(
     return sendBridgeMessage(
       buildNoPayloadMessage(requestId, type),
       (p) => (isCreditSummaryPayload(p) ? p : null),
+      timeoutMs
+    );
+  }
+
+  if (type === "GET_CREDIT_HISTORY") {
+    return sendBridgeMessage(
+      buildNoPayloadMessage(requestId, type),
+      (p) => (isCreditHistoryPayload(p) ? p : null),
       timeoutMs
     );
   }
@@ -501,6 +523,10 @@ export function getCreditSummary(): Promise<CreditSummaryPayload> {
   return sendExtensionRequest("GET_CREDIT_SUMMARY");
 }
 
+export function getCreditHistory(): Promise<CreditHistoryPayload> {
+  return sendExtensionRequest("GET_CREDIT_HISTORY", undefined, 5000);
+}
+
 export function storeChunk(payload: StoreChunkPayload): Promise<NodeStatusPayload | undefined> {
   return sendExtensionRequest("STORE_CHUNK", payload);
 }
@@ -610,6 +636,51 @@ export function subscribeToNodeStatusUpdates(
     }
 
     onUpdate(event.data.payload);
+  }
+
+  window.addEventListener("message", handleRuntimePush);
+
+  return () => {
+    window.removeEventListener("message", handleRuntimePush);
+  };
+}
+
+export function downloadForSeeding(
+  payload: DownloadForSeedingPayload,
+  timeoutMs = 120_000
+): Promise<NodeStatusPayload> {
+  const requestId = createEntropyRequestId("web");
+  const message: EntropyRuntimeMessage = {
+    source: ENTROPY_WEB_SOURCE,
+    requestId,
+    type: "DOWNLOAD_FOR_SEEDING",
+    payload
+  };
+
+  return sendBridgeMessage(
+    message,
+    (p) => (isNodeStatusPayload(p) ? p : null),
+    timeoutMs
+  );
+}
+
+export function subscribeToDownloadForSeedingProgress(
+  onProgress: (payload: DownloadForSeedingProgressPayload) => void
+): () => void {
+  function handleRuntimePush(event: MessageEvent): void {
+    if (
+      event.source !== window ||
+      event.origin !== window.location.origin ||
+      !isEntropyRuntimePushMessage(event.data)
+    ) {
+      return;
+    }
+
+    if (event.data.type !== "DOWNLOAD_FOR_SEEDING_PROGRESS") {
+      return;
+    }
+
+    onProgress(event.data.payload);
   }
 
   window.addEventListener("message", handleRuntimePush);

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const decodeChunkTransferMessageMock = vi.fn();
 const encodeCustodyProofMock = vi.fn(() => new ArrayBuffer(65));
 const encodeChunkErrorMock = vi.fn(() => new ArrayBuffer(2));
-const sendChunkOverDataChannelMock = vi.fn();
+const sendChunkOverDataChannelMock = vi.fn(async () => {});
 const sha256HexMock = vi.fn(async () => "aa".repeat(32));
 const hexToBytesMock = vi.fn((hex: string) => new Uint8Array(hex.length / 2));
 const concatBytesMock = vi.fn((...parts: Uint8Array[]) => {

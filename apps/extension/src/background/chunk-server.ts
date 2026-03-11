@@ -71,6 +71,7 @@ export interface ChunkServerContext {
   signEvent?: SignEventFn;
   myPubkey?: string;
   tagStore?: TagStore;
+  onBusySent?: (rootHash: string) => void;
 }
 
 function isArrayBufferView(value: unknown): value is ArrayBufferView {
@@ -258,6 +259,7 @@ export function handleDataChannel(
       if (isRateLimited(peerPubkey, Date.now())) {
         logger.warn("[chunk-server] rate limit exceeded for peer", peerPubkey.slice(0, 8) + "…");
         await sendChunkError(channel, message.chunkHash, "BUSY");
+        context.onBusySent?.(message.rootHash);
         return;
       }
 
@@ -288,7 +290,7 @@ export function handleDataChannel(
       try {
         logger.log("[chunk-server] sending chunk", chunk.hash.slice(0, 12) + "…",
           chunk.data.byteLength, "bytes via data channel");
-        sendChunkOverDataChannel(channel, chunk);
+        await sendChunkOverDataChannel(channel, chunk);
 
         // Sign and send transfer receipt after chunk data
         let servedReceiptSig: string | undefined;
@@ -349,6 +351,7 @@ export function handleDataChannel(
       } catch (sendErr) {
         logger.error("[chunk-server] error sending chunk:", sendErr);
         await sendChunkError(channel, message.chunkHash, "BUSY");
+        context.onBusySent?.(message.rootHash);
       }
     })();
   };

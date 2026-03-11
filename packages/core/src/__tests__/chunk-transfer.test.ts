@@ -222,10 +222,10 @@ describe("chunk transfer", () => {
     );
   });
 
-  it("sends chunk payload immediately when buffered amount is low", () => {
+  it("sends chunk payload immediately when buffered amount is low", async () => {
     const channel = new MockDataChannel();
 
-    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, makeChunk());
+    await sendChunkOverDataChannel(channel as unknown as RTCDataChannel, makeChunk());
 
     expect(channel.sentPayloads).toHaveLength(1);
 
@@ -233,11 +233,11 @@ describe("chunk transfer", () => {
     expect(decoded.type).toBe("CHUNK_DATA");
   });
 
-  it("waits for bufferedamountlow event before sending when under backpressure", () => {
+  it("waits for bufferedamountlow event before sending when under backpressure", async () => {
     const channel = new MockDataChannel();
     channel.bufferedAmount = MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES + 1;
 
-    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, makeChunk());
+    const done = sendChunkOverDataChannel(channel as unknown as RTCDataChannel, makeChunk());
 
     expect(channel.sentPayloads).toHaveLength(0);
     expect(channel.bufferedAmountLowThreshold).toBeGreaterThanOrEqual(
@@ -247,6 +247,7 @@ describe("chunk transfer", () => {
     channel.bufferedAmount = 0;
     channel.emitBufferedAmountLow();
 
+    await done;
     expect(channel.sentPayloads).toHaveLength(1);
   });
 
@@ -259,18 +260,18 @@ describe("chunk transfer", () => {
     ).toThrowError("Data channel must be open to send chunks.");
   });
 
-  it("sends small chunks as a single message", () => {
+  it("sends small chunks as a single message", async () => {
     const channel = new MockDataChannel();
     const chunk = makeChunk({ data: new Uint8Array(100).buffer });
 
-    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+    await sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
 
     expect(channel.sentPayloads).toHaveLength(1);
     const decoded = decodeChunkTransferMessage(channel.sentPayloads[0]);
     expect(decoded.type).toBe("CHUNK_DATA");
   });
 
-  it("fragments large chunks into header + data fragments", () => {
+  it("fragments large chunks into header + data fragments", async () => {
     const channel = new MockDataChannel();
     const largeData = new Uint8Array(FRAGMENT_SIZE * 3 + 1000);
     for (let i = 0; i < largeData.byteLength; i++) {
@@ -278,7 +279,7 @@ describe("chunk transfer", () => {
     }
     const chunk = makeChunk({ data: largeData.buffer });
 
-    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+    await sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
 
     expect(channel.sentPayloads.length).toBe(5);
     expect(new Uint8Array(channel.sentPayloads[0])[0]).toBe(4);
@@ -290,7 +291,7 @@ describe("chunk transfer", () => {
     expect(totalDataBytes).toBe(largeData.byteLength);
   });
 
-  it("createChunkReceiver reassembles fragmented messages", () => {
+  it("createChunkReceiver reassembles fragmented messages", async () => {
     const channel = new MockDataChannel();
     const largeData = new Uint8Array(FRAGMENT_SIZE * 2 + 500);
     for (let i = 0; i < largeData.byteLength; i++) {
@@ -298,7 +299,7 @@ describe("chunk transfer", () => {
     }
     const chunk = makeChunk({ data: largeData.buffer });
 
-    sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
+    await sendChunkOverDataChannel(channel as unknown as RTCDataChannel, chunk);
 
     const receiver = createChunkReceiver();
     let result = null;

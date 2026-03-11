@@ -8,6 +8,7 @@ import type {
 } from "../nostr/client";
 import { ENTROPY_CHUNK_MAP_KIND } from "../nostr/nip-entropy";
 import { ENTROPY_SEEDER_ANNOUNCEMENT_KIND } from "../nostr/seeder-announcement";
+import { ENTROPY_DEMAND_SIGNAL_KIND } from "../nostr/demand-signal";
 import { discoverPopularContent } from "../transport/popularity-discovery";
 
 // ---------------------------------------------------------------------------
@@ -66,9 +67,28 @@ function makeSeederAnnouncement(
   };
 }
 
+function makeDemandSignal(
+  signalerPubkey: string,
+  rootHash: string
+): NostrEvent {
+  return {
+    id: `ds-${signalerPubkey}-${rootHash.slice(0, 8)}`,
+    pubkey: signalerPubkey,
+    sig: "sig",
+    kind: ENTROPY_DEMAND_SIGNAL_KIND,
+    created_at: NOW - 50,
+    content: "",
+    tags: [
+      ["t", "entropy"],
+      ["x", rootHash]
+    ]
+  };
+}
+
 function createMockRelayPool(
   chunkMapEvents: NostrEvent[],
-  seederEvents: NostrEvent[]
+  seederEvents: NostrEvent[],
+  demandSignalEvents: NostrEvent[] = []
 ): RelayPool {
   const unsubscribe = vi.fn();
   let subCounter = 0;
@@ -79,9 +99,16 @@ function createMockRelayPool(
       const isChunkMapSub = filters.some((f) =>
         f.kinds?.includes(ENTROPY_CHUNK_MAP_KIND)
       );
+      const isDemandSub = filters.some((f) =>
+        f.kinds?.includes(ENTROPY_DEMAND_SIGNAL_KIND)
+      );
 
       queueMicrotask(() => {
-        const events = isChunkMapSub ? chunkMapEvents : seederEvents;
+        const events = isChunkMapSub
+          ? chunkMapEvents
+          : isDemandSub
+            ? demandSignalEvents
+            : seederEvents;
         for (const ev of events) {
           onEvent(ev);
         }
@@ -133,6 +160,7 @@ describe("popularity-discovery", () => {
     // ROOT_C should rank first (0 seeders, recent, decent size)
     expect(results[0].chunkMap.rootHash).toBe(ROOT_C);
     expect(results[0].seederCount).toBe(0);
+    expect(results[0].demandSignalCount).toBe(0);
 
     // ROOT_A should rank second (1 seeder, recent, large)
     expect(results[1].chunkMap.rootHash).toBe(ROOT_A);
@@ -197,6 +225,49 @@ describe("popularity-discovery", () => {
 
     expect(results.length).toBe(1);
     expect(results[0].seederCount).toBe(0);
+    expect(results[0].demandSignalCount).toBe(0);
     expect(results[0].demandScore).toBeGreaterThan(0);
+  });
+
+  it("boosts score for content with demand signals (BUSY overflow)", async () => {
+    // Two identical items — same age, same size, same seeder count
+    // ROOT_A has 3 demand signals, ROOT_B has 0
+    const chunkMaps = [
+      makeChunkMapEvent(ROOT_A, 10 * 1024 * 1024, 2, NOW - 1800),
+      makeChunkMapEvent(ROOT_B, 10 * 1024 * 1024, 2, NOW - 1800)
+    ];
+
+    const seeders = [
+      makeSeederAnnouncement("seeder-1", ROOT_A, 2),
+      makeSeederAnnouncement("seeder-1", ROOT_B, 2)
+    ];
+
+    const demandSignals = [
+      makeDemandSignal("node-1", ROOT_A),
+      makeDemandSignal("node-2", ROOT_A),
+      makeDemandSignal("node-3", ROOT_A)
+    ];
+
+    const pool = createMockRelayPool(chunkMaps, seeders, demandSignals);
+
+    const results = await discoverPopularContent(pool, ["entropy"], {
+      nowSeconds: () => NOW,
+      timeoutMs: 500,
+      seederTimeoutMs: 500,
+      demandTimeoutMs: 500
+    });
+
+    expect(results.length).toBe(2);
+
+    // ROOT_A should rank first due to demand boost
+    expect(results[0].chunkMap.rootHash).toBe(ROOT_A);
+    expect(results[0].demandSignalCount).toBe(3);
+
+    // ROOT_B has no demand signals
+    expect(results[1].chunkMap.rootHash).toBe(ROOT_B);
+    expect(results[1].demandSignalCount).toBe(0);
+
+    // Score with demand signals should be higher
+    expect(results[0].demandScore).toBeGreaterThan(results[1].demandScore);
   });
 });

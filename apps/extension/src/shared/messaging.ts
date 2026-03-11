@@ -44,5 +44,10 @@ export {
   type SignAllowlistPayload,
   type SignOriginPayload,
   type NetworkTagsPayload,
-  isNetworkTagsPayload
+  isNetworkTagsPayload,
+  type DownloadForSeedingPayload,
+  type DownloadForSeedingProgressPayload,
+  isDownloadForSeedingProgressPayload,
+  type CreditHistoryPayload,
+  isCreditHistoryPayload
 } from "@entropy/core";

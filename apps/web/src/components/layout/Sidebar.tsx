@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, Upload, User, Settings as SettingsIcon, HelpCircle } from "lucide-react";
+import { Home, Upload, User, Settings as SettingsIcon, HelpCircle, History } from "lucide-react";
 import { useCredits } from "../../hooks/useCredits";
 
 function formatCredits(bytes: number): { value: string; unit: string } {
@@ -27,6 +27,7 @@ export function Sidebar() {
     { name: "Home", path: "/", icon: Home },
     { name: "Publish", path: "/publish", icon: Upload },
     { name: "Profile", path: "/profile/me", icon: User },
+    { name: "Credit History", path: "/credits", icon: History },
     { name: "How It Works", path: "/how-it-works", icon: HelpCircle },
     { name: "Settings", path: "/settings", icon: SettingsIcon },
   ];
@@ -55,7 +56,7 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="surface-subtle mt-1 md:mt-auto md:mb-4 px-4 py-4">
+      <Link to="/credits" className="surface-subtle mt-1 md:mt-auto md:mb-4 px-4 py-4 block hover:ring-1 hover:ring-primary/30 transition-shadow rounded-lg">
         <div className="mb-1 text-[0.78rem] font-medium text-muted">Credits</div>
         <div className="flex items-baseline gap-2">
           {isLoading ? (
@@ -67,8 +68,8 @@ export function Sidebar() {
             </>
           )}
         </div>
-        <div className="mt-2 text-xs text-muted">Available balance</div>
-      </div>
+        <div className="mt-2 text-xs text-muted">Available balance — View history →</div>
+      </Link>
     </aside>
   );
 }

@@ -522,7 +522,7 @@ function encodeChunkDataHeader(chunkHash: string, totalDataLength: number): Arra
   return output.buffer;
 }
 
-export function sendChunkOverDataChannel(channel: RTCDataChannel, chunk: StoredChunk): void {
+export function sendChunkOverDataChannel(channel: RTCDataChannel, chunk: StoredChunk): Promise<void> {
   if (channel.readyState !== "open") {
     throw new Error("Data channel must be open to send chunks.");
   }
@@ -549,25 +549,33 @@ export function sendChunkOverDataChannel(channel: RTCDataChannel, chunk: StoredC
 
   let index = 0;
 
-  const sendNext = (): void => {
-    while (index < messages.length) {
-      if (channel.readyState !== "open") {
-        return;
+  return new Promise<void>((resolve, reject) => {
+    const sendNext = (): void => {
+      try {
+        while (index < messages.length) {
+          if (channel.readyState !== "open") {
+            reject(new Error("Data channel closed before all fragments were sent."));
+            return;
+          }
+
+          if (channel.bufferedAmount > MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES) {
+            channel.bufferedAmountLowThreshold = Math.max(
+              channel.bufferedAmountLowThreshold,
+              DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES
+            );
+            channel.addEventListener("bufferedamountlow", () => sendNext(), { once: true });
+            return;
+          }
+
+          channel.send(messages[index]);
+          index++;
+        }
+        resolve();
+      } catch (err) {
+        reject(err);
       }
+    };
 
-      if (channel.bufferedAmount > MAX_DATA_CHANNEL_BUFFERED_AMOUNT_BYTES) {
-        channel.bufferedAmountLowThreshold = Math.max(
-          channel.bufferedAmountLowThreshold,
-          DATA_CHANNEL_BUFFERED_LOW_THRESHOLD_BYTES
-        );
-        channel.addEventListener("bufferedamountlow", () => sendNext(), { once: true });
-        return;
-      }
-
-      channel.send(messages[index]);
-      index++;
-    }
-  };
-
-  sendNext();
+    sendNext();
+  });
 }

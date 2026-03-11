@@ -8,6 +8,7 @@ import {
   type CreditEntry,
   type CreditEntryInput,
   type CreditSummaryPayload,
+  type CreditHistoryPayload,
   type IntegrityVerificationResult
 } from "@entropy/core";
 
@@ -45,6 +46,7 @@ async function toCreditSummaryPayload(entries: CreditEntry[]): Promise<CreditSum
       direction: entry.direction,
       bytes: entry.bytes,
       chunkHash: entry.chunkHash,
+      rootHash: entry.rootHash,
       timestamp: entry.timestamp
     }))
   };
@@ -146,4 +148,65 @@ async function enforceIntegrity(entries: CreditEntry[]): Promise<CreditEntry[]> 
 export async function getCreditSummary(): Promise<CreditSummaryPayload> {
   const entries = await readCreditEntries();
   return toCreditSummaryPayload(entries);
+}
+
+export async function getFullCreditHistory(): Promise<CreditHistoryPayload> {
+  const entries = await readCreditEntries();
+  const ledger = createCreditLedger(entries);
+  const summary = ledger.getSummary();
+
+  // Compute running balance for each entry (chronological order)
+  let runningBalance = 0;
+  const entriesWithBalance = entries.map((entry) => {
+    if (entry.direction === "up") {
+      runningBalance += entry.bytes;
+    } else {
+      runningBalance -= entry.bytes;
+    }
+    return {
+      id: entry.id,
+      peerPubkey: entry.peerPubkey,
+      direction: entry.direction,
+      bytes: entry.bytes,
+      chunkHash: entry.chunkHash,
+      rootHash: entry.rootHash,
+      receiptSignature: entry.receiptSignature,
+      timestamp: entry.timestamp,
+      balanceAfter: runningBalance
+    };
+  });
+
+  // Detect duplicate download charges (same chunkHash charged more than once)
+  const downloadsByChunk = new Map<string, { rootHash?: string; count: number; totalBytes: number }>();
+  for (const entry of entries) {
+    if (entry.direction !== "down") continue;
+    const existing = downloadsByChunk.get(entry.chunkHash);
+    if (existing) {
+      existing.count++;
+      existing.totalBytes += entry.bytes;
+    } else {
+      downloadsByChunk.set(entry.chunkHash, {
+        rootHash: entry.rootHash,
+        count: 1,
+        totalBytes: entry.bytes
+      });
+    }
+  }
+
+  const duplicateChunks = Array.from(downloadsByChunk.entries())
+    .filter(([, info]) => info.count > 1)
+    .map(([chunkHash, info]) => ({
+      chunkHash,
+      rootHash: info.rootHash,
+      count: info.count,
+      totalBytes: info.totalBytes
+    }));
+
+  // Return newest-first for display
+  return {
+    entries: entriesWithBalance.reverse(),
+    totalEntries: entries.length,
+    currentBalance: summary.balance,
+    duplicateChunks
+  };
 }

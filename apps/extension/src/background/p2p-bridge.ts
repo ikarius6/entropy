@@ -79,6 +79,7 @@ export interface P2PBridgeOptions {
     rootHash: string;
     requestedBytes: number;
   }) => boolean | Promise<boolean>;
+  onBusySent?: (rootHash: string) => void;
 }
 
 let stopDirectSignaling: (() => void) | null = null;
@@ -108,7 +109,8 @@ export async function startP2PSeeding(options: P2PBridgeOptions): Promise<void> 
           {
             authorizeRequest: options.authorizeChunkRequest,
             signEvent: options.signEvent,
-            myPubkey: options.myPubkey
+            myPubkey: options.myPubkey,
+            onBusySent: options.onBusySent
           }
         );
       },

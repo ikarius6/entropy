@@ -11,6 +11,7 @@ export * from "./nostr/client";
 export * from "./nostr/identity";
 export * from "./nostr/nip44";
 export * from "./nostr/seeder-announcement";
+export * from "./nostr/demand-signal";
 export * from "./transport/peer-manager";
 export * from "./transport/signaling-channel";
 export * from "./transport/nat-traversal";
