@@ -611,7 +611,12 @@ function renderStatus(): string {
 
   const lines = [
     `Delegated roots: ${latestStatus.delegatedCount}`,
-    `Known roots: ${latestStatus.delegatedRootHashes.join(", ") || "none"}`,
+    `Known roots: ${latestStatus.delegatedRootHashes.length === 0 ? "none" : (() => {
+      const MAX_VISIBLE = 5;
+      const short = latestStatus.delegatedRootHashes.slice(0, MAX_VISIBLE).map((h) => h.slice(0, 12) + "…");
+      const remaining = latestStatus.delegatedRootHashes.length - MAX_VISIBLE;
+      return short.join(", ") + (remaining > 0 ? ` (+${remaining} more)` : "");
+    })()}`,
     `Uptime: ${Math.floor(latestStatus.uptimeMs / 1000)}s`,
     `Last heartbeat: ${new Date(latestStatus.lastHeartbeatAt).toLocaleString()}`,
     `Public key: ${latestPubkey ?? "unknown (click Load Public Key)"}`,

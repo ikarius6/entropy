@@ -39,8 +39,7 @@ function renderStatus(): string {
     `Uptime: ${Math.floor(latestStatus.uptimeMs / 1000)}s`,
     `Last heartbeat: ${new Date(latestStatus.lastHeartbeatAt).toLocaleTimeString()}`,
     `Signaling kinds: ${latestStatus.signalingKindRange}`,
-    `Signaling healthy: ${latestStatus.signalingRangeHealthy ? "yes" : "no"}`,
-    `Roots: ${latestStatus.delegatedRootHashes.join(", ") || "none"}`
+    `Signaling healthy: ${latestStatus.signalingRangeHealthy ? "yes" : "no"}`
   ];
 
   if (!latestCredits) {
