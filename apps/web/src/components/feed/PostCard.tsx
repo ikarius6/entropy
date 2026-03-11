@@ -280,7 +280,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
         )}
 
         {/* Not interested */}
-        {eventTags.length > 0 && (
+        {(eventTags.length > 0 || voteTags.length > 0) && (
           <button
             onClick={() => emitSignal("not_interested")}
             title="Not interested in this type of content"

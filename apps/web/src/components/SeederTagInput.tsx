@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Tag, Loader2, Check, AlertCircle } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Tag, Loader2, Check, AlertCircle, X } from "lucide-react";
 import { validateTagName, TAG_NAME_MAX_LENGTH, ENTROPY_TAG_VOTE_KIND, buildTagVoteTags } from "@entropy/core";
 import { tagContent } from "../lib/extension-bridge";
 import { useEntropyStore } from "../stores/entropy-store";
@@ -18,14 +18,24 @@ interface SeederTagInputProps {
  * fully downloaded/seeded. Publishes a Nostr kind:37001 tag-vote event
  * (visible to all users via relay subscription) and also stores locally
  * via TAG_CONTENT for P2P propagation.
+ *
+ * By default shows only a small Tag icon button. Clicking it expands the
+ * input inline — keeping tagging optional and non-invasive.
  */
 export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProps) {
   const { relayPool, networkTags } = useEntropyStore();
   const { userTagged, userTag } = useContentTags(rootHash);
 
+  const [expanded, setExpanded] = useState(false);
   const [value, setValue] = useState("");
   const [state, setState] = useState<TagState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus input when expanded
+  useEffect(() => {
+    if (expanded) inputRef.current?.focus();
+  }, [expanded]);
 
   const handleSubmit = useCallback(async () => {
     const validation = validateTagName(value);
@@ -72,6 +82,12 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
       e.preventDefault();
       void handleSubmit();
     }
+    if (e.key === "Escape") {
+      setExpanded(false);
+      setValue("");
+      setState("idle");
+      setErrorMsg(null);
+    }
   };
 
   // Nostr subscription detected existing tag vote from this user
@@ -84,7 +100,7 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
     );
   }
 
-  // After success or already_tagged, show a static message
+  // After success, show a static message
   if (state === "success") {
     return (
       <div className={`flex items-center gap-1.5 text-xs text-green-400 ${compact ? "" : "mt-2"}`}>
@@ -103,12 +119,27 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
     );
   }
 
+  // Collapsed: just the tag icon button
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        title="Tag this content"
+        className={`inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-border hover:bg-white/[0.03] hover:text-accent ${compact ? "" : "mt-2"}`}
+      >
+        <Tag size={15} />
+      </button>
+    );
+  }
+
+  // Expanded: inline input
   return (
     <div className={`flex flex-col gap-1.5 ${compact ? "" : "mt-2"}`}>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Tag size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
           <input
+            ref={inputRef}
             type="text"
             value={value}
             onChange={(e) => {
@@ -117,7 +148,7 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
             }}
             onKeyDown={handleKeyDown}
             maxLength={TAG_NAME_MAX_LENGTH}
-            placeholder="Add a tag to this content…"
+            placeholder="Add a tag…"
             disabled={state === "submitting"}
             className="input-base w-full pl-8 pr-3 py-1.5 text-sm"
           />
@@ -133,6 +164,13 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
             "Tag"
           )}
         </button>
+        <button
+          onClick={() => { setExpanded(false); setValue(""); setState("idle"); setErrorMsg(null); }}
+          className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:text-main"
+          title="Cancel"
+        >
+          <X size={14} />
+        </button>
       </div>
       {state === "error" && errorMsg && (
         <div className="flex items-center gap-1.5 text-xs text-red-400">
@@ -140,9 +178,6 @@ export function SeederTagInput({ rootHash, compact = false }: SeederTagInputProp
           <span>{errorMsg}</span>
         </div>
       )}
-      <p className="text-[0.68rem] text-muted/50">
-        One tag per content · max {TAG_NAME_MAX_LENGTH} chars · helps categorize content for the network
-      </p>
     </div>
   );
 }

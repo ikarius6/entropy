@@ -70,8 +70,13 @@
   --color-muted: var(--app-text-muted);
   --color-border: var(--app-border);
   --color-main: var(--app-text-main);
-  --color-surface: var(--app-text-main);
+  --color-surface: var(--app-panel);
+  --color-surface-hover: var(--app-surface-hover);
   --color-inverted: var(--app-inverted);
+  --color-warning: var(--app-warning);
+  --color-warning-text: var(--app-warning-text);
+  --color-success: var(--app-success);
+  --color-error: var(--app-error);
 }
 
 @layer base {
@@ -95,6 +100,7 @@
     --app-background: #161412;
     --app-background-code: #141210;
     --app-panel: #1f1c19;
+    --app-surface-hover: rgba(255, 255, 255, 0.06);
     
     --app-primary: #d6a56a;
     --app-primary-hover: #ddb27d;
@@ -118,6 +124,7 @@
     --app-success-code: #93ffda;
 
     --app-warning: #ffa03c;
+    --app-warning-text: #ffa03c;
 
     --app-info-text: #e8f0ff;
     --app-info-light: #d7ebff;
@@ -141,6 +148,7 @@
     --app-background: #f8f9fa;
     --app-background-code: #e9ecef;
     --app-panel: #ffffff;
+    --app-surface-hover: rgba(0, 0, 0, 0.04);
     
     --app-primary: #176ec1;
     --app-primary-hover: #135a9e;
@@ -163,6 +171,7 @@
     --app-success-code: #38b755;
 
     --app-warning: #ff9900;
+    --app-warning-text: #b36b00;
 
     --app-info-text: #0d6efd;
     --app-info-light: #3d8bfd;
@@ -183,6 +192,7 @@
     --app-background: #091724;
     --app-background-code: #08131d;
     --app-panel: #0f2437;
+    --app-surface-hover: rgba(255, 255, 255, 0.06);
     
     --app-primary: #56bfff;
     --app-primary-hover: #7acfff;
@@ -205,6 +215,7 @@
     --app-success-code: #7ff5cb;
     
     --app-warning: #ffb95c;
+    --app-warning-text: #ffb95c;
     
     --app-info-text: #8ed5ff;
     --app-info-light: #cbeeff;
@@ -225,6 +236,7 @@
     --app-background: #0c140f;
     --app-background-code: #0a120d;
     --app-panel: #142018;
+    --app-surface-hover: rgba(255, 255, 255, 0.06);
     
     --app-primary: #7cd685;
     --app-primary-hover: #95e19d;
@@ -247,6 +259,7 @@
     --app-success-code: #a3edaa;
     
     --app-warning: #ecb45a;
+    --app-warning-text: #ecb45a;
     
     --app-info-text: #d9f7dc;
     --app-info-light: #eef9ea;
@@ -267,6 +280,7 @@
     --app-background: #fff7f0;
     --app-background-code: #fff0e4;
     --app-panel: #ffffff;
+    --app-surface-hover: rgba(0, 0, 0, 0.04);
     
     --app-primary: #e66f51;
     --app-primary-hover: #d95e40;
@@ -289,6 +303,7 @@
     --app-success-code: #4f946d;
     
     --app-warning: #e08e39;
+    --app-warning-text: #c07520;
     
     --app-info-text: #be5c42;
     --app-info-light: #da8466;

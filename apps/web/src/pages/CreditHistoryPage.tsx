@@ -145,7 +145,7 @@ export default function CreditHistoryPage() {
           <SummaryCard
             label="Duplicate Chunks"
             value={String(duplicates.length)}
-            icon={<AlertTriangle size={18} className={duplicates.length > 0 ? "text-yellow-400" : "text-muted"} />}
+            icon={<AlertTriangle size={18} className={duplicates.length > 0 ? "text-warning" : "text-muted"} />}
             highlight={duplicates.length > 0}
           />
           <SummaryCard
@@ -153,7 +153,7 @@ export default function CreditHistoryPage() {
             value={formatBytes(
               duplicates.reduce((sum, d) => sum + d.totalBytes - (d.totalBytes / d.count), 0)
             )}
-            icon={<TrendingDown size={18} className={duplicates.length > 0 ? "text-red-400" : "text-muted"} />}
+            icon={<TrendingDown size={18} className={duplicates.length > 0 ? "text-error" : "text-muted"} />}
             highlight={duplicates.length > 0}
           />
         </div>
@@ -161,8 +161,8 @@ export default function CreditHistoryPage() {
 
       {/* Duplicate chunk warning */}
       {duplicates.length > 0 && (
-        <div className="panel border-yellow-500/30 bg-yellow-500/5 px-4 py-4 space-y-3">
-          <div className="flex items-center gap-2 text-yellow-400 font-medium text-sm">
+        <div className="panel border-warning/30 bg-warning/5 px-4 py-4 space-y-3">
+          <div className="flex items-center gap-2 text-warning-text font-medium text-sm">
             <AlertTriangle size={16} />
             Double-Charge Detected — {duplicates.length} chunk{duplicates.length > 1 ? "s" : ""} charged multiple times
           </div>
@@ -179,16 +179,16 @@ export default function CreditHistoryPage() {
               <tbody>
                 {duplicates.map((dup) => (
                   <tr key={dup.chunkHash} className="border-b border-border/20">
-                    <td className="py-1.5 pr-3 font-mono text-yellow-300">
+                    <td className="py-1.5 pr-3 font-mono text-warning-text">
                       {truncHash(dup.chunkHash, 12)}
                     </td>
                     <td className="py-1.5 pr-3 font-mono text-muted">
                       {dup.rootHash ? truncHash(dup.rootHash, 10) : "—"}
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-bold text-yellow-400">
+                    <td className="py-1.5 pr-3 text-right font-bold text-warning-text">
                       {dup.count}×
                     </td>
-                    <td className="py-1.5 text-right text-red-400">
+                    <td className="py-1.5 text-right text-error">
                       {formatBytes(dup.totalBytes)}
                     </td>
                   </tr>
@@ -208,7 +208,7 @@ export default function CreditHistoryPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             placeholder="Search by chunk hash, root hash, or peer pubkey…"
-            className="w-full rounded-lg border border-border bg-surface pl-9 pr-3 py-2 text-sm placeholder:text-muted/60 focus:border-primary focus:outline-none"
+            className="w-full rounded-lg border border-border bg-panel pl-9 pr-3 py-2 text-sm placeholder:text-muted/60 focus:border-primary focus:outline-none"
           />
         </div>
         <div className="flex rounded-lg border border-border overflow-hidden text-sm">
@@ -322,7 +322,7 @@ function SummaryCard({
         {icon}
         <span className="text-xs text-muted font-medium">{label}</span>
       </div>
-      <div className={`text-lg font-bold ${highlight ? "text-yellow-400" : ""}`}>
+      <div className={`text-lg font-bold ${highlight ? "text-warning-text" : ""}`}>
         {value}
       </div>
     </div>
@@ -342,7 +342,7 @@ function EntryRow({
 }) {
   const isUp = entry.direction === "up";
   const rowBg = isDuplicate && !isUp
-    ? "bg-yellow-500/5 hover:bg-yellow-500/10"
+    ? "bg-warning/5 hover:bg-warning/10"
     : "hover:bg-surface-hover/50";
 
   return (
@@ -351,16 +351,16 @@ function EntryRow({
       <td className="py-2 px-3">
         <div className="flex items-center gap-1.5">
           {isUp ? (
-            <ArrowUpCircle size={16} className="text-green-400" />
+            <ArrowUpCircle size={16} className="text-success" />
           ) : (
-            <ArrowDownCircle size={16} className="text-red-400" />
+            <ArrowDownCircle size={16} className="text-error" />
           )}
-          <span className={`text-xs font-medium ${isUp ? "text-green-400" : "text-red-400"}`}>
+          <span className={`text-xs font-medium ${isUp ? "text-success" : "text-error"}`}>
             {isUp ? "EARN" : "SPEND"}
           </span>
           {isDuplicate && !isUp && (
             <span title="Duplicate charge for this chunk">
-              <AlertTriangle size={12} className="text-yellow-400 ml-0.5" />
+              <AlertTriangle size={12} className="text-warning ml-0.5" />
             </span>
           )}
         </div>
@@ -385,7 +385,7 @@ function EntryRow({
       {/* Chunk hash */}
       <td className="py-2 px-3">
         <span
-          className={`font-mono text-xs ${isDuplicate && !isUp ? "text-yellow-300" : "text-muted"}`}
+          className={`font-mono text-xs ${isDuplicate && !isUp ? "text-warning-text" : "text-muted"}`}
           title={entry.chunkHash}
         >
           {truncHash(entry.chunkHash, 8)}
@@ -409,7 +409,7 @@ function EntryRow({
 
       {/* Bytes */}
       <td className="py-2 px-3 text-right">
-        <span className={`font-mono text-xs font-medium ${isUp ? "text-green-400" : "text-red-400"}`}>
+        <span className={`font-mono text-xs font-medium ${isUp ? "text-success" : "text-error"}`}>
           {isUp ? "+" : "−"}{formatBytes(entry.bytes)}
         </span>
       </td>
@@ -441,7 +441,7 @@ function EntryRow({
           className="rounded p-1 text-muted hover:text-primary hover:bg-surface-hover transition-colors"
           title="Copy entry details"
         >
-          {copiedId === entry.id ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+          {copiedId === entry.id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
         </button>
       </td>
     </tr>
