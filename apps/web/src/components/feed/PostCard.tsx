@@ -513,7 +513,7 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
 
   const metaBadges = (
     <div className="flex gap-2">
-      <div className="rounded-md border border-border bg-inverted/55 px-2.5 py-1 text-xs font-mono text-surface/85">
+      <div className="rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs font-mono text-main backdrop-blur-sm">
         {sizeMB} MB
       </div>
     </div>
