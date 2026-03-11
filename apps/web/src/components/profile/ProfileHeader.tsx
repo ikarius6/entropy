@@ -80,7 +80,7 @@ export function ProfileHeader({
             )}
           </div>
           
-          <p className="text-surface/90 mb-4 whitespace-pre-wrap">
+          <p className="text-main/90 mb-4 whitespace-pre-wrap">
             {profile?.about || "No bio provided."}
           </p>
           

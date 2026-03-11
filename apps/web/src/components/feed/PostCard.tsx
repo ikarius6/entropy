@@ -386,7 +386,7 @@ function QuotedParent({ eventId }: { eventId: string }) {
       <div className="flex items-center gap-2 mb-1.5">
         <CornerUpLeft size={12} className="text-muted flex-shrink-0" />
         <AvatarBadge profile={profile} pubkey={event.pubkey} size="sm" />
-        <span className="text-xs font-semibold text-surface/80 transition-colors group-hover:text-main">
+        <span className="text-xs font-semibold text-main/80 transition-colors group-hover:text-main">
           {displayName}
         </span>
         <span className="text-muted text-xs font-mono">{event.pubkey.slice(0, 6)}…</span>
@@ -580,7 +580,7 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
             <div className="absolute right-3 top-3 z-10 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
               <Link
                 to={`/watch/${chunkMap.rootHash}`}
-                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-surface/80 transition-colors hover:bg-inverted/80 hover:text-main"
+                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-main/80 transition-colors hover:bg-inverted/80 hover:text-main"
                 title="Open full page"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -588,7 +588,7 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
               </Link>
               <button
                 onClick={(e) => { e.stopPropagation(); handleCollapse(); }}
-                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-surface/80 transition-colors hover:bg-inverted/80 hover:text-main"
+                className="rounded-md border border-surface/10 bg-inverted/65 p-1.5 text-main/80 transition-colors hover:bg-inverted/80 hover:text-main"
                 title="Collapse"
               >
                 <X size={14} />

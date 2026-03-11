@@ -38,7 +38,7 @@ function CollapsibleJSON({ raw }: { raw: string }) {
         <span className="ml-auto text-[10px] text-muted/60 shrink-0">JSON</span>
       </button>
       {expanded && (
-        <pre className="code-block max-h-[400px] overflow-x-auto overflow-y-auto border-x-0 border-b-0 rounded-none border-t px-3 pb-3 pt-3 font-mono text-xs leading-relaxed text-surface/80">
+        <pre className="code-block max-h-[400px] overflow-x-auto overflow-y-auto border-x-0 border-b-0 rounded-none border-t px-3 pb-3 pt-3 font-mono text-xs leading-relaxed text-main/80">
           {parsed ? JSON.stringify(parsed, null, 2) : raw.trim()}
         </pre>
       )}
@@ -126,9 +126,9 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   h1: ({ children }: Record<string, unknown>) => <span className="font-bold text-main">{children as ReactNode}</span>,
   h2: ({ children }: Record<string, unknown>) => <span className="font-bold text-main">{children as ReactNode}</span>,
   h3: ({ children }: Record<string, unknown>) => <span className="font-semibold text-main">{children as ReactNode}</span>,
-  h4: ({ children }: Record<string, unknown>) => <span className="font-semibold text-surface/90">{children as ReactNode}</span>,
-  h5: ({ children }: Record<string, unknown>) => <span className="font-medium text-surface/90">{children as ReactNode}</span>,
-  h6: ({ children }: Record<string, unknown>) => <span className="font-medium text-surface/80">{children as ReactNode}</span>,
+  h4: ({ children }: Record<string, unknown>) => <span className="font-semibold text-main/90">{children as ReactNode}</span>,
+  h5: ({ children }: Record<string, unknown>) => <span className="font-medium text-main/90">{children as ReactNode}</span>,
+  h6: ({ children }: Record<string, unknown>) => <span className="font-medium text-main/80">{children as ReactNode}</span>,
   // Code blocks
   code: ({ children, className }: Record<string, unknown>) => {
     const isInline = !className;
@@ -143,7 +143,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   },
   // Blockquote
   blockquote: ({ children }: Record<string, unknown>) => (
-    <blockquote className="my-1 border-l-2 border-primary/35 pl-3 text-surface/75">{children as ReactNode}</blockquote>
+    <blockquote className="my-1 border-l-2 border-primary/35 pl-3 text-main/75">{children as ReactNode}</blockquote>
   ),
   // Lists
   ul: ({ children }: Record<string, unknown>) => <ul className="list-disc list-inside space-y-0.5 my-1">{children as ReactNode}</ul>,
@@ -201,7 +201,7 @@ export function SmartContent({ content, compact = false }: SmartContentProps) {
   }, [content, urls, compact]);
 
   return (
-    <div className="smart-content break-words text-[0.95rem] leading-7 text-surface/90">
+    <div className="smart-content break-words text-[0.95rem] leading-7 text-main/90">
       {textForMd && <MarkdownBody text={textForMd} />}
       {!compact && <MediaEmbeds urls={urls} />}
       {!compact && <LinkChips urls={urls} />}

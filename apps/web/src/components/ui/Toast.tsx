@@ -81,7 +81,7 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: () => v
         <h3 className="font-semibold text-sm">{toast.title}</h3>
         <button 
           onClick={onRemove}
-          className="text-surface/50 hover:text-main transition-colors"
+          className="text-main/50 hover:text-main transition-colors"
         >
           <X size={16} />
         </button>
