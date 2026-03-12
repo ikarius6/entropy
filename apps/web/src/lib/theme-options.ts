@@ -1,4 +1,4 @@
-export const RESOLVED_THEME_VALUES = ["dark", "light", "ocean", "forest", "sunset"] as const;
+export const RESOLVED_THEME_VALUES = ["dark", "light", "ocean", "forest", "sunset", "pastel"] as const;
 
 export type ResolvedTheme = (typeof RESOLVED_THEME_VALUES)[number];
 export type Theme = ResolvedTheme | "system";
@@ -49,6 +49,12 @@ export const THEME_OPTIONS: readonly ThemeOption[] = [
     label: "Sunset",
     description: "A warm light palette with soft amber contrast.",
     preview: ["#fff7f0", "#ffffff", "#e66f51"]
+  },
+  {
+    value: "pastel",
+    label: "Pastel",
+    description: "A soft, light palette with gentle lavender and mint elements.",
+    preview: ["#fdfbfd", "#ffffff", "#bface2"]
   }
 ] as const;
 
@@ -57,7 +63,8 @@ export const THEME_CLASS_NAMES: Record<ResolvedTheme, string> = {
   light: "theme-light",
   ocean: "theme-ocean",
   forest: "theme-forest",
-  sunset: "theme-sunset"
+  sunset: "theme-sunset",
+  pastel: "theme-pastel"
 };
 
 export const THEME_MODES: Record<ResolvedTheme, ThemeMode> = {
@@ -65,7 +72,8 @@ export const THEME_MODES: Record<ResolvedTheme, ThemeMode> = {
   light: "light",
   ocean: "dark",
   forest: "dark",
-  sunset: "light"
+  sunset: "light",
+  pastel: "light"
 };
 
 const THEME_VALUE_SET = new Set<string>(THEME_VALUES);

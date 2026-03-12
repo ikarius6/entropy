@@ -309,6 +309,50 @@
     --app-info-light: #da8466;
   }
 
+  .theme-pastel {
+    --app-primary-rgb: 191, 172, 226;
+    --app-panel-rgb: 255, 255, 255;
+    --app-text-rgb: 63, 57, 70;
+    --app-error-rgb: 255, 154, 162;
+    --app-success-rgb: 181, 234, 215;
+    --app-warning-rgb: 255, 218, 193;
+    --app-unknown-rgb: 182, 179, 186;
+    --app-shadow-rgb: 80, 70, 90;
+    --app-topbar-rgb: 246, 243, 249;
+
+    --app-background-top: #f6f3f9;
+    --app-background: #fdfbfd;
+    --app-background-code: #f3f0f6;
+    --app-panel: #ffffff;
+    --app-surface-hover: rgba(0, 0, 0, 0.03);
+    
+    --app-primary: #bface2;
+    --app-primary-hover: #a894cc;
+    --app-primary-text: #ffffff;
+    
+    --app-accent: #ffb7b2;
+    
+    --app-text-main: #3f3946;
+    --app-text-muted: #8d8596;
+    --app-text-placeholder: #bbaec8;
+
+    --app-border: rgba(var(--app-text-rgb), 0.1);
+    --app-inverted: #fdfbfd;
+
+    --app-error: #ff9aa2;
+    --app-error-light: #ffbdc4;
+    
+    --app-success: #b5ead7;
+    --app-success-light: #d8f5ec;
+    --app-success-code: #9fd2c0;
+    
+    --app-warning: #ffdac1;
+    --app-warning-text: #d69766;
+    
+    --app-info-text: #a0c4ff;
+    --app-info-light: #cce0ff;
+  }
+
   html {
     background: var(--app-background);
   }
