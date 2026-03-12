@@ -9,6 +9,8 @@
 Share video, audio, and images across a peer-to-peer network without centralized servers.
 Every browser becomes a node. Every upload feeds the swarm.
 
+![Entropy Screenshot](docs/demo1.jpg)
+
 </div>
 
 ---
@@ -82,6 +84,42 @@ Content is split into 5 MB chunks, hashed into a Merkle tree, and published as a
 Other users discover the content in their feed, connect via WebRTC signaling over Nostr ephemeral events (kind:20001), and download chunks in parallel from multiple peers with progressive streaming playback.
 
 > 📖 Deep dives: [`architecture.md`](./docs/architecture.md) · [`flow.md`](./docs/flow.md)
+
+---
+
+## Why a Browser Extension?
+
+A regular web page is **ephemeral** — the moment you close or navigate away from a tab, all JavaScript execution stops. For a P2P network that depends on nodes staying online to serve chunks to other peers, this is a fundamental problem.
+
+The Entropy browser extension solves this by running a **Manifest V3 Service Worker** — a persistent background process that continues operating even when the web app tab is closed. This is the architectural reason the extension is not optional for uploaders and seeders.
+
+| Capability | Without Extension | With Extension |
+|---|---|---|
+| **Background seeding** | ❌ Stops when tab closes | ✅ Service Worker keeps serving chunks 24/7 |
+| **Chunk storage** | ⚠️ Session only — volatile | ✅ Persisted in IndexedDB, survives restarts |
+| **Identity / Keypair** | ⚠️ Relies on NIP-07 extension (e.g. Alby) | ✅ Managed in `chrome.storage`, always available |
+| **Credit ledger** | ❌ Lost on page refresh | ✅ Persisted and hash-chain protected |
+| **Signaling listener** | ❌ Offline when tab closes | ✅ Always online, ready to answer WebRTC offers |
+
+### What the Extension Does in the Background
+
+```
+Browser Tab (closed)              Extension Service Worker (alive)
+                                  ┌──────────────────────────────┐
+                                  │  • Listens for WebRTC offers │
+                                  │    via Nostr ephemeral events │
+                                  │  • Serves chunk requests from │
+                                  │    the IndexedDB chunk store  │
+                                  │  • Earns credits for uploads  │
+                                  │  • Verifies cold storage      │
+                                  │    custody challenges         │
+                                  │  • Prunes stale data (LRU)   │
+                                  └──────────────────────────────┘
+```
+
+Without the extension, Entropy still works as a **viewer and downloader** — you can watch content and browse the feed. But to **upload, seed, or earn credits**, the extension is required. This is by design: it ensures that seeders are reliable long-term nodes, not ephemeral browser tabs.
+
+> 🔌 **Install the extension** → see [Build the Browser Extension](#build-the-browser-extension) below.
 
 ---
 
