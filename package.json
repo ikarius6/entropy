@@ -11,7 +11,8 @@
     "dev:core": "pnpm --filter @entropy/core dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "package:extensions": "pnpm --filter @entropy/extension package:all"
   },
   "devDependencies": {
     "@types/simple-peer": "^9.11.9",
@@ -29,3 +30,4 @@
     }
   }
 }
+

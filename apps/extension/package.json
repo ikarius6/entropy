@@ -10,6 +10,9 @@
     "dev:firefox": "cross-env BROWSER_TARGET=firefox pnpm run prepare:manifest && vite build --watch --mode development",
     "build": "pnpm run prepare:manifest && vite build",
     "build:firefox": "cross-env BROWSER_TARGET=firefox pnpm run prepare:manifest && vite build",
+    "package": "pnpm run build && node scripts/package-extension.mjs chrome",
+    "package:firefox": "pnpm run build:firefox && node scripts/package-extension.mjs firefox",
+    "package:all": "pnpm run package && pnpm run package:firefox",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.mjs"
   },
@@ -18,7 +21,9 @@
     "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/webextension-polyfill": "^0.12.5",
+    "archiver": "^7.0.1",
     "cross-env": "^10.1.0",
     "typescript": "^5.8.2",
     "vite": "^5.4.14",

@@ -188,7 +188,24 @@ pnpm dev:web
 
 Opens the Entropy web app at `http://localhost:5173`. Requires a Nostr identity (NIP-07 extension like [Alby](https://getalby.com/) or [nos2x](https://github.com/nicnocquee/nos2x)) or the Entropy extension for key management.
 
-### Build the Browser Extension
+### Install the Browser Extension
+
+Pre-built packages are available in the [`releases/`](./releases/) folder while the extensions are pending store review. Download the `.zip` for your browser and follow the sideload instructions below.
+
+**Chrome / Chromium / Brave / Edge:**
+
+1. Download `releases/entropy-extension-chrome-v*.zip` and **unzip** it to a local folder.
+2. Open `chrome://extensions` → enable **Developer mode** (top-right toggle).
+3. Click **Load unpacked** → select the unzipped folder.
+
+**Firefox:**
+
+1. Download `releases/entropy-extension-firefox-v*.zip`.
+2. Open `about:addons` → click the gear icon → **Install Add-on From File…**
+3. Select the `.zip` file directly (Firefox accepts signed or temporary `.zip` installs).
+   > For persistent install (survives restart) without signing, open `about:config` → set `xpinstall.signatures.required` to `false` — for development/testing only.
+
+### Build the Browser Extension from Source
 
 **Chrome:**
 
@@ -206,12 +223,26 @@ pnpm --filter @entropy/extension build:firefox
 
 Load as temporary add-on from `apps/extension/dist/` in `about:debugging#/runtime/this-firefox`.
 
+### Package Pre-built Releases
+
+To regenerate the distributable `.zip` files in `releases/` (builds both targets in sequence):
+
+```bash
+# Both Chrome + Firefox in one command
+pnpm package:extensions
+
+# Or individually
+pnpm --filter @entropy/extension package           # → releases/entropy-extension-chrome-v*.zip
+pnpm --filter @entropy/extension package:firefox   # → releases/entropy-extension-firefox-v*.zip
+```
+
 ### Use the Extension
 
 - Click the **Entropy** icon in the toolbar to see the popup with node status, credit ratio, and integrity info.
 - Click **Open Dashboard** (or go to extension options) for the full node dashboard: chunk inventory, relay configuration, peer reputation, cold storage assignments, and network metrics.
 
 ---
+
 
 ## Testing
 
@@ -316,6 +347,9 @@ If integrity verification fails, the ledger resets to zero and cold storage elig
 | `pnpm typecheck` | TypeScript verification across all packages |
 | `pnpm --filter @entropy/extension build` | Production build for Chrome |
 | `pnpm --filter @entropy/extension build:firefox` | Production build for Firefox |
+| `pnpm package:extensions` | Build **both** targets and zip into `releases/` |
+| `pnpm --filter @entropy/extension package` | Chrome build → `releases/entropy-extension-chrome-v*.zip` |
+| `pnpm --filter @entropy/extension package:firefox` | Firefox build → `releases/entropy-extension-firefox-v*.zip` |
 
 ---
 
