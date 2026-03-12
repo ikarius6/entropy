@@ -10,3 +10,9 @@ apps/extension/firefox/*
 apps/extension/chrome/*
 firefox.txt
 chrome.txt
+
+# AI agent tooling (local only)
+.agents/
+.agent/
+_agents/
+_agent/
