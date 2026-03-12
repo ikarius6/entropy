@@ -5,7 +5,7 @@
  * via the extension's NIP-07 provider (`window.nostr.signEvent`).
  *
  * Default entries (seeded at install time):
- *   - https://entropy.app          — production Entropy web app
+ *   - https://hackers.army          — production Entropy web app
  *   - http://localhost:5173        — Vite dev server
  *   - http://localhost:4173        — Vite preview server
  */
@@ -16,7 +16,7 @@ const ALLOWLIST_KEY = "nip07SignAllowlist";
 
 /** Origins that are pre-authorized out of the box. */
 export const DEFAULT_SIGN_ORIGINS: readonly string[] = [
-  "https://entropy.app",
+  "https://hackers.army",
   "http://localhost:5173",
   "http://localhost:4173"
 ];

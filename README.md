@@ -21,6 +21,12 @@ Entropy is a **Layer 2 protocol for decentralized social networks** that enables
 
 Content is split into 5 MB chunks, hashed into a Merkle tree, and published as a **Nostr kind:7001 Chunk Map** event. Peers discover content through Nostr relays and exchange chunks directly via **WebRTC DataChannels** — encrypted, verifiable, and fully decentralized.
 
+## Try it
+
+Download and install the extension from the [releases](releases/) folder.
+
+[Navigate to Entropy](https://hackers.army/entropy/)
+
 ### Key Features
 
 - **P2P Streaming** — Progressive playback via MediaSource Extensions while chunks download from multiple peers in parallel
