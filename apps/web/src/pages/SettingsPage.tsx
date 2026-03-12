@@ -729,7 +729,7 @@ function AlgorithmSection({ sortedPrefs, maxAbsScore, onReset, formatAge }: Algo
             <h2 className="text-[1.05rem] font-semibold">Your Algorithm</h2>
             {sortedPrefs.length > 0 && (
               <p className="text-[11px] text-muted mt-0.5">
-                {sortedPrefs.length} tags · <span className="text-green-400">{positiveCount} boosted</span> · <span className="text-red-400">{negativeCount} suppressed</span>
+                {sortedPrefs.length} tags · <span className="text-success">{positiveCount} boosted</span> · <span className="text-error">{negativeCount} suppressed</span>
               </p>
             )}
           </div>
@@ -784,21 +784,27 @@ function AlgorithmSection({ sortedPrefs, maxAbsScore, onReset, formatAge }: Algo
               const intensity = Math.min(1, Math.abs(pref.score) / maxAbsScore);
 
               const chipClass = isPositive
-                ? 'border-green-500/25 bg-green-500/8 text-green-400 hover:bg-green-500/15'
+                ? 'border-success/25 text-success hover:opacity-80'
                 : isNegative
-                  ? 'border-red-500/25 bg-red-500/8 text-red-400 hover:bg-red-500/15'
-                  : 'border-border bg-white/[0.02] text-muted hover:bg-white/[0.05]';
+                  ? 'border-error/25 text-error hover:opacity-80'
+                  : 'border-border text-muted hover:opacity-80';
+              const chipStyle = isPositive
+                ? { background: 'rgba(var(--app-success-rgb), 0.08)' }
+                : isNegative
+                  ? { background: 'rgba(var(--app-error-rgb), 0.08)' }
+                  : { background: 'rgba(var(--app-text-rgb), 0.03)' };
 
               return (
                 <div
                   key={pref.name}
-                  className={`group relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors cursor-default ${chipClass}`}
+                  className={`group relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all cursor-default ${chipClass}`}
+                  style={chipStyle}
                   title={`${pref.name}: ${isPositive ? '+' : ''}${pref.score} · ${formatAge(pref.updatedAt)}`}
                 >
                   {/* Tiny score bar indicator */}
                   <span
                     className={`inline-block h-1.5 rounded-full ${
-                      isPositive ? 'bg-green-400' : isNegative ? 'bg-red-400' : 'bg-muted/30'
+                      isPositive ? 'bg-success' : isNegative ? 'bg-error' : 'bg-muted/30'
                     }`}
                     style={{ width: `${Math.max(4, intensity * 20)}px` }}
                   />
