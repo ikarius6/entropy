@@ -1,53 +1,51 @@
-# Credit Integrity — Plan de viabilidad
+# Credit Integrity
 
-## Estado actual
-
-### Cómo funcionan los créditos hoy
+### How credits work today
 
 ```
-Transferencia P2P → service-worker.ts → credit-ledger.ts → chrome.storage.local
+P2P Transfer → service-worker.ts → credit-ledger.ts → chrome.storage.local
                                          (CreditEntry[])
 ```
 
-Cada `CreditEntry` tiene:
-- `id` — UUID generado localmente
-- `peerPubkey` — pubkey del peer con quien se intercambió
+Each `CreditEntry` has:
+- `id` — Locally generated UUID
+- `peerPubkey` — pubkey of the peer it was exchanged with
 - `direction` — "up" | "down"
-- `bytes` — cantidad de bytes transferidos
-- `chunkHash` — hash del chunk transferido
-- `receiptSignature` — string libre, actualmente `"rtc-upload:{chunkHash}:{timestamp}"` o `"p2p-fetch"`
+- `bytes` — amount of bytes transferred
+- `chunkHash` — hash of the transferred chunk
+- `receiptSignature` — free string, currently `"rtc-upload:{chunkHash}:{timestamp}"` or `"p2p-fetch"`
 - `timestamp` — epoch seconds
 
-### Vectores de ataque
+### Attack Vectors
 
-| Ataque | Dificultad | Impacto |
+| Attack | Difficulty | Impact |
 |---|---|---|
-| Editar `creditLedgerEntries` en chrome.storage.local | Trivial | Balance infinito, cold storage gratis |
-| Inventar entries con peerPubkeys falsos | Trivial | Créditos fabricados sin transferencia real |
-| Inflar `bytes` en entries existentes | Trivial | Multiplicar balance |
-| Borrar entries de tipo "down" | Trivial | Eliminar descargas, ratio inflado |
+| Edit `creditLedgerEntries` in chrome.storage.local | Trivial | Infinite balance, free cold storage |
+| Invent entries with fake peerPubkeys | Trivial | Fabricated credits without real transfer |
+| Inflate `bytes` in existing entries | Trivial | Multiply balance |
+| Delete "down" type entries | Trivial | Eliminate downloads, inflated ratio |
 
-### Infraestructura existente que podemos aprovechar
+### Existing Infrastructure we can leverage
 
-1. **`proof-of-upstream.ts`** — Ya existe un sistema de receipts firmados (kind 7772) con `buildReceiptDraft()`, `parseReceipt()`, `isValidReceipt()`. Actualmente NO se usa para validar entries del ledger.
+1. **`proof-of-upstream.ts`** — Signed receipts system (kind 7772) already exists with `buildReceiptDraft()`, `parseReceipt()`, `isValidReceipt()`. Currently NOT used to validate ledger entries.
 
-2. **`verify-receipt.ts`** — `wireReceiptVerifier()` ya está conectado al service worker con `verifyEventSignature` de nostr-tools.
+2. **`verify-receipt.ts`** — `wireReceiptVerifier()` is already connected to the service worker with nostr-tools' `verifyEventSignature`.
 
-3. **`chunk-transfer.ts`** — Custody Challenge/Proof ya existe en el protocolo binario (tipos 0x05 y 0x06). Permite verificar que un peer realmente posee un chunk.
+3. **`chunk-transfer.ts`** — Custody Challenge/Proof already exists in the binary protocol (types 0x05 and 0x06). Allows verifying that a peer actually possesses a chunk.
 
-4. **`peer-reputation.ts`** — Sistema de reputación con ban automático por verificaciones fallidas.
+4. **`peer-reputation.ts`** — Reputation system with automatic ban for failed verifications.
 
-5. **IndexedDB ChunkStore** — Inventario local de chunks que se puede cruzar con los entries del ledger.
+5. **IndexedDB ChunkStore** — Local repository of chunks that can be cross-referenced with ledger entries.
 
 ---
 
-## Diseño propuesto: Credit Integrity en 3 capas
+## Proposed Design: Credit Integrity in 3 Layers
 
-### Capa 1 — Tamper Detection (hash chain local)
+### Layer 1 — Tamper Detection (local hash chain)
 
-**Objetivo:** Detectar si alguien editó `chrome.storage.local` manualmente.
+**Goal:** Detect if someone manually edited `chrome.storage.local`.
 
-**Mecanismo:** Convertir el ledger en una **hash chain** (blockchain simplificada):
+**Mechanism:** Convert the ledger into a **hash chain** (simplified blockchain):
 
 ```
 Entry[0].integrityHash = SHA-256(entry[0] fields)
@@ -55,194 +53,152 @@ Entry[1].integrityHash = SHA-256(entry[0].integrityHash + entry[1] fields)
 Entry[N].integrityHash = SHA-256(entry[N-1].integrityHash + entry[N] fields)
 ```
 
-Al leer el ledger, recalcular la cadena. Si algún hash no coincide → **ledger corrupto**.
+When reading the ledger, recalculate the chain. If any hash doesn't match → **corrupt ledger**.
 
-**Campos nuevos en CreditEntry:**
+**New fields in CreditEntry:**
 ```typescript
 interface CreditEntry {
-  // ... campos existentes ...
+  // ... existing fields ...
   integrityHash: string;      // SHA-256 chain link
-  signedByNode: string;       // firma del nodo (con su privkey) sobre integrityHash
+  signedByNode: string;       // node signature (with its privkey) over integrityHash
 }
 ```
 
-**Qué detecta:**
-- ✅ Inserción de entries falsos
-- ✅ Modificación de bytes/direction/timestamps
-- ✅ Eliminación de entries (la cadena se rompe)
-- ❌ No previene que el usuario recree toda la cadena desde cero con datos inventados
+**What it detects:**
+- ✅ Insertion of fake entries
+- ✅ Modification of bytes/direction/timestamps
+- ✅ Deletion of entries (the chain breaks)
+- ❌ Does not prevent the user from recreating the entire chain from scratch with fabricated data
 
-**Complejidad:** Baja — solo cambios en `credit-ledger.ts` y `ledger.ts`.
+**Honest limitation:** A technical user can recalculate the entire chain. But it raises the bar from "opening DevTools and changing a number" to "writing a script that understands the format".
 
-**Limitación honesta:** Un usuario técnico puede recalcular toda la cadena. Pero sube la barrera de "abrir DevTools y cambiar un número" a "escribir un script que entienda el formato".
+### Layer 2 — Chunk-Backed Verification (cross-reference with inventory)
 
-### Capa 2 — Chunk-Backed Verification (cross-reference con inventario)
+**Goal:** Verify that each credit entry corresponds to a chunk that actually exists/existed.
 
-**Objetivo:** Verificar que cada credit entry corresponde a un chunk que realmente existe/existió.
-
-**Mecanismo:** Al auditar el ledger, cruzar cada entry con el chunk store:
+**Mechanism:** When auditing the ledger, cross-reference each entry with the chunk store:
 
 ```
-Para cada CreditEntry con direction="up":
-  1. ¿Existe chunk con hash === entry.chunkHash en IndexedDB?
-  2. ¿El tamaño del chunk ≈ entry.bytes? (tolerancia por overhead de protocolo)
-  3. ¿El chunk pertenece a un rootHash que fue delegado al nodo?
+For each CreditEntry with direction="up":
+  1. Does a chunk with hash === entry.chunkHash exist in IndexedDB?
+  2. Is the chunk size ≈ entry.bytes? (tolerance for protocol overhead)
+  3. Does the chunk belong to a rootHash that was delegated to the node?
 
 Scoring:
-  - Entry verificable (chunk existe + tamaño coincide) → confianza alta
-  - Entry con chunk eliminado pero rootHash delegado → confianza media
-  - Entry sin chunk ni delegación → confianza baja (sospechoso)
+  - Verifiable entry (chunk exists + size matches) → high confidence
+  - Entry with deleted chunk but delegated rootHash → medium confidence
+  - Entry without chunk or delegation → low confidence (suspicious)
 ```
 
-**Campos nuevos:**
+**New fields:**
 ```typescript
 interface CreditEntry {
-  // ... campos existentes ...
-  rootHash?: string;           // rootHash del chunk (para cross-reference)
+  // ... existing fields ...
+  rootHash?: string;           // rootHash of the chunk (for cross-reference)
   verificationStatus?: "verified" | "unverifiable" | "suspicious";
 }
 ```
 
-**Qué detecta:**
-- ✅ Entries inventados para chunks que nunca existieron
-- ✅ Bytes inflados (chunk real es más pequeño que lo declarado)
-- ✅ Entries con peerPubkeys que nunca interactuaron (cruzando con peer-reputation)
+**What it detects:**
+- ✅ Fabricated entries for chunks that never existed
+- ✅ Inflated bytes (real chunk is smaller than declared)
+- ✅ Entries with peerPubkeys that never interacted (crossing with peer-reputation)
 
-**Complejidad:** Media — requiere auditor que lea ChunkStore + seeder delegations.
+### Layer 3 — Peer-Signed Receipts (bilateral cryptographic proof)
 
-### Capa 3 — Peer-Signed Receipts (prueba criptográfica bilateral)
+**Goal:** Ensure each credit is backed by a signature from the peer that participated in the transfer.
 
-**Objetivo:** Que cada crédito esté respaldado por una firma del peer que participó en la transferencia.
-
-**Mecanismo:** Usar el sistema de receipts que ya existe en `proof-of-upstream.ts`:
+**Mechanism:** Use the receipts system that already exists in `proof-of-upstream.ts`:
 
 ```
-Flujo de transferencia P2P actual:
-  Peer A solicita chunk → Peer B envía chunk → se registra crédito local
+Current P2P transfer flow:
+  Peer A requests chunk → Peer B sends chunk → local credit is registered
 
-Flujo propuesto:
-  Peer A solicita chunk → Peer B envía chunk
-  → Peer B firma UpstreamReceipt (kind 7772) con su privkey
-  → Peer A recibe el receipt firmado
-  → Peer A almacena la firma como parte del CreditEntry
-  → Al auditar: verificar firma con pubkey del peer
+Proposed flow:
+  Peer A requests chunk → Peer B sends chunk
+  → Peer B signs UpstreamReceipt (kind 7772) with its privkey
+  → Peer A receives the signed receipt
+  → Peer A stores the signature as part of the CreditEntry
+  → When auditing: verify signature with peer's pubkey
 ```
 
-**Cambios en el protocolo de transferencia:**
+**Changes in transfer protocol:**
 ```typescript
-// Nuevo mensaje después de CHUNK_DATA:
+// New message after CHUNK_DATA:
 type TransferReceiptMessage = {
   type: "TRANSFER_RECEIPT";
   chunkHash: string;
-  receiptEvent: SignedNostrEvent; // kind 7772, firmado por el sender
+  receiptEvent: SignedNostrEvent; // kind 7772, signed by the sender
 };
 ```
 
-**Campo actualizado en CreditEntry:**
+**Updated field in CreditEntry:**
 ```typescript
 interface CreditEntry {
-  // ... campos existentes ...
-  receiptSignature: string;    // ahora: firma real del peer (sig del event 7772)
-  receiptEventId: string;      // id del evento Nostr del receipt
-  receiptPubkey: string;       // pubkey del firmante (peer)
+  // ... existing fields ...
+  receiptSignature: string;    // now: real signature from the peer (sig of event 7772)
+  receiptEventId: string;      // Id of the Nostr event of the receipt
+  receiptPubkey: string;       // pubkey of the signer (peer)
 }
 ```
 
-**Validación:**
+**Validation:**
 ```typescript
 function isLegitimateCredit(entry: CreditEntry): boolean {
-  // 1. Reconstruir el evento receipt
+  // 1. Rebuild the receipt event
   const receiptEvent = rebuildReceiptEvent(entry);
-  // 2. Verificar firma con nostr-tools
+  // 2. Verify signature with nostr-tools
   return verifyEventSignature(receiptEvent);
-  // 3. Verificar que receiptPubkey === entry.peerPubkey
+  // 3. Verify that receiptPubkey === entry.peerPubkey
 }
 ```
 
-**Qué detecta:**
-- ✅ Todo lo anterior
-- ✅ Créditos inventados sin participación real de un peer (imposible falsificar la firma del peer)
-- ✅ Manipulación de bytes (el receipt firmado tiene los bytes originales)
-
-**Complejidad:** Alta — requiere cambios en el protocolo P2P de chunk-transfer, p2p-bridge, y el flujo de ambos lados de la conexión.
+**What it detects:**
+- ✅ Everything above
+- ✅ Fabricated credits without real peer participation (impossible to forge peer's signature)
+- ✅ Byte manipulation (the signed receipt has the original bytes)
 
 ---
 
-## Plan de implementación por fases
+## Phased Implementation Plan
 
-### Fase A — Hash Chain + Audit (Capa 1 + 2) ✅ IMPLEMENTADA
+### Phase A — Hash Chain + Audit (Layer 1 + 2) ✅ IMPLEMENTED
 
-1. ✅ Agregados `integrityHash` y `rootHash` a `CreditEntry` en `ledger.ts`
-2. ✅ `credit-ledger.ts` calcula hash chain automáticamente al escribir (`stampIntegrityHash`)
-3. ✅ `verifyLedgerIntegrity()` recalcula la cadena al leer
-4. ✅ `rootHash` disponible en `CreditEntry` y pasado desde transferencias P2P
-5. ✅ `auditCredits()` cruza entries con ChunkStore (size, rootHash, existencia)
-6. ✅ 35 tests para integridad de cadena + auditoría de chunks
-7. Pendiente: Exponer resultado de auditoría en dashboard/web UI
+1. ✅ Added `integrityHash` and `rootHash` to `CreditEntry` in `ledger.ts`
+2. ✅ `credit-ledger.ts` automatically calculates hash chain on write (`stampIntegrityHash`)
+3. ✅ `verifyLedgerIntegrity()` recalculates the chain on read
+4. ✅ `rootHash` available in `CreditEntry` and passed from P2P transfers
+5. ✅ `auditCredits()` cross-references entries with ChunkStore (size, rootHash, existence)
+6. ✅ 35 tests for chain integrity + chunk auditing
+7. Pending: Expose audit result in dashboard/web UI
 
-### Fase B — Peer-Signed Receipts (Capa 3) ✅ IMPLEMENTADA
+### Phase B — Peer-Signed Receipts (Layer 3) ✅ IMPLEMENTED
 
-1. ✅ `TRANSFER_RECEIPT` (0x07) message type en `chunk-transfer.ts` con encode/decode
-2. ✅ `chunk-server.ts` firma receipt (kind 7772) con `buildReceiptDraft()` después de servir chunk
-3. ✅ `peer-fetch.ts` recibe receipt, verifica, incluye sig en `PeerChunkResult`
-4. ✅ `service-worker.ts` pasa `receiptSignature` real al registrar créditos
-5. ✅ `auditCredits()` verifica firmas de receipts via `AuditOptions.verifySignature`
-6. ✅ Entries legacy sin receipt → `receiptVerifiedEntries = 0`, `isRealReceiptSignature()` los filtra
-7. ✅ 6 tests nuevos para encode/decode de receipts + 5 tests para verificación de firmas
+1. ✅ `TRANSFER_RECEIPT` (0x07) message type in `chunk-transfer.ts` with encode/decode
+2. ✅ `chunk-server.ts` signs receipt (kind 7772) with `buildReceiptDraft()` after serving chunk
+3. ✅ `peer-fetch.ts` receives receipt, verifies, includes sig in `PeerChunkResult`
+4. ✅ `service-worker.ts` passes real `receiptSignature` when registering credits
+5. ✅ `auditCredits()` verifies receipt signatures via `AuditOptions.verifySignature`
+6. ✅ Legacy entries without receipt → `receiptVerifiedEntries = 0`, `isRealReceiptSignature()` filters them out
+7. ✅ 6 new tests for receipts encode/decode + 5 tests for signature verification
 
-### Fase C — Consecuencias (enforcement) ✅ IMPLEMENTADA
+### Phase C — Consequences (enforcement) ✅ IMPLEMENTED
 
-1. ✅ Si ledger integrity falla → `enforceIntegrity()` resetea créditos a 0 automáticamente
-2. ✅ Si integridad corrupta → `coldStorageEligible` se fuerza a `false`
-3. ✅ `CreditSummaryPayload` incluye `integrityValid`, `trustScore`, `receiptVerifiedEntries`
-4. ✅ Extension dashboard muestra sección "Credit Integrity" con badge valid/corrupted + trust score
-5. ✅ Extension popup muestra integrity + trust en texto
-6. ✅ Web app CreditPanel muestra integrity, trust score, receipt-verified uploads
-7. ✅ `isCreditSummaryPayload` type guard validado para los nuevos campos
-
----
-
-## Estado actual
-
-- **190/190 tests** pasan en @entropy/core (25 archivos)
-- **Typecheck** pasa en los 3 packages (core, extension, web)
-- Entries legacy (sin `integrityHash` ni receipt real) son backward-compatible
-- El flujo P2P ahora firma y envía receipts automáticamente
-- El fetcher espera hasta 500ms por el receipt antes de resolver sin él
-- Si el usuario manipula `creditLedgerEntries` en storage → ledger se resetea a 0
-- `coldStorageEligible` se bloquea si la cadena está corrupta
-- Trust score y receipt-verified visibles en popup, dashboard y web app
+1. ✅ If ledger integrity fails → `enforceIntegrity()` automatically resets credits to 0
+2. ✅ If integrity corrupted → `coldStorageEligible` is forced to `false`
+3. ✅ `CreditSummaryPayload` includes `integrityValid`, `trustScore`, `receiptVerifiedEntries`
+4. ✅ Extension dashboard shows "Credit Integrity" section with valid/corrupted badge + trust score
+5. ✅ Extension popup shows integrity + trust in text
+6. ✅ Web app CreditPanel shows integrity, trust score, receipt-verified uploads
+7. ✅ `isCreditSummaryPayload` type guard validated for new fields
 
 ---
 
-## Pendiente: Migración de créditos entre navegadores
+## Current State
 
-Actualmente los créditos se pierden al migrar identidad a otro navegador. El export/import de identidad solo incluye el keypair, no el ledger (`creditLedgerEntries` en `browser.storage.local`).
-
-### Opción A — Export/import del ledger junto con la identidad
-
-**Esfuerzo:** Bajo (extender el export/import existente)
-
-- Al exportar identidad, incluir `creditLedgerEntries` en el JSON
-- Al importar, escribir entries en storage y verificar con `verifyIntegrityChain()`
-- Si la cadena está intacta → aceptar; si no → descartar (previene inyección de créditos falsos)
-- Entries con `receiptSignature` real (Schnorr 128-hex) son criptográficamente verificables post-migración
-
-**Riesgo:** El usuario puede copiar el JSON a múltiples navegadores y "clonar" créditos. La hash chain detecta edición pero no duplicación.
-
-**Mitigación parcial:** Los peer-signed receipts permiten que peers detecten si dos nodos distintos presentan los mismos receipts (futura Fase D de reputación distribuida).
-
-### Opción B — Backup del ledger como evento Nostr (on-chain)
-
-**Esfuerzo:** Medio-alto (nuevo kind Nostr + lógica de sincronización)
-
-- El usuario firma y publica un resumen compacto de su ledger en relays Nostr (kind específico)
-- Al migrar: importar identidad → buscar último evento de backup en relays → restaurar ledger verificando firma del propio usuario
-- No requiere manejar archivos manualmente
-- El backup es firmado por el usuario y verificable por terceros
-
-**Riesgo:** El mismo problema de duplicación aplica. Un usuario podría restaurar el mismo backup en N navegadores.
-
-### Recomendación
-
-Empezar por **Opción A** (trivial de implementar). La Opción B es más elegante pero requiere diseño de un nuevo kind Nostr + sync. El problema de duplicación en ambos casos se resuelve definitivamente con reputación distribuida (Fase D futura).
+- Legacy entries (without `integrityHash` or real receipt) are backward-compatible
+- P2P flow now automatically signs and sends receipts
+- The fetcher waits up to 500ms for the receipt before resolving without it
+- If the user manipulates `creditLedgerEntries` in storage → ledger resets to 0
+- `coldStorageEligible` is blocked if the chain is corrupted
+- Trust score and receipt-verified visible in popup, dashboard and web app

@@ -4,6 +4,8 @@
 
 **Decentralized Multimedia Layer for Nostr — Browser-as-a-Node P2P Network**
 
+"The Internet must be free and decentralized"
+
 Share video, audio, and images across a peer-to-peer network without centralized servers.
 Every browser becomes a node. Every upload feeds the swarm.
 
@@ -156,7 +158,7 @@ Opens the Entropy web app at `http://localhost:5173`. Requires a Nostr identity 
 pnpm --filter @entropy/extension build
 ```
 
-Load unpacked from `apps/extension/chrome/` in `chrome://extensions` (enable Developer mode).
+Load unpacked from `apps/extension/dist/` in `chrome://extensions` (enable Developer mode).
 
 **Firefox:**
 
@@ -164,7 +166,7 @@ Load unpacked from `apps/extension/chrome/` in `chrome://extensions` (enable Dev
 pnpm --filter @entropy/extension build:firefox
 ```
 
-Load as temporary add-on from `apps/extension/firefox/` in `about:debugging#/runtime/this-firefox`.
+Load as temporary add-on from `apps/extension/dist/` in `about:debugging#/runtime/this-firefox`.
 
 ### Use the Extension
 
@@ -220,7 +222,7 @@ Entropy uses **bandwidth reciprocity** to prevent free-riding:
 - **Spend credits** by downloading chunks (download)
 - **Proof of Upstream** (kind:7772) — cryptographic receipt signed by the receiver proving that a transfer happened
 - **Credit Gating** — seeders verify requester's credit balance before serving chunks
-- **Onboarding** — new users host cold content to earn their first credits
+- **Onboarding** — new users host "popular" content to earn their first credits
 
 ### Cold Storage
 
@@ -252,28 +254,14 @@ If integrity verification fails, the ledger resets to zero and cold storage elig
 
 ---
 
-## Implementation Status
-
-| Phase | Name | Status |
-|---|---|---|
-| **1** | P2P Prototype (PoC) | ✅ Complete |
-| **2** | Credit Engine | ✅ Complete |
-| **3** | Background Seeding (Extension) | ✅ Complete |
-| **4** | Full Web App | ✅ Complete |
-| **5** | Resilience & Scale | 🔧 In Progress - partially complete |
-
----
-
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [`project.md`](./docs/project.md) | Foundational specification — vision, pillars, incentive design |
 | [`architecture.md`](./docs/architecture.md) | Full technical architecture — components, data models, protocols, ADRs |
 | [`flow.md`](./docs/flow.md) | Runtime flows — upload, discovery, download, streaming, credit lifecycle |
 | [`credit-integrity.md`](./docs/credit-integrity.md) | Credit integrity design — hash chain, chunk verification, peer-signed receipts |
 | [`tags.md`](./docs/tags.md) | Hidden tag system for organic content categorization |
-| [`future.md`](./docs/future.md) | Future feature ideas (reposts, themes, notifications, markdown posts) |
 
 ---
 
@@ -295,12 +283,12 @@ If integrity verification fails, the ledger resets to zero and cold storage elig
 
 ## License
 
-This project is currently in active development. License to be determined.
+This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](./LICENSE.md).
 
 ---
 
 <div align="center">
 
-Built with Nostr, WebRTC, and the belief that the Internet should be decentralized and free.
+Built with Nostr, WebRTC, and the belief that the Internet must be free and the future decentralized.
 
 </div>

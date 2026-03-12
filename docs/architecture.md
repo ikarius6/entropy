@@ -1,30 +1,30 @@
-# Arquitectura Técnica — Entropy Multimedia Layer
+# Technical Architecture — Entropy Multimedia Layer
 
-> Documento derivado de `project.md`. Define la estructura de software, los componentes, las tecnologías y los flujos de datos necesarios para implementar Entropy como una **aplicación web** y una **extensión de navegador** que cooperan para formar una red P2P de contenido multimedia sobre Nostr.
+> Software structure, components, technologies, and data flows necessary to implement Entropy as a **web application** and a **browser extension** that cooperate to form a P2P multimedia content network over Nostr.
 
 ---
 
-## 1. Vista General del Sistema
+## 1. System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         USUARIO (Navegador)                         │
+│                         USER (Browser)                              │
 │                                                                     │
 │  ┌──────────────────────┐     ┌──────────────────────────────────┐  │
-│  │   Extensión Entropy  │◄───►│        Web App Entropy           │  │
+│  │   Entropy Extension  │◄───►│        Entropy Web App           │  │
 │  │  (Manifest V3)       │     │     (SPA - React + Vite)         │  │
 │  │                      │     │                                  │  │
-│  │ • Service Worker     │     │ • Feed Social (Nostr)            │  │
-│  │ • Background Seeding │     │ • Reproductor Multimedia         │  │
-│  │ • Dashboard de Nodo  │     │ • Uploader / Chunker             │  │
-│  │ • Gestión de Crédito │     │ • Visor de Perfil / Identidad    │  │
+│  │ • Service Worker     │     │ • Social Feed (Nostr)            │  │
+│  │ • Background Seeding │     │ • Multimedia Player              │  │
+│  │ • Node Dashboard     │     │ • Uploader / Chunker             │  │
+│  │ • Credit Management  │     │ • Profile / Identity Viewer      │  │
 │  └──────────┬───────────┘     └───────────────┬──────────────────┘  │
 │             │                                 │                     │
 │             └────────────┬────────────────────┘                     │
 │                          ▼                                          │
 │              ┌───────────────────────┐                              │
 │              │    @entropy/core      │                              │
-│              │   (Librería Shared)   │                              │
+│              │   (Shared Library)    │                              │
 │              │                       │                              │
 │              │ • Chunking Engine     │                              │
 │              │ • Hash / Merkle Tree  │                              │
@@ -41,63 +41,63 @@
      ┌────────────┐ ┌────────────┐   ┌──────────────┐
      │ Nostr      │ │ WebRTC     │   │ STUN / TURN  │
      │ Relays     │ │ Peers      │   │ Servers      │
-     │ (Metadata) │ │ (Data P2P) │   │ (Señalización)│
+     │ (Metadata) │ │ (Data P2P) │   │ (Signaling)  │
      └────────────┘ └────────────┘   └──────────────┘
 ```
 
-El sistema se compone de **tres paquetes** dentro de un **monorepo**:
+The system consists of **three packages** within a **monorepo**:
 
-| Paquete | Rol |
+| Package | Role |
 |---|---|
-| `@entropy/core` | Lógica de negocio compartida: chunking, hashing, WebRTC, Nostr, créditos, almacenamiento. |
-| `@entropy/web` | Aplicación web SPA — interfaz de red social, feed, reproductor, upload. |
-| `@entropy/extension` | Extensión de navegador Manifest V3 — seeding persistente, dashboard de nodo. |
+| `@entropy/core` | Shared business logic: chunking, hashing, WebRTC, Nostr, credits, storage. |
+| `@entropy/web` | SPA web application — social network interface, feed, player, upload. |
+| `@entropy/extension` | Manifest V3 browser extension — persistent seeding, node dashboard. |
 
 ---
 
-## 2. Estructura del Monorepo
+## 2. Monorepo Structure
 
 ```
 entropy/
 ├── package.json              # Workspace root (pnpm workspaces)
 ├── pnpm-workspace.yaml
-├── turbo.json                # Turborepo para builds paralelos
-├── tsconfig.base.json        # Config TS compartida
+├── turbo.json                # Turborepo for parallel builds
+├── tsconfig.base.json        # Shared TS config
 │
 ├── packages/
 │   └── core/                 # @entropy/core
 │       ├── src/
 │       │   ├── chunking/
-│       │   │   ├── chunker.ts          # Fragmentación de archivos en chunks de 5MB (target)
-│       │   │   ├── keyframe-aligner.ts # Chunking con alineación a keyframes (mp4box, video/mp4)
-│       │   │   ├── assembler.ts        # Reensamblaje de chunks a archivo original
-│       │   │   └── merkle.ts           # Árbol Merkle para hash raíz + verificación
+│       │   │   ├── chunker.ts          # File fragmentation into 5MB chunks (target)
+│       │   │   ├── keyframe-aligner.ts # Chunking with keyframe alignment (mp4box, video/mp4)
+│       │   │   ├── assembler.ts        # Reassembly of chunks to original file
+│       │   │   └── merkle.ts           # Merkle tree for root hash + verification
 │       │   ├── transport/
-│       │   │   ├── peer-manager.ts     # Pool de conexiones WebRTC activas
-│       │   │   ├── signaling.ts        # Señalización vía Nostr ephemeral events
-│       │   │   ├── chunk-transfer.ts   # Protocolo binario: CHUNK_REQUEST/DATA/ERROR + CUSTODY_CHALLENGE/PROOF
-│       │   │   ├── chunk-downloader.ts # Descarga multi-peer + reputación + seeder discovery
-│       │   │   ├── transmuxer.ts       # Transmuxing on-the-fly a fMP4 para MSE (mp4box)
-│       │   │   └── nat-traversal.ts    # Configuración STUN/TURN
+│       │   │   ├── peer-manager.ts     # Active WebRTC connection pool
+│       │   │   ├── signaling.ts        # Signaling via Nostr ephemeral events
+│       │   │   ├── chunk-transfer.ts   # Binary protocol: CHUNK_REQUEST/DATA/ERROR + CUSTODY_CHALLENGE/PROOF
+│       │   │   ├── chunk-downloader.ts # Multi-peer download + reputation + seeder discovery
+│       │   │   ├── transmuxer.ts       # On-the-fly transmuxing to fMP4 for MSE (mp4box)
+│       │   │   └── nat-traversal.ts    # STUN/TURN configuration
 │       │   ├── credits/
-│       │   │   ├── ledger.ts           # Registro local de créditos (ratio upload/download)
-│       │   │   ├── proof-of-upstream.ts # Generación y verificación de pruebas firmadas
-│       │   │   ├── cold-storage.ts     # Lógica de asignación de custodia de chunks fríos
+│       │   │   ├── ledger.ts           # Local credit ledger (upload/download ratio)
+│       │   │   ├── proof-of-upstream.ts # Generation and verification of signed proofs
+│       │   │   ├── cold-storage.ts     # Cold chunk custody assignment logic
 │       │   │   ├── peer-reputation.ts  # PeerReputationStore interface + banning policy
-│       │   │   └── credit-gating.ts    # Gate: verificar crédito antes de servir chunks
+│       │   │   └── credit-gating.ts    # Gate: verify credit before serving chunks
 │       │   ├── storage/
-│       │   │   ├── chunk-store.ts      # CRUD de chunks en IndexedDB
-│       │   │   ├── db.ts              # Schema y migraciones de Dexie.js (tabla peers)
-│       │   │   ├── quota-manager.ts    # Control de cuota de disco del usuario
-│       │   │   ├── indexeddb-chunk-store.ts  # Implementación IDB de ChunkStore
-│       │   │   ├── quota-manager-idb.ts      # Implementación IDB de QuotaManager
-│       │   │   ├── quota-aware-store.ts      # ChunkStore con control de cuota
-│       │   │   └── peer-reputation-idb.ts    # Implementación IDB de PeerReputationStore
+│       │   │   ├── chunk-store.ts      # Chunk CRUD in IndexedDB
+│       │   │   ├── db.ts              # Dexie.js Schema and migrations (peers table)
+│       │   │   ├── quota-manager.ts    # User disk quota control
+│       │   │   ├── indexeddb-chunk-store.ts  # IDB implementation of ChunkStore
+│       │   │   ├── quota-manager-idb.ts      # IDB implementation of QuotaManager
+│       │   │   ├── quota-aware-store.ts      # ChunkStore with quota control
+│       │   │   └── peer-reputation-idb.ts    # IDB implementation of PeerReputationStore
 │       │   ├── nostr/
-│       │   │   ├── client.ts           # Conexión y suscripción a relays
-│       │   │   ├── events.ts           # Creación/parseo de eventos (kind:7001 y estándar)
-│       │   │   ├── identity.ts         # Gestión de keypairs (nsec/npub)
-│       │   │   ├── nip-entropy.ts      # Definición del NIP custom para Chunk Maps
+│       │   │   ├── client.ts           # Connection and subscription to relays
+│       │   │   ├── events.ts           # Event creation/parsing (kind:7001 and standard)
+│       │   │   ├── identity.ts         # Keypair management (nsec/npub)
+│       │   │   ├── nip-entropy.ts      # Custom NIP definition for Chunk Maps
 │       │   │   └── seeder-announcement.ts    # Build/parse kind:20002
 │       │   └── index.ts
 │       ├── package.json
@@ -108,30 +108,30 @@ entropy/
 │   │   ├── public/
 │   │   ├── src/
 │   │   │   ├── components/
-│   │   │   │   ├── feed/               # Feed de publicaciones (notas, multimedia)
-│   │   │   │   ├── player/             # Reproductor de video/audio (MediaSource API)
-│   │   │   │   ├── uploader/           # UI de carga + progreso de chunking
-│   │   │   │   ├── profile/            # Perfil Nostr del usuario
-│   │   │   │   ├── NodeStatusPanel.tsx # Estado de nodo delegado
-│   │   │   │   ├── CreditPanel.tsx     # Panel de créditos
-│   │   │   │   ├── ColdStoragePanel.tsx # Panel de cold storage assignments
-│   │   │   │   ├── NodeMetricsPanel.tsx # Panel de métricas del nodo
-│   │   │   │   └── ui/                 # Componentes base (shadcn/ui)
+│   │   │   │   ├── feed/               # Post feed (notes, multimedia)
+│   │   │   │   ├── player/             # Video/audio player (MediaSource API)
+│   │   │   │   ├── uploader/           # Upload UI + chunking progress
+│   │   │   │   ├── profile/            # User's Nostr profile
+│   │   │   │   ├── NodeStatusPanel.tsx # Delegated node status
+│   │   │   │   ├── CreditPanel.tsx     # Credits panel
+│   │   │   │   ├── ColdStoragePanel.tsx # Cold storage assignments panel
+│   │   │   │   ├── NodeMetricsPanel.tsx # Node metrics panel
+│   │   │   │   └── ui/                 # Base components (shadcn/ui)
 │   │   │   ├── hooks/
-│   │   │   │   ├── useNostr.ts         # Suscripción a eventos Nostr
-│   │   │   │   ├── usePeerSwarm.ts     # Estado del swarm WebRTC activo
-│   │   │   │   ├── useChunkDownload.ts # Orquestación de descarga de chunks
-│   │   │   │   ├── useExtensionNodeStatus.ts # Estado live del nodo delegado
-│   │   │   │   ├── useCredits.ts       # Estado de créditos del usuario
-│   │   │   │   ├── useColdStorage.ts   # Cold storage assignments desde extensión
-│   │   │   │   └── useNodeMetrics.ts   # Métricas del nodo con auto-refresh 30s
+│   │   │   │   ├── useNostr.ts         # Nostr events subscription
+│   │   │   │   ├── usePeerSwarm.ts     # Active WebRTC swarm state
+│   │   │   │   ├── useChunkDownload.ts # Chunk download orchestration
+│   │   │   │   ├── useExtensionNodeStatus.ts # Delegate node live status
+│   │   │   │   ├── useCredits.ts       # User credits state
+│   │   │   │   ├── useColdStorage.ts   # Cold storage assignments from extension
+│   │   │   │   └── useNodeMetrics.ts   # Node metrics with 30s auto-refresh
 │   │   │   ├── stores/
-│   │   │   │   └── entropy-store.ts    # Estado global (Zustand)
+│   │   │   │   └── entropy-store.ts    # Global state (Zustand)
 │   │   │   ├── lib/
-│   │   │   │   └── extension-bridge.ts # Comunicación con la extensión vía postMessage
+│   │   │   │   └── extension-bridge.ts # Communication with extension via postMessage
 │   │   │   ├── pages/
 │   │   │   │   ├── Home.tsx
-│   │   │   │   ├── Watch.tsx           # Reproducción de contenido específico
+│   │   │   │   ├── Watch.tsx           # Playback of specific content
 │   │   │   │   ├── Upload.tsx
 │   │   │   │   └── Settings.tsx
 │   │   │   ├── App.tsx
@@ -146,88 +146,87 @@ entropy/
 │   └── extension/            # @entropy/extension
 │       ├── src/
 │       │   ├── background/
-│       │   │   ├── service-worker.ts   # Service Worker principal (Manifest V3)
-│       │   │   ├── seeder.ts           # Lógica de seeding persistente en background
-│       │   │   ├── credit-ledger.ts    # Ledger de créditos persistido en chrome.storage
-│       │   │   ├── scheduler.ts        # Planificador: prune + cold storage + integrity + health checks
-│       │   │   ├── cold-storage-manager.ts  # Ciclos de cold storage real
+│       │   │   ├── service-worker.ts   # Main Service Worker (Manifest V3)
+│       │   │   ├── seeder.ts           # Persistent background seeding logic
+│       │   │   ├── credit-ledger.ts    # Credit ledger persisted in chrome.storage
+│       │   │   ├── scheduler.ts        # Scheduler: prune + cold storage + integrity + health checks
+│       │   │   ├── cold-storage-manager.ts  # Real cold storage cycles
 │       │   │   ├── metrics.ts          # MetricsCollector + health checks
-│       │   │   ├── chunk-server.ts     # Sirve chunks + reputación + rate limiting + custody
-│       │   │   ├── peer-fetch.ts       # Fetch de chunks + reputación + SHA-256
-│       │   │   ├── relay-manager.ts    # Gestión de conexiones a relays
-│       │   │   ├── signaling-listener.ts  # Escucha offers + publica seeder announcements
-│       │   │   ├── chunk-ingest.ts     # Persistencia de chunks binarios
-│       │   │   └── identity-store.ts   # Keypair persistido en chrome.storage
+│       │   │   ├── chunk-server.ts     # Serves chunks + reputation + rate limiting + custody
+│       │   │   ├── peer-fetch.ts       # Chunk fetch + reputation + SHA-256
+│       │   │   ├── relay-manager.ts    # Relay connection management
+│       │   │   ├── signaling-listener.ts  # Listens for offers + publishes seeder announcements
+│       │   │   ├── chunk-ingest.ts     # Persistence of binary chunks
+│       │   │   └── identity-store.ts   # Persisted keypair in chrome.storage
 │       │   ├── popup/
-│       │   │   ├── Popup.tsx           # Dashboard compacto de nodo
+│       │   │   ├── Popup.tsx           # Compact node dashboard
 │       │   │   └── main.tsx
 │       │   ├── dashboard/
-│       │   │   ├── index.html          # Dashboard completo (nueva pestaña) con secciones peers/cold/metrics
-│       │   │   ├── main.ts             # Lógica: status, créditos, inventario, peers, cold storage, métricas
-│       │   │   └── styles.css          # Estilos del dashboard
+│       │   │   ├── index.html          # Full dashboard (new tab) with peers/cold/metrics sections
+│       │   │   ├── main.ts             # Logic: status, credits, inventory, peers, cold storage, metrics
+│       │   │   └── styles.css          # Dashboard styles
 │       │   ├── content/
-│       │   │   └── content-script.ts   # Puente de comunicación con @entropy/web
+│       │   │   └── content-script.ts   # Communication bridge with @entropy/web
 │       │   └── shared/
-│       │       ├── messaging.ts         # Tipos y helpers para chrome.runtime messaging
-│       │       └── status-client.ts     # Cliente: status + créditos + cold storage + métricas
+│       │       ├── messaging.ts         # Types and helpers for chrome.runtime messaging
+│       │       └── status-client.ts     # Client: status + credits + cold storage + metrics
 │       ├── manifest.json               # Manifest V3
-│       ├── vite.config.ts              # Build multi-entry (background, popup, dashboard, content)
+│       ├── vite.config.ts              # Multi-entry build (background, popup, dashboard, content)
 │       ├── package.json
 │       └── tsconfig.json
 │
-├── project.md
 └── architecture.md
 ```
 
 ---
 
-## 3. Stack Tecnológico
+## 3. Technology Stack
 
-| Capa | Tecnología | Justificación |
+| Layer | Technology | Justification |
 |---|---|---|
-| **Lenguaje** | TypeScript 5.x | Tipado estricto en toda la base de código; compartido entre web y extensión. |
-| **Monorepo** | pnpm workspaces + Turborepo | Builds rápidos e incrementales; dependencias deduplicadas. |
-| **Web Framework** | React 19 + Vite | SPA ligera, HMR rápido, tree-shaking eficiente. |
-| **Estilos** | TailwindCSS 4 + shadcn/ui | UI moderna y accesible con componentes reutilizables. |
-| **Estado** | Zustand | Minimal, sin boilerplate; ideal para estado P2P reactivo. |
-| **Routing** | React Router 7 | Navegación SPA estándar. |
-| **Nostr** | nostr-tools | Librería de referencia: creación de eventos, firma, suscripciones. |
-| **WebRTC** | simple-peer | Abstracción limpia sobre RTCPeerConnection nativa. |
-| **Hashing** | Web Crypto API (SHA-256) | Nativo del navegador, rápido, sin dependencias. |
-| **Almacenamiento** | Dexie.js (IndexedDB) | API ergonómica sobre IndexedDB con soporte de migraciones. |
-| **Media Playback** | MediaSource Extensions (MSE) | Streaming progresivo: alimentar el reproductor chunk por chunk. |
-| **Transmuxing** | mp4box 2.3.0 | Detección de keyframes (stss), generación de fMP4 init segments, remuxing para compatibilidad MSE. |
-| **Extensión** | Manifest V3 + Chrome APIs | Estándar actual; Service Worker para background. Compatible con Firefox vía polyfill. |
-| **Build Extensión** | Vite + CRXJS o vite-plugin-web-extension | Build multi-entry optimizado para extensiones. |
-| **Testing** | Vitest + Playwright | Unit tests para core; E2E para flujos web. |
-| **Linting** | ESLint + Prettier | Consistencia de código. |
+| **Language** | TypeScript 5.x | Strict typing across the codebase; shared between web and extension. |
+| **Monorepo** | pnpm workspaces + Turborepo | Fast and incremental builds; deduplicated dependencies. |
+| **Web Framework** | React 19 + Vite | Lightweight SPA, fast HMR, efficient tree-shaking. |
+| **Styles** | TailwindCSS 4 + shadcn/ui | Modern, accessible UI with reusable components. |
+| **State** | Zustand | Minimal, no boilerplate; ideal for reactive P2P state. |
+| **Routing** | React Router 7 | Standard SPA navigation. |
+| **Nostr** | nostr-tools | Reference library: event creation, signing, subscriptions. |
+| **WebRTC** | simple-peer | Clean abstraction over native RTCPeerConnection. |
+| **Hashing** | Web Crypto API (SHA-256) | Browser native, fast, no dependencies. |
+| **Storage** | Dexie.js (IndexedDB) | Ergonomic API over IndexedDB with migration support. |
+| **Media Playback** | MediaSource Extensions (MSE) | Progressive streaming: feed the player chunk by chunk. |
+| **Transmuxing** | mp4box 2.3.0 | Keyframe detection (stss), fMP4 init segments generation, remuxing for MSE compatibility. |
+| **Extension** | Manifest V3 + Chrome APIs | Current standard; Service Worker for background. Firefox compatible via polyfill. |
+| **Extension Build** | Vite + CRXJS or vite-plugin-web-extension | Optimized multi-entry build for extensions. |
+| **Testing** | Vitest + Playwright | Unit tests for core; E2E for web flows. |
+| **Linting** | ESLint + Prettier | Code consistency. |
 
 ---
 
-## 4. Flujos de Datos Principales
+## 4. Main Data Flows
 
-### 4.1 Subida de Contenido (Upload)
+### 4.1 Content Upload
 
 ```
-Usuario selecciona archivo
+User selects file
         │
         ▼
 ┌─────────────────────┐
-│  Chunking Engine     │  Divide en fragmentos de 5MB
-│  (Web Worker)        │  usando File.slice()
+│  Chunking Engine     │  Splits into 5MB chunks
+│  (Web Worker)        │  using File.slice()
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Merkle Tree Hash   │  SHA-256 por chunk → Merkle root
+│  Merkle Tree Hash   │  SHA-256 per chunk → Merkle root
 └─────────┬───────────┘
           │
           ├──────────────────────────┐
           ▼                          ▼
 ┌──────────────────┐     ┌────────────────────────┐
 │  IndexedDB       │     │  Nostr Event (kind:7001)│
-│  Almacena chunks │     │                        │
-│  localmente      │     │  {                     │
+│  Stores chunks   │     │                        │
+│  locally         │     │  {                     │
 └──────────────────┘     │    "kind": 7001,       │
                          │    "content": "",      │
                          │    "tags": [           │
@@ -237,63 +236,63 @@ Usuario selecciona archivo
                          │      ...                │
                          │      ["size", "524288000"],
                          │      ["mime", "video/mp4"],
-                         │      ["title", "Mi Video"]
+                         │      ["title", "My Video"]
                          │    ]                   │
                          │  }                     │
                          └────────────┬───────────┘
                                       │
                                       ▼
-                              Publicado a Nostr Relays
+                              Published to Nostr Relays
                                       │
                                       ▼
-                         Usuario comienza a hacer SEED
-                         (WebRTC acepta conexiones)
+                         User starts SEEDING
+                         (WebRTC accepts connections)
 ```
 
-### 4.2 Descarga y Reproducción (Download + Streaming)
+### 4.2 Download and Playback (Streaming)
 
 ```
-Feed muestra publicación con kind:7001
+Feed shows post with kind:7001
         │
         ▼
 ┌─────────────────────────┐
-│  Parseo del Chunk Map   │  Extraer lista de hashes, tamaño, mime
+│  Parse Chunk Map        │  Extract hash list, size, mime
 └─────────┬───────────────┘
           │
           ▼
 ┌─────────────────────────┐
-│  Descubrimiento de Peers│  Buscar "gatekeepers" activos
-│  (Nostr + DHT local)    │  en el evento o vía señalización
+│  Peer Discovery         │  Find active "gatekeepers"
+│  (Nostr + Data local)   │  in the event or via signaling
 └─────────┬───────────────┘
           │
           ▼
 ┌─────────────────────────┐
-│  WebRTC Handshake       │  Señalización vía Nostr ephemeral
-│  (múltiples peers)      │  events (kind:20000-29999)
+│  WebRTC Handshake       │  Signaling via Nostr ephemeral
+│  (multiple peers)       │  events (kind:20000-29999)
 └─────────┬───────────────┘
           │
           ▼
 ┌─────────────────────────┐
-│  Descarga Paralela      │  Solicitar diferentes chunks
-│  de Chunks              │  a diferentes peers simultáneamente
+│  Parallel Chunk         │  Request different chunks
+│  Download               │  from different peers simultaneously
 └─────────┬───────────────┘
           │
-          ├─── Verificar SHA-256 de cada chunk recibido
-          │    ✗ Hash inválido → marcar peer como malicioso
-          │    ✓ Hash válido  → almacenar en IndexedDB
+          ├─── Verify SHA-256 of each received chunk
+          │    ✗ Invalid hash → mark peer as malicious
+          │    ✓ Valid hash  → store in IndexedDB
           │
           ▼
 ┌─────────────────────────┐
-│  MediaSource Extensions │  Alimentar SourceBuffer con
-│  (Streaming Progresivo) │  chunks verificados en orden
+│  MediaSource Extensions │  Feed SourceBuffer with
+│  (Progressive Streaming)│  verified chunks in order
 └─────────┬───────────────┘
           │
           ▼
-   <video> reproduce contenido
-   mientras se descargan más chunks
+   <video> plays content
+   while downloading more chunks
 ```
 
-### 4.3 Comunicación Web App ↔ Extensión
+### 4.3 Web App ↔ Extension Communication
 
 ```
 ┌──────────────────┐                    ┌──────────────────────┐
@@ -310,68 +309,68 @@ Feed muestra publicación con kind:7001
 │                  │                    │   (Background)       │
 └──────────────────┘                    └──────────────────────┘
 
-Mensajes clave:
+Key messages:
 ─────────────────
-WEB → EXT:  "DELEGATE_SEEDING"            → Pasar chunks activos al background
-WEB → EXT:  "GET_NODE_STATUS"             → Solicitar estadísticas del nodo
-WEB → EXT:  "GET_CREDIT_SUMMARY"          → Solicitar resumen de créditos
-WEB → EXT:  "GET_NODE_SETTINGS"           → Solicitar configuración (relays, seeding toggle)
-WEB → EXT:  "ADD_RELAY" / "REMOVE_RELAY" → Gestionar relays
-WEB → EXT:  "SET_SEEDING_ACTIVE"          → Activar/desactivar seeding
-WEB → EXT:  "GET_COLD_STORAGE_ASSIGNMENTS" → Listar asignaciones de cold storage
-WEB → EXT:  "RELEASE_COLD_ASSIGNMENT"     → Liberar asignación individual
-WEB → EXT:  "GET_NODE_METRICS"            → Solicitar métricas operacionales
-WEB → EXT:  "HEARTBEAT"                   → Mantener viva la conexión
-EXT → WEB:  "NODE_STATUS_UPDATE"          → Push de estado de nodo en tiempo real
-EXT → WEB:  "CREDIT_UPDATE"               → Push de resumen de créditos en tiempo real
+WEB → EXT:  "DELEGATE_SEEDING"            → Pass active chunks to background
+WEB → EXT:  "GET_NODE_STATUS"             → Request node stats
+WEB → EXT:  "GET_CREDIT_SUMMARY"          → Request credit summary
+WEB → EXT:  "GET_NODE_SETTINGS"           → Request config (relays, seeding toggle)
+WEB → EXT:  "ADD_RELAY" / "REMOVE_RELAY" → Manage relays
+WEB → EXT:  "SET_SEEDING_ACTIVE"          → Enable/disable seeding
+WEB → EXT:  "GET_COLD_STORAGE_ASSIGNMENTS" → List cold storage assignments
+WEB → EXT:  "RELEASE_COLD_ASSIGNMENT"     → Release individual assignment
+WEB → EXT:  "GET_NODE_METRICS"            → Request operational metrics
+WEB → EXT:  "HEARTBEAT"                   → Keep connection alive
+EXT → WEB:  "NODE_STATUS_UPDATE"          → Push live node status
+EXT → WEB:  "CREDIT_UPDATE"               → Push live credit summary
 
-Todas las solicitudes y respuestas usan `requestId` para correlación robusta.
+All requests and responses use `requestId` for robust correlation.
 ```
 
 ---
 
-## 5. Modelo de Datos (IndexedDB — Dexie.js)
+## 5. Data Model (IndexedDB — Dexie.js)
 
 ```typescript
 // packages/core/src/storage/db.ts
 
 interface ChunkRecord {
-  hash: string;           // SHA-256 del chunk (PK)
-  data: ArrayBuffer;      // Contenido binario (≤5MB, fragmentado en 64KB para transporte WebRTC)
-  rootHash: string;       // Hash raíz del archivo al que pertenece
-  index: number;          // Posición en la secuencia
+  hash: string;           // SHA-256 of the chunk (PK)
+  data: ArrayBuffer;      // Binary content (≤5MB, fragmented into 64KB for WebRTC transport)
+  rootHash: string;       // Root hash of the file it belongs to
+  index: number;          // Position in sequence
   createdAt: number;      // Timestamp
-  lastAccessed: number;   // Para política de evicción LRU
-  pinned: boolean;        // Si el usuario eligió retener manualmente
+  lastAccessed: number;   // For LRU eviction policy
+  pinned: boolean;        // If user chose to retain manually
 }
 
 interface ContentRecord {
-  rootHash: string;       // PK — Hash raíz del archivo completo
+  rootHash: string;       // PK — Root hash of the complete file
   title: string;
   mimeType: string;
   totalSize: number;
   totalChunks: number;
-  chunkHashes: string[];  // Lista ordenada de hashes
-  nostrEventId: string;   // ID del evento kind:7001
+  chunkHashes: string[];  // Ordered list of hashes
+  nostrEventId: string;   // ID of the kind:7001 event
   authorPubkey: string;
   createdAt: number;
-  isComplete: boolean;    // Todos los chunks descargados
+  isComplete: boolean;    // All chunks downloaded
 }
 
 interface CreditRecord {
   id: string;             // Auto-increment
-  peerPubkey: string;     // Pubkey del peer involucrado
+  peerPubkey: string;     // Pubkey of involved peer
   direction: 'up' | 'down';
   bytes: number;
   chunkHash: string;
-  signature: string;      // Firma del receptor (Proof of Upstream)
+  signature: string;      // Receiver signature (Proof of Upstream)
   timestamp: number;
 }
 
 interface PeerReputation {
   pubkey: string;         // PK
   successfulTransfers: number;
-  failedVerifications: number;  // Chunks con hash inválido
+  failedVerifications: number;  // Chunks with invalid hash
   totalBytesExchanged: number;
   lastSeen: number;
   banned: boolean;
@@ -380,16 +379,16 @@ interface PeerReputation {
 
 ---
 
-## 6. Protocolo Nostr — NIP-Entropy (kind: 7001)
+## 6. Nostr Protocol — NIP-Entropy (kind: 7001)
 
-### 6.1 Evento de Chunk Map
+### 6.1 Chunk Map Event
 
 ```json
 {
   "kind": 7001,
   "pubkey": "<author_pubkey>",
   "created_at": 1700000000,
-  "content": "Descripción opcional del contenido",
+  "content": "Optional content description",
   "tags": [
     ["x-hash", "<root_hash_sha256>"],
     ["mime", "video/mp4"],
@@ -398,18 +397,18 @@ interface PeerReputation {
     ["chunk", "<hash_chunk_0>", "0"],
     ["chunk", "<hash_chunk_1>", "1"],
     ["chunk", "<hash_chunk_2>", "2"],
-    ["title", "Atardecer en la playa 4K"],
-    ["thumb", "<nostr_event_id_de_thumbnail>"],
-    ["alt", "Video de un atardecer filmado en 4K"]
+    ["title", "Beach sunset 4K"],
+    ["thumb", "<thumbnail_nostr_event_id>"],
+    ["alt", "Video of a sunset shot in 4K"]
   ],
   "id": "<event_id>",
   "sig": "<signature>"
 }
 ```
 
-### 6.2 Señalización WebRTC vía Nostr
+### 6.2 WebRTC Signaling via Nostr
 
-Se usan **eventos efímeros** (kind rango 20000-29999) para el handshake WebRTC sin dejar rastro permanente en los relays:
+Uses **ephemeral events** (kind range 20000-29999) for the WebRTC handshake without leaving a permanent trace on the relays:
 
 ```json
 {
@@ -424,9 +423,9 @@ Se usan **eventos efímeros** (kind rango 20000-29999) para el handshake WebRTC 
 }
 ```
 
-El contenido SDP se encripta con **NIP-44 (mandatory)** usando la pubkey del destinatario, garantizando que solo el peer objetivo pueda leer la señalización.
+The SDP content is encrypted with **NIP-44 (mandatory)** using the recipient's pubkey, ensuring only the target peer can read the signaling.
 
-### 6.3 Proof of Upstream (Recibo Firmado)
+### 6.3 Proof of Upstream (Signed Receipt)
 
 ```json
 {
@@ -444,16 +443,16 @@ El contenido SDP se encripta con **NIP-44 (mandatory)** usando la pubkey del des
 }
 ```
 
-Este evento **no se publica** a relays; se intercambia directamente entre peers vía el canal WebRTC como prueba local. Opcionalmente, un subset puede publicarse para auditoría comunitaria.
+This event **is not published** to relays; it is exchanged directly between peers via the WebRTC channel as local proof. Optionally, a subset can be published for community auditing.
 
 ---
 
-## 7. Capas de Seguridad
+## 7. Security Layers
 
-### 7.1 Verificación de Integridad
+### 7.1 Integrity Verification
 
 ```
-Archivo Original
+Original File
       │
       ▼
  ┌─────────┐   ┌─────────┐   ┌─────────┐
@@ -464,206 +463,117 @@ Archivo Original
       └──────────────┼──────────────┘
                      ▼
               ┌─────────────┐
-              │ Merkle Root │  ← Publicado en kind:7001 tag ["x-hash"]
+              │ Merkle Root │  ← Published in kind:7001 tag ["x-hash"]
               └─────────────┘
 ```
 
-- Cada chunk recibido se verifica contra su hash individual del Chunk Map.
-- El Merkle Root permite verificar la integridad global sin tener todos los chunks.
-- **Un solo bit alterado** invalida la verificación → peer marcado como malicioso.
+- Each received chunk is verified against its individual hash from the Chunk Map.
+- The Merkle Root allows verifying overall integrity without having all chunks.
+- **A single flipped bit** invalidates verification → peer marked as malicious.
 
-### 7.2 Privacidad
+### 7.2 Privacy
 
-| Mecanismo | Implementación |
+| Mechanism | Implementation |
 |---|---|
-| **Negación plausible** | Chunks son fragmentos binarios sin formato; un nodo nunca posee contenido reconocible. |
-| **Cifrado en tránsito** | WebRTC usa DTLS por defecto; todo el tráfico P2P está cifrado. |
-| **Señalización cifrada** | SDP offers/answers encriptados con NIP-44 (mandatory). |
-| **Sin servidores centrales** | Ni los relays ni los STUN servers ven el contenido; solo metadatos y señalización. |
-| **Tor proxy (opcional)** | Conexiones a relays Nostr pueden enrutarse por SOCKS5 (Tor) para ocultar IP del operador del relay. Soporte `.onion` relay URLs. Firefox: `browser.proxy.onRequest`; Chrome: PAC script via `chrome.proxy.settings`. |
-| **ICE candidate filtering** | Opción para eliminar host/srflx candidates con IPs locales de los mensajes de señalización, evitando filtración de IP interna. |
-| **TURN relay-only mode** | Opción para forzar `iceTransportPolicy: "relay"` con TURN servers configurados por el usuario, ocultando la IP pública de peers directos. |
+| **Plausible Deniability** | Chunks are unformatted binary fragments; a node never holds recognizable content. |
+| **Encryption in transit** | WebRTC uses DTLS by default; all P2P traffic is encrypted. |
+| **Encrypted signaling** | SDP offers/answers encrypted with NIP-44 (mandatory). |
+| **No central servers** | Neither relays nor STUN servers see the content; only metadata and signaling. |
+| **Tor proxy (optional)** | Connections to Nostr relays can be routed via SOCKS5 (Tor) to hide relay operator's IP. Support `.onion` relay URLs. Firefox: `browser.proxy.onRequest`; Chrome: PAC script via `chrome.proxy.settings`. |
+| **ICE candidate filtering** | Option to remove host/srflx candidates with local IPs from signaling messages, preventing internal IP leak. |
+| **TURN relay-only mode** | Option to force `iceTransportPolicy: "relay"` with user-configured TURN servers, hiding public IP from direct peers. |
 
 ---
 
-## 8. Estrategia de Almacenamiento y Cuotas
+## 8. Storage and Quota Strategy
 
 ```
 ┌──────────────────────────────────────────┐
 │           Quota Manager                   │
 │                                          │
-│  Límite por defecto: 2 GB               │
-│  Configurable por el usuario             │
+│  Default limit: 2 GB                    │
+│  User configurable                       │
 │                                          │
-│  Política de evicción (LRU):             │
-│  1. Chunks no-pinned más antiguos        │
-│  2. Contenido completamente descargado   │
-│     y ya reproducido                     │
-│  3. Chunks fríos con menor crédito       │
+│  Eviction Policy (LRU):                  │
+│  1. Oldest non-pinned chunks             │
+│  2. Fully downloaded content             │
+│     and already played                   │
+│  3. Cold chunks with lower credit        │
 │                                          │
-│  Nunca evictar:                          │
-│  • Chunks del contenido propio           │
-│  • Chunks pinned manualmente             │
-│  • Chunks con custodia activa (crédito)  │
+│  Never evict:                            │
+│  • Own content chunks                    │
+│  • Manually pinned chunks                │
+│  • Intact custody chunks (credit)        │
 └──────────────────────────────────────────┘
 ```
 
-Se usa `navigator.storage.estimate()` para consultar espacio disponible y `navigator.storage.persist()` para solicitar almacenamiento persistente.
+Uses `navigator.storage.estimate()` to query available space and `navigator.storage.persist()` to request persistent storage.
 
 ---
 
-## 9. Rendimiento: Web Workers
+## 9. Performance: Web Workers
 
-Las operaciones pesadas **nunca** bloquean el hilo principal:
+Heavy operations **never** block the main thread:
 
-| Operación | Worker |
+| Operation | Worker |
 |---|---|
-| Fragmentación de archivo (5MB chunks) | `chunker.ts` |
-| Hashing SHA-256 de chunks | `hash.ts` |
-| Construcción de Merkle Tree | `merkle.ts` |
-| Re-ensamblaje de archivo | `assembler.ts` |
-| Cifrado/descifrado NIP-44 | `nip44.ts` |
+| File fragmentation (5MB chunks) | `chunker.ts` |
+| SHA-256 hashing of chunks | `hash.ts` |
+| Merkle Tree Construction | `merkle.ts` |
+| File Re-assembly | `assembler.ts` |
+| NIP-44 Encryption/Decryption | `nip44.ts` |
 
-Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias de memoria.
+The `Transferable` API is used to pass `ArrayBuffer` between workers without memory copies.
 
 ---
 
-## 10. Estrategia de Testing
+## 10. Testing Strategy
 
-| Nivel | Herramienta | Alcance |
+| Level | Tool | Scope |
 |---|---|---|
-| **Unit** | Vitest | Chunking, hashing, Merkle tree, serialización de eventos Nostr, ledger de créditos. |
-| **Integración** | Vitest + fake-indexeddb | Almacenamiento, flujo completo de chunk store → retrieval → verificación. |
-| **E2E Web** | Playwright | Flujo de upload, feed rendering, reproducción de video simulada. |
-| **E2E P2P** | Playwright (2 contextos) | Dos instancias de navegador intercambiando un chunk vía WebRTC local. |
-| **Extension** | Puppeteer con extensión cargada | Verificar que el Service Worker mantiene seeding en background. |
+| **Unit** | Vitest | Chunking, hashing, Merkle tree, Nostr event serialization, credit ledger. |
+| **Integration** | Vitest + fake-indexeddb | Storage, full chunk store flow → retrieval → verification. |
+| **E2E Web** | Playwright | Upload flow, feed rendering, simulated video playback. |
+| **E2E P2P** | Playwright (2 contexts) | Two browser instances exchanging a chunk via local WebRTC. |
+| **Extension** | Puppeteer with loaded extension | Verify that the Service Worker maintains background seeding. |
 
 ---
 
-## 11. Roadmap de Implementación por Fases
+## 12. Key Architectural Decisions (ADRs)
 
-### Fase 1 — Prototipo P2P (PoC) ✅
+### ADR-001: Monorepo with shared core library
+**Context:** Web app and extension share ~70% of logic (chunking, WebRTC, Nostr, storage).  
+**Decision:** Extract all logic to `@entropy/core` as an internal monorepo package.  
+**Consequence:** Single place for bugs and features; both consumers always use same version.
 
-**Objetivo:** Dos navegadores intercambian un archivo de 5MB usando identidad Nostr.
+### ADR-002: Signaling via Nostr (no proprietary signaling server)
+**Context:** WebRTC requires a signaling mechanism to establish connections.  
+**Decision:** Use Nostr ephemeral events (kind 20000-29999) as signaling channel.  
+**Consequence:** Zero proprietary infrastructure for signaling; we depend on Nostr relay availability (acceptable risk as they are distributed).
 
-- [x] Configurar monorepo (pnpm + Turborepo + TypeScript)
-- [x] Implementar `@entropy/core`: chunker, hasher, Merkle tree
-- [x] Implementar cliente Nostr básico (conectar a relay, publicar/suscribir)
-- [x] Definir evento `kind:7001` y parser
-- [x] Implementar señalización WebRTC vía eventos efímeros Nostr
-- [x] Crear página web mínima: subir archivo → generar chunk map → seed → descargar desde otro navegador
-- [x] Tests unitarios para chunking y hashing
+### ADR-003: Keyframe-aligned chunks for video
+**Context:** For smooth progressive streaming, each chunk must start at a keyframe (IDR frame) so MSE can begin playback from any point.
+**Decision:** For `video/mp4` files, use `keyframe-aligner.ts` (mp4box + stss) during upload to adjust cut points to nearest keyframe (target ~5MB ±20%). For other formats, use standard `chunkFile()`.
+**Consequence:** Variable-sized video chunks (~4–6MB). The MSE player can jump directly to any chunk without depending on previous chunks. For formats without stss table (WebM, MKV), standard chunking is used with automatic fallback.
 
-### Fase 2 — Motor de Créditos ✅
+### ADR-004: IndexedDB as primary storage
+**Context:** We need to persist gigabytes of binary data in the browser.  
+**Decision:** IndexedDB via Dexie.js, with configurable quota and LRU eviction.  
+**Consequence:** Works without extension; the extension extends persistence with Service Worker. Limited by browser quota (~10-50% of available disk).
 
-**Objetivo:** Sistema funcional de Proof of Upstream y ratio de ancho de banda.
+### ADR-005: Chunk fragmentation over WebRTC DataChannel (64KB)
+**Context:** WebRTC DataChannels use SCTP as transport, which has a maximum message limit (~256KB in practice). Sending 5MB chunks as a single `dc.send()` causes `OperationError: Failure to send data`.  
+**Decision:** Fragment chunks in 64KB blocks for sending over DataChannel. First send `CHUNK_DATA_HEADER` message (type 0x04) with hash and total size, followed by N pure binary fragments. Receiver uses `createChunkReceiver()` to reassemble.  
+**Consequence:** Chunks of any size transfer reliably over WebRTC. Minimal overhead (1 header per chunk). Compatible with backpressure via `bufferedAmount`.
 
-- [x] Implementar `proof-of-upstream.ts` (draft/parse/validación de recibos con verificador de firma configurable)
-- [x] Implementar `ledger.ts` (registro local, ratio, balance, historial)
-- [x] Implementar base de `cold-storage.ts` (elegibilidad, asignación y pruning)
-- [x] Extender bridge web↔ext con `GET_CREDIT_SUMMARY` y push `CREDIT_UPDATE`
-- [x] Integrar resumen de créditos en web (`CreditPanel`) y extensión (popup/dashboard)
-- [x] Agregar tests unitarios para créditos + storage base (`proof-of-upstream`, `ledger`, `cold-storage`, `chunk-store`, `quota-manager`)
-- [x] Lógica de gate activa: verificar crédito antes de servir chunks
-- [x] Onboarding Seeder: asignar chunks fríos a nuevos usuarios en red real
-- [x] Tests de integración del flujo de créditos end-to-end
-
-### Fase 3 — Extensión de Navegador: Background Seeding Real
-
-> Plan detallado en [`phase3.md`](./phase3.md)
-
-**Objetivo:** El Service Worker mantiene conexiones WebRTC activas y sirve chunks a peers en background.
-
-- [x] Scaffold extensión Manifest V3 con Vite
-- [x] `@entropy/core`: Identity management (`nostr/identity.ts`) — keypair, firma, verificación con `nostr-tools`
-- [x] `@entropy/core`: Protocolo de transferencia (`transport/chunk-transfer.ts`) — binario sobre DataChannel
-- [x] `@entropy/core`: NAT traversal (`transport/nat-traversal.ts`) — configuración STUN
-- [x] `@entropy/core`: IndexedDB ChunkStore (`storage/indexeddb-chunk-store.ts`) — persistencia real con Dexie.js
-- [x] `@entropy/extension`: Relay manager (`background/relay-manager.ts`) — conexión a relays desde SW
-- [x] `@entropy/extension`: Signaling listener (`background/signaling-listener.ts`) — escuchar offers WebRTC
-- [x] `@entropy/extension`: Chunk server (`background/chunk-server.ts`) — servir chunks vía DataChannel
-- [x] `@entropy/extension`: Chunk ingest (`background/chunk-ingest.ts`) — persistir chunks binarios
-- [x] `@entropy/extension`: Identity store (`background/identity-store.ts`) — keypair persistido
-- [x] `@entropy/extension`: Service Worker bootstrap completo (relays + signaling + chunk server)
-- [x] `@entropy/extension`: Dashboard mejorado (inventario de chunks real, configuración de nodo, relay settings, seeding toggle)
-- [x] Content script: puente de comunicación con la web app
-- [x] Popup: mini-dashboard (ratio, peers, estado)
-- [x] Dashboard completo: estadísticas, inventario de chunks, configuración
-- [x] Mensaje `DELEGATE_SEEDING` desde web app a extensión
-
-### Fase 4 — Web App Completa ✅
-
-> Plan detallado en [`phase4.md`](./phase4.md)
-
-**Objetivo:** Red social funcional con feed, perfiles y reproducción multimedia.
-
-- [x] Scaffold UI: React Router, Zustand store, Tailwind v4, AppLayout + Sidebar + TopBar
-- [x] Identidad Nostr: `useNostrIdentity`, `useNostrProfile` (kind:0), `useContactList` (kind:3)
-- [x] Feed de publicaciones: `useNostrFeed` (kind:1 + kind:7001), `PostCard`, `Feed`, `HomePage`
-- [x] UI de upload con progreso de chunking en tiempo real: `useUploadPipeline`, `DragDropZone`, `UploadPipeline`, `UploadPage`
-- [x] Reproductor de video con MediaSource Extensions: `useMediaSource`, `VideoPlayer`, `WatchPage`
-- [x] Descarga paralela desde múltiples peers: `ChunkDownloader` (core), `useChunkDownload`
-- [x] Perfiles Nostr: `ProfileHeader`, `ProfileCard`, `ProfilePage`
-- [x] Quota Manager y política de evicción LRU: `useQuotaManager`, `SettingsPage`
-- [x] UI responsiva y accesible con Tailwind CSS
-- [x] Comunicación P2P WebRTC verificada end-to-end (Firefox ↔ Chrome): fragmentación 64KB, deduplicación de GET_CHUNK, señalización anti-stale
-
-### Fase 5 — Resiliencia y Escala *(en progreso)*
-
-> Plan detallado en [`phase5.md`](./phase5.md)
-
-**Objetivo:** Red robusta con redundancia, reputación de peers y protección avanzada.
-
-- [x] Reputación de peers: `peer-reputation.ts` + `peer-reputation-idb.ts`; banning automático tras 3 fallos en 24h; integrado en `chunk-server.ts`, `chunk-downloader.ts`, `peer-fetch.ts`; dashboard UI con tabla y ban/unban manual
-- [x] Cold storage real: `cold-storage-manager.ts` (runCycle / pruneExpired / verifyIntegrity); scheduler con ciclos 30min/1h/2h; panel en dashboard extensión y web app
-- [x] Prueba de Custodia: CUSTODY_CHALLENGE (0x05) + CUSTODY_PROOF (0x06) en `chunk-transfer.ts`; handler en `chunk-server.ts`; self-verification en `cold-storage-manager.ts`
-- [x] Seeder Announcements: `seeder-announcement.ts` (kind:20002); publicación en `signaling-listener.ts`; descubrimiento dinámico en `chunk-downloader.ts`
-- [x] Métricas de red y health checks: `metrics.ts` (MetricsCollector); `GET_NODE_METRICS` bridge message; panel en dashboard extensión + `NodeMetricsPanel` en web; health check cada 10min en scheduler
-- [x] Auditoría de seguridad parcial: rate limiting 10 req/s por peer; validación 4 MB max por mensaje; timeout 60s DataChannels inactivos; CSP en `index.html`; SHA-256 en `peer-fetch.ts`
-- [x] Transmuxing client-side: `transmuxer.ts` (mp4box 2.3.0) integrado en `useMediaSource.ts`; pass-through si el browser soporta el MIME, remuxing a fMP4 si no
-- [x] Chunk alignment con keyframes: `keyframe-aligner.ts` usando stss (sync sample table); integrado en `useUploadPipeline.ts` para archivos `video/*`; fallback a `chunkFile()` para formatos no-MP4
-- [x] Reconexión automática de WebRTC (ICE restart): grace timer 5s en `disconnected`, ICE restart con `iceRestart: true` offer en `failed` (15s timeout), integrado en `chunk-downloader.ts`, `peer-fetch.ts` y `signaling-listener.ts` (acepta restart offers reutilizando RTCPeerConnection existente)
-- [ ] NetworkHealth widget en TopBar *(Bloque 7 restante)*
-- [ ] Soporte Tor opcional en la extensión *(Bloque 8)*
-- [ ] RTCPeerConnection cleanup audit + full security checklist *(Bloque 9 restante)*
+### ADR-006: MediaSource Extensions + Transmuxing for progressive streaming
+**Context:** MSE (`MediaSource.isTypeSupported()`) only accepts specific codecs per browser. Video in WebM, MKV or other non-MP4 formats break the `SourceBuffer`.
+**Decision:** Use MSE to feed `<video>` tag chunk by chunk. On first chunk, `transmuxer.ts` detects native MIME support: if yes, transparent pass-through; if not, remuxing to fMP4 via mp4box. The `SourceBuffer` is created lazily (at first chunk) using the real `outputMimeType` from transmuxer.
+**Consequence:** Universal codec compatibility without overhead for already supported formats. Keyframe-aligned chunks (ADR-003) guarantee MSE can start from any segment.
 
 ---
 
-## 12. Decisiones Arquitectónicas Clave (ADRs)
-
-### ADR-001: Monorepo con librería core compartida
-**Contexto:** Web app y extensión comparten ~70% de la lógica (chunking, WebRTC, Nostr, storage).  
-**Decisión:** Extraer toda la lógica a `@entropy/core` como paquete interno del monorepo.  
-**Consecuencia:** Un solo lugar para bugs y mejoras; ambos consumidores siempre usan la misma versión.
-
-### ADR-002: Señalización vía Nostr (sin servidor de señalización propio)
-**Contexto:** WebRTC requiere un mecanismo de señalización para establecer conexiones.  
-**Decisión:** Usar eventos efímeros de Nostr (kind 20000-29999) como canal de señalización.  
-**Consecuencia:** Cero infraestructura propia para señalización; dependemos de la disponibilidad de relays Nostr (riesgo aceptable dado que son distribuidos).
-
-### ADR-003: Chunks con alineación a keyframes para video
-**Contexto:** Para streaming progresivo fluido, cada chunk debe comenzar en un keyframe (IDR frame) para que MSE pueda iniciar la reproducción desde cualquier punto.
-**Decisión:** Para archivos `video/mp4`, usar `keyframe-aligner.ts` (mp4box + stss) en upload para ajustar los puntos de corte al keyframe más cercano (target ~5MB ±20%). Para otros formatos, se usa `chunkFile()` estándar.
-**Consecuencia:** Chunks de video de tamaño variable (~4–6MB). El MSE player puede saltar directamente a cualquier chunk sin depender de chunks anteriores. Para formatos sin tabla stss (WebM, MKV), se usa chunking estándar con fallback automático.
-
-### ADR-004: IndexedDB como almacenamiento principal
-**Contexto:** Necesitamos persistir gigabytes de datos binarios en el navegador.  
-**Decisión:** IndexedDB vía Dexie.js, con cuota configurable y evicción LRU.  
-**Consecuencia:** Funciona sin extensión; la extensión extiende la persistencia con Service Worker. Limitado por la cuota del navegador (~10-50% del disco disponible).
-
-### ADR-005: Fragmentación de chunks sobre WebRTC DataChannel (64KB)
-**Contexto:** Los DataChannels de WebRTC usan SCTP como transporte, que tiene un límite de mensaje máximo (~256KB en la práctica). Enviar chunks de 5MB como un solo `dc.send()` causa `OperationError: Failure to send data`.  
-**Decisión:** Fragmentar los chunks en bloques de 64KB para el envío sobre DataChannel. Se envía primero un mensaje `CHUNK_DATA_HEADER` (type 0x04) con el hash y tamaño total, seguido de N fragmentos binarios puros. El receptor usa `createChunkReceiver()` para reensamblar.  
-**Consecuencia:** Chunks de cualquier tamaño se transfieren de forma confiable sobre WebRTC. El overhead es mínimo (1 header por chunk). Compatible con backpressure via `bufferedAmount`.
-
-### ADR-006: MediaSource Extensions + Transmuxing para streaming progresivo
-**Contexto:** MSE (`MediaSource.isTypeSupported()`) solo acepta codecs específicos por navegador. Videos en WebM, MKV u otros formatos no-MP4 rompen el `SourceBuffer`.
-**Decisión:** Usar MSE para alimentar el `<video>` tag chunk por chunk. Al primer chunk, `transmuxer.ts` detecta si el MIME es soportado nativamente: si sí, pass-through transparente; si no, remuxing a fMP4 via mp4box. El `SourceBuffer` se crea en diferido (al primer chunk) usando el `outputMimeType` real del transmuxer.
-**Consecuencia:** Compatibilidad universal de codecs sin overhead para formatos ya soportados. Los chunks alineados a keyframes (ADR-003) garantizan que MSE puede iniciar desde cualquier segmento.
-
----
-
-## 13. Diagrama de Dependencias entre Paquetes
+## 13. Package Dependency Diagram
 
 ```
   @entropy/core
@@ -674,6 +584,6 @@ Se usa la API `Transferable` para pasar `ArrayBuffer` entre workers sin copias d
   @entropy/web      @entropy/extension
 ```
 
-- `core` no depende de ningún paquete interno — es puro y portable.
-- `web` y `extension` dependen de `core` pero **nunca** entre sí.
-- La comunicación entre `web` y `extension` es exclusivamente vía **message passing** (postMessage / chrome.runtime).
+- `core` depends on no internal package — it is pure and portable.
+- `web` and `extension` depend on `core` but **never** on each other.
+- Communication between `web` and `extension` is exclusively via **message passing** (postMessage / chrome.runtime).

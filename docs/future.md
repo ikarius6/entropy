@@ -1,6 +1,0 @@
-- repost
-- themes
-- notifications
-- formated posts (markdown)
-- new users can host hot content
-- good seeders can host cold content
