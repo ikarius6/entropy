@@ -63,9 +63,11 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
   const hiddenCount   = images.length - GRID_MAX;
   const showOverlay   = !expanded && hiddenCount > 0;
 
+  const isSingle = visibleImages.length === 1;
+
   // Grid layout class based on visible image count
   const gridClass =
-    visibleImages.length === 1 ? "grid-cols-1" :
+    isSingle ? "grid-cols-1" :
     visibleImages.length === 2 ? "grid-cols-2" :
     "grid-cols-2";
 
@@ -84,7 +86,7 @@ function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
                     src={m.url}
                     alt=""
                     loading="lazy"
-                    className="h-[200px] w-full object-cover"
+                    className={`w-full ${isSingle ? "max-h-[400px]" : "max-h-[250px]"} object-contain`}
                     onError={(e) => {
                       const el = e.target as HTMLImageElement;
                       el.closest<HTMLElement>(".relative")!.style.display = "none";
