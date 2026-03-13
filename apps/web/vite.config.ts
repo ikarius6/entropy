@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? (process.env.VITE_BASE_PATH ?? "/entropy/") : "/",
+  base: mode === "production" ? (import.meta.env.VITE_BASE_PATH ?? "/entropy/") : "/",
   plugins: [
     react(),
     tailwindcss(),
