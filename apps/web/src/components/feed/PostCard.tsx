@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff, Repeat2, CornerUpLeft } from "lucide-react";
+import { Play, Download, Share2, Loader2, Maximize, X, Heart, MessageCircle, ChevronUp, Check, EyeOff, Repeat2, CornerUpLeft, ShieldAlert, FileDown } from "lucide-react";
 import { SeederTagInput } from "../SeederTagInput";
 import type { FeedItem } from "../../types/nostr";
 import type { EntropyChunkMap, ContentTag, UserSignalType } from "@entropy/core";
@@ -495,7 +495,9 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
   const mime: string = chunkMap.mimeType || "";
   const isImage = mime.startsWith("image/");
   const isAudio = mime.startsWith("audio/");
-  const isVideo = mime.startsWith("video/") || (!isImage && !isAudio);
+  const isPdf = mime === "application/pdf";
+  const isVideo = mime.startsWith("video/");
+  const isUnknown = !isImage && !isAudio && !isPdf && !isVideo;
 
   const handlePlay = useCallback(() => {
     if (blobStatus !== "ready" || !videoRef.current) return;
@@ -596,6 +598,73 @@ function MediaPost({ chunkMap, blobUrl, blobStatus, blobProgress }: { chunkMap: 
             </div>
           )}
           <div className="absolute bottom-3 left-3 z-10 pointer-events-none">{metaBadges}</div>
+        </div>
+      ) : isPdf ? (
+        <div className="flex flex-col gap-3 bg-panel">
+          {blobStatus === "loading" && (
+            <div className="flex h-[120px] items-center justify-center">
+              <Loader2 className="animate-spin text-primary" size={32} />
+            </div>
+          )}
+          {blobStatus === "error" && (
+            <div className="flex h-[120px] items-center justify-center">
+              <span className="text-red-400 text-sm">Failed to load PDF</span>
+            </div>
+          )}
+          {blobStatus === "ready" && blobUrl && (
+            <object
+              data={blobUrl}
+              type="application/pdf"
+              className="h-[140px] w-full"
+            >
+              <div className="flex flex-col items-center justify-center gap-3 py-10">
+                <span className="text-muted text-sm">PDF preview not supported in this browser.</span>
+                <a
+                  href={blobUrl}
+                  download={chunkMap.title || chunkMap.rootHash.slice(0, 12)}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-main transition-colors hover:bg-white/[0.08]"
+                >
+                  <Download size={15} /> Download PDF
+                </a>
+              </div>
+            </object>
+          )}
+          <div className="px-4 pb-3">{metaBadges}</div>
+        </div>
+      ) : isUnknown ? (
+        <div className="flex flex-col items-center gap-4 bg-panel px-6 py-8">
+          <FileDown size={40} className="text-muted" />
+          <span className="text-sm font-medium text-main">
+            {chunkMap.title || "Downloadable file"}
+          </span>
+          <span className="font-mono text-xs text-muted">{mime || "Unknown type"} · {sizeMB} MB</span>
+
+          {blobStatus === "loading" && (
+            <div className="flex items-center gap-2 text-sm text-muted">
+              <Loader2 size={16} className="animate-spin" />
+              <span>{Math.round(blobProgress * 100)}% loaded</span>
+            </div>
+          )}
+          {blobStatus === "error" && (
+            <span className="text-red-400 text-sm">Failed to load file</span>
+          )}
+          {blobStatus === "ready" && blobUrl && (
+            <a
+              href={blobUrl}
+              download={chunkMap.title || chunkMap.rootHash.slice(0, 12)}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-main transition-colors hover:bg-white/[0.08]"
+            >
+              <Download size={15} /> Download file
+            </a>
+          )}
+
+          <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs leading-relaxed text-amber-300/90">
+            <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              Be careful when downloading files from unknown sources.
+              Only open files you trust — they may contain harmful content.
+            </span>
+          </div>
         </div>
       ) : null}
 
