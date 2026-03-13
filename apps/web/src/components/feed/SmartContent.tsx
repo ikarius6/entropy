@@ -180,7 +180,7 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
     }
     return (
       <pre className="code-block my-1 max-w-full overflow-x-auto p-3">
-        <code className={`text-xs font-mono whitespace-pre-wrap break-words ${className}`}>{children as ReactNode}</code>
+        <code className={`text-xs font-mono whitespace-pre min-w-full ${className}`}>{children as ReactNode}</code>
       </pre>
     );
   },
@@ -193,6 +193,17 @@ const mdComponents: Record<string, (props: Record<string, unknown>) => ReactNode
   ol: ({ children }: Record<string, unknown>) => <ol className="list-decimal list-inside space-y-0.5 my-1">{children as ReactNode}</ol>,
   // Paragraphs — no extra margin inside feed cards
   p: ({ children }: Record<string, unknown>) => <p className="mb-1 last:mb-0">{children as ReactNode}</p>,
+  // GFM tables — wrap in scrollable container so wide tables don't overflow the card
+  table: ({ children }: Record<string, unknown>) => (
+    <div className="my-1 w-full overflow-x-auto">
+      <table className="min-w-full border-collapse text-xs font-mono">{children as ReactNode}</table>
+    </div>
+  ),
+  thead: ({ children }: Record<string, unknown>) => <thead className="border-b border-border/50">{children as ReactNode}</thead>,
+  tbody: ({ children }: Record<string, unknown>) => <tbody>{children as ReactNode}</tbody>,
+  tr: ({ children }: Record<string, unknown>) => <tr className="border-b border-border/30 even:bg-white/[0.015]">{children as ReactNode}</tr>,
+  th: ({ children }: Record<string, unknown>) => <th className="px-3 py-1.5 text-left font-semibold text-muted/80 whitespace-nowrap">{children as ReactNode}</th>,
+  td: ({ children }: Record<string, unknown>) => <td className="px-3 py-1.5 whitespace-pre">{children as ReactNode}</td>,
   // Images in markdown
   img: ({ src, alt }: Record<string, unknown>) => (
     <img
@@ -244,7 +255,7 @@ export function SmartContent({ content, compact = false }: SmartContentProps) {
   }, [content, urls, compact]);
 
   return (
-    <div className="smart-content break-words text-[0.95rem] leading-7 text-main/90">
+    <div className="smart-content min-w-0 overflow-x-hidden break-words text-[0.95rem] leading-7 text-main/90">
       {textForMd && <MarkdownBody text={textForMd} />}
       {!compact && <MediaEmbeds urls={urls} />}
       {!compact && <LinkChips urls={urls} />}

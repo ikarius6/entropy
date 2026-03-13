@@ -149,7 +149,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
   const actionBaseClass = "inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-sm transition-colors";
 
   return (
-    <div className="panel flex flex-col gap-3 px-5 py-4">
+    <div className="panel flex min-w-0 flex-col gap-3 px-5 py-4">
       {/* Repost header */}
       {isRepost && (
         <div className="-mb-1 flex items-center gap-2 text-xs text-muted">
@@ -184,7 +184,7 @@ export function PostCard({ item, onSignal, onRemoveItem }: PostCardProps) {
 
       {/* Content */}
       {displayItem.content && (
-        <div className="mt-1">
+        <div className="mt-1 min-w-0">
           <SmartContent content={displayItem.content} />
         </div>
       )}
@@ -415,7 +415,7 @@ export function ReplyCard({ item }: { item: FeedItem }) {
   };
 
   return (
-    <div className="flex flex-col gap-2 px-3 py-3">
+    <div className="flex min-w-0 flex-col gap-2 px-3 py-3">
       <div className="flex items-center gap-2">
         <Link to={`/profile/${item.pubkey}`}>
           <AvatarBadge profile={profile} pubkey={item.pubkey} size="sm" />
@@ -428,7 +428,7 @@ export function ReplyCard({ item }: { item: FeedItem }) {
       </div>
 
       {item.content && (
-        <div className="ml-9 text-sm">
+        <div className="ml-9 min-w-0 text-sm">
           <SmartContent content={item.content} compact />
         </div>
       )}
