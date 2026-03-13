@@ -48,33 +48,74 @@ function CollapsibleJSON({ raw }: { raw: string }) {
 
 /* ── Inline media embeds (images / videos found in URLs) ─────────────────── */
 
+// Max images shown in the grid before collapsing behind "+N more"
+const GRID_MAX = 4;
+
 function MediaEmbeds({ urls }: { urls: ParsedUrl[] }) {
-  const media = urls.filter((u) => u.type === "image" || u.type === "video");
-  if (media.length === 0) return null;
+  const [expanded, setExpanded] = useState(false);
+
+  const images = urls.filter((u) => u.type === "image");
+  const videos = urls.filter((u) => u.type === "video");
+
+  if (images.length === 0 && videos.length === 0) return null;
+
+  const visibleImages = expanded ? images : images.slice(0, GRID_MAX);
+  const hiddenCount   = images.length - GRID_MAX;
+  const showOverlay   = !expanded && hiddenCount > 0;
+
+  // Grid layout class based on visible image count
+  const gridClass =
+    visibleImages.length === 1 ? "grid-cols-1" :
+    visibleImages.length === 2 ? "grid-cols-2" :
+    "grid-cols-2";
 
   return (
     <div className="flex flex-col gap-2 mt-2">
-      {media.map((m) =>
-        m.type === "image" ? (
-          <a key={m.url} href={m.url} target="_blank" rel="noopener noreferrer" className="block">
-            <img
-              src={m.url}
-              alt=""
-              loading="lazy"
-              className="max-h-[400px] rounded-md border border-border bg-inverted/20 object-contain"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          </a>
-        ) : (
-          <video
-            key={m.url}
-            src={m.url}
-            controls
-            preload="metadata"
-            className="max-h-[400px] w-full rounded-md border border-border bg-inverted/20"
-          />
-        )
+      {/* Image grid */}
+      {images.length > 0 && (
+        <div className={`grid ${gridClass} gap-1.5`}>
+          {visibleImages.map((m, i) => {
+            const isLastVisible = i === visibleImages.length - 1;
+            const showMore = showOverlay && isLastVisible;
+            return (
+              <div key={m.url} className="relative overflow-hidden rounded-md border border-border bg-inverted/20">
+                <a href={m.url} target="_blank" rel="noopener noreferrer" className="block">
+                  <img
+                    src={m.url}
+                    alt=""
+                    loading="lazy"
+                    className="h-[200px] w-full object-cover"
+                    onError={(e) => {
+                      const el = e.target as HTMLImageElement;
+                      el.closest<HTMLElement>(".relative")!.style.display = "none";
+                    }}
+                  />
+                </a>
+                {/* "+N more" overlay on the last visible cell */}
+                {showMore && (
+                  <button
+                    onClick={() => setExpanded(true)}
+                    className="absolute inset-0 flex items-center justify-center bg-inverted/60 backdrop-blur-sm text-main font-semibold text-lg transition-colors hover:bg-inverted/70 cursor-pointer"
+                  >
+                    +{hiddenCount} more
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      {/* Videos always stacked solo — they have their own controls */}
+      {videos.map((m) => (
+        <video
+          key={m.url}
+          src={m.url}
+          controls
+          preload="metadata"
+          className="max-h-[360px] w-full rounded-md border border-border bg-inverted/20"
+        />
+      ))}
     </div>
   );
 }
