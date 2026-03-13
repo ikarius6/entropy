@@ -1,5 +1,5 @@
-/** 50 MiB of initial credits given to every new user on first identity creation. */
-export const WELCOME_GRANT_BYTES = 52_428_800;
+/** 100 MiB of initial credits given to every new user on first identity creation. */
+export const WELCOME_GRANT_BYTES = 104_857_600;
 
 export interface CreditEntry {
   id: string;

@@ -573,9 +573,9 @@ describe("extension credit-ledger", () => {
   // ---------------------------------------------------------------------------
 
   describe("welcome grant", () => {
-    const GRANT = 52_428_800; // 50 MiB
+    const GRANT = 104_857_600; // 100 MiB
 
-    it("fresh storage with grant initialized → balance equals 50 MiB", async () => {
+    it("fresh storage with grant initialized → balance equals 100 MiB", async () => {
       const { getCreditSummary, initWelcomeGrant } = await loadModule();
 
       await initWelcomeGrant();

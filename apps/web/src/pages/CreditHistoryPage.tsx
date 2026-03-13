@@ -12,9 +12,10 @@ import {
   Search,
   Filter,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Gift
 } from "lucide-react";
-import { getCreditHistory, type CreditHistoryPayload } from "../lib/extension-bridge";
+import { getCreditHistory, getCreditSummary, type CreditHistoryPayload } from "../lib/extension-bridge";
 import type { CreditHistoryEntryPayload } from "@entropy/core";
 
 const PAGE_SIZE = 25;
@@ -47,6 +48,8 @@ type DirectionFilter = "all" | "up" | "down";
 
 export default function CreditHistoryPage() {
   const [history, setHistory] = useState<CreditHistoryPayload | null>(null);
+  const [welcomeGrantBytes, setWelcomeGrantBytes] = useState(0);
+  const [currentBalance, setCurrentBalance] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -58,8 +61,13 @@ export default function CreditHistoryPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getCreditHistory();
+      const [data, summary] = await Promise.all([
+        getCreditHistory(),
+        getCreditSummary()
+      ]);
       setHistory(data);
+      setWelcomeGrantBytes(summary.welcomeGrantBytes ?? 0);
+      setCurrentBalance(summary.balance);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch credit history");
     } finally {
@@ -77,7 +85,6 @@ export default function CreditHistoryPage() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
-  // Filtered entries
   const filteredEntries = (history?.entries ?? []).filter((entry) => {
     if (filter !== "all" && entry.direction !== filter) return false;
     if (search) {
@@ -100,6 +107,9 @@ export default function CreditHistoryPage() {
 
   const duplicates = history?.duplicateChunks ?? [];
   const duplicateChunkSet = new Set(duplicates.map((d) => d.chunkHash));
+
+  // Show grant genesis row only on first page, no active filters, and grant > 0
+  const showGrantRow = welcomeGrantBytes > 0 && clampedPage === 0 && !search && filter !== "up";
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
@@ -134,9 +144,17 @@ export default function CreditHistoryPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryCard
             label="Current Balance"
-            value={formatBytes(history.currentBalance)}
+            value={formatBytes(currentBalance)}
             icon={<TrendingUp size={18} className="text-primary" />}
           />
+          {/*welcomeGrantBytes > 0 && (
+            <SummaryCard
+              label="Welcome Grant"
+              value={formatBytes(welcomeGrantBytes)}
+              icon={<Gift size={18} className="text-success" />}
+              subtitle="incl. in balance"
+            />
+          )*/}
           <SummaryCard
             label="Total Entries"
             value={String(history.totalEntries)}
@@ -234,7 +252,7 @@ export default function CreditHistoryPage() {
           <RefreshCw size={24} className="mx-auto animate-spin mb-3" />
           Loading credit history…
         </div>
-      ) : pageEntries.length === 0 ? (
+      ) : pageEntries.length === 0 && !showGrantRow ? (
         <div className="panel px-6 py-12 text-center text-muted">
           {search || filter !== "all"
             ? "No entries match your filter."
@@ -256,6 +274,7 @@ export default function CreditHistoryPage() {
               </tr>
             </thead>
             <tbody>
+              {showGrantRow && <GrantRow bytes={welcomeGrantBytes} />}
               {pageEntries.map((entry) => (
                 <EntryRow
                   key={entry.id}
@@ -309,11 +328,13 @@ function SummaryCard({
   label,
   value,
   icon,
+  subtitle,
   highlight = false
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
+  subtitle?: string;
   highlight?: boolean;
 }) {
   return (
@@ -325,7 +346,32 @@ function SummaryCard({
       <div className={`text-lg font-bold ${highlight ? "text-warning-text" : ""}`}>
         {value}
       </div>
+      {subtitle && <div className="text-xs text-muted mt-0.5">{subtitle}</div>}
     </div>
+  );
+}
+
+function GrantRow({ bytes }: { bytes: number }) {
+  return (
+    <tr className="border-b border-border/20 bg-success/5">
+      <td className="py-2 px-3">
+        <div className="flex items-center gap-1.5">
+          <Gift size={16} className="text-success" />
+          <span className="text-xs font-medium text-success">GRANT</span>
+        </div>
+      </td>
+      <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">Account creation</td>
+      <td className="py-2 px-3 font-mono text-xs text-muted">Entropy</td>
+      <td className="py-2 px-3 font-mono text-xs text-muted/40">—</td>
+      <td className="py-2 px-3 font-mono text-xs text-muted/40">—</td>
+      <td className="py-2 px-3 text-right">
+        <span className="font-mono text-xs font-medium text-success">+{formatBytes(bytes)}</span>
+      </td>
+      <td className="py-2 px-3 text-right">
+        <span className="font-mono text-xs font-medium">{formatBytes(bytes)}</span>
+      </td>
+      <td className="py-2 px-3" />
+    </tr>
   );
 }
 
@@ -347,7 +393,6 @@ function EntryRow({
 
   return (
     <tr className={`border-b border-border/20 transition-colors ${rowBg}`}>
-      {/* Direction */}
       <td className="py-2 px-3">
         <div className="flex items-center gap-1.5">
           {isUp ? (
@@ -365,13 +410,9 @@ function EntryRow({
           )}
         </div>
       </td>
-
-      {/* Time */}
       <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
         {formatTimestamp(entry.timestamp)}
       </td>
-
-      {/* Peer */}
       <td className="py-2 px-3">
         <Link
           to={`/profile/${entry.peerPubkey}`}
@@ -381,8 +422,6 @@ function EntryRow({
           {truncHash(entry.peerPubkey, 6)}
         </Link>
       </td>
-
-      {/* Chunk hash */}
       <td className="py-2 px-3">
         <span
           className={`font-mono text-xs ${isDuplicate && !isUp ? "text-warning-text" : "text-muted"}`}
@@ -391,8 +430,6 @@ function EntryRow({
           {truncHash(entry.chunkHash, 8)}
         </span>
       </td>
-
-      {/* Root hash */}
       <td className="py-2 px-3">
         {entry.rootHash ? (
           <Link
@@ -406,22 +443,16 @@ function EntryRow({
           <span className="text-xs text-muted/40">—</span>
         )}
       </td>
-
-      {/* Bytes */}
       <td className="py-2 px-3 text-right">
         <span className={`font-mono text-xs font-medium ${isUp ? "text-success" : "text-error"}`}>
           {isUp ? "+" : "−"}{formatBytes(entry.bytes)}
         </span>
       </td>
-
-      {/* Balance after */}
       <td className="py-2 px-3 text-right">
         <span className="font-mono text-xs font-medium">
           {formatBytes(entry.balanceAfter)}
         </span>
       </td>
-
-      {/* Copy */}
       <td className="py-2 px-3 text-center">
         <button
           onClick={() => onCopy(
