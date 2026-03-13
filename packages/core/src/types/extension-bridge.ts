@@ -245,6 +245,8 @@ export interface CreditSummaryPayload {
   integrityValid: boolean;
   trustScore: number;
   receiptVerifiedEntries: number;
+  /** Bytes from the one-time welcome grant. 0 for users without the grant. */
+  welcomeGrantBytes: number;
   history: Array<{
     id: string;
     peerPubkey: string;
@@ -813,6 +815,7 @@ export function isCreditSummaryPayload(value: unknown): value is CreditSummaryPa
     typeof value.integrityValid === "boolean" &&
     typeof value.trustScore === "number" &&
     typeof value.receiptVerifiedEntries === "number" &&
+    (value.welcomeGrantBytes === undefined || typeof value.welcomeGrantBytes === "number") &&
     hasValidHistory
   );
 }

@@ -1,3 +1,6 @@
+/** 50 MiB of initial credits given to every new user on first identity creation. */
+export const WELCOME_GRANT_BYTES = 52_428_800;
+
 export interface CreditEntry {
   id: string;
   peerPubkey: string;
@@ -16,6 +19,8 @@ export interface LedgerSummary {
   ratio: number;
   balance: number;
   entryCount: number;
+  /** Bytes from the welcome grant offset (separate from the hash-chain entries). */
+  welcomeGrantBytes: number;
 }
 
 export type CreditEntryInput = Omit<CreditEntry, "id" | "direction">;
@@ -44,7 +49,7 @@ function validateCreditEntryInput(entry: CreditEntryInput): void {
   }
 }
 
-function summarize(entries: CreditEntry[]): LedgerSummary {
+function summarize(entries: CreditEntry[], grantBytes = 0): LedgerSummary {
   const totalUploaded = entries
     .filter((entry) => entry.direction === "up")
     .reduce((sum, entry) => sum + entry.bytes, 0);
@@ -57,8 +62,9 @@ function summarize(entries: CreditEntry[]): LedgerSummary {
     totalUploaded,
     totalDownloaded,
     ratio: totalDownloaded === 0 ? Number.POSITIVE_INFINITY : totalUploaded / totalDownloaded,
-    balance: totalUploaded - totalDownloaded,
-    entryCount: entries.length
+    balance: totalUploaded - totalDownloaded + grantBytes,
+    entryCount: entries.length,
+    welcomeGrantBytes: grantBytes
   };
 }
 
@@ -80,9 +86,9 @@ function mapEntry(direction: "up" | "down", entry: CreditEntryInput): CreditEntr
 export interface CreditLedger {
   recordUpload(entry: CreditEntryInput): CreditEntry;
   recordDownload(entry: CreditEntryInput): CreditEntry;
-  getSummary(): LedgerSummary;
-  getBalance(): number;
-  canDownload(requestedBytes: number): boolean;
+  getSummary(grantBytes?: number): LedgerSummary;
+  getBalance(grantBytes?: number): number;
+  canDownload(requestedBytes: number, grantBytes?: number): boolean;
   getHistory(limit?: number): CreditEntry[];
   getEntries(): CreditEntry[];
 }
@@ -106,20 +112,20 @@ class InMemoryCreditLedger implements CreditLedger {
     return next;
   }
 
-  getSummary(): LedgerSummary {
-    return summarize(this.entries);
+  getSummary(grantBytes = 0): LedgerSummary {
+    return summarize(this.entries, grantBytes);
   }
 
-  getBalance(): number {
-    return this.getSummary().balance;
+  getBalance(grantBytes = 0): number {
+    return this.getSummary(grantBytes).balance;
   }
 
-  canDownload(requestedBytes: number): boolean {
+  canDownload(requestedBytes: number, grantBytes = 0): boolean {
     if (!Number.isFinite(requestedBytes) || requestedBytes <= 0) {
       return false;
     }
 
-    return this.getBalance() >= requestedBytes;
+    return this.getBalance(grantBytes) >= requestedBytes;
   }
 
   getHistory(limit?: number): CreditEntry[] {
@@ -145,6 +151,6 @@ export function createCreditLedger(seedEntries: CreditEntry[] = []): CreditLedge
   return new InMemoryCreditLedger(seedEntries);
 }
 
-export function summarizeLedgerEntries(entries: CreditEntry[]): LedgerSummary {
-  return summarize(entries);
+export function summarizeLedgerEntries(entries: CreditEntry[], grantBytes = 0): LedgerSummary {
+  return summarize(entries, grantBytes);
 }

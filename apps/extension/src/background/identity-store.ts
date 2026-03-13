@@ -12,6 +12,7 @@ import {
   type NostrKeypair,
   type VaultEntry
 } from "@entropy/core";
+import { initWelcomeGrant } from "./credit-ledger";
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -204,6 +205,9 @@ export async function getOrCreateKeypair(): Promise<NostrKeypair> {
 
   const generated = generateKeypair();
   await persistIdentity(generated);
+  // Give new users a one-time welcome grant so they can start consuming content
+  // immediately without having to seed anything first.
+  await initWelcomeGrant();
   return cloneIdentity(generated);
 }
 

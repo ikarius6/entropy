@@ -567,4 +567,142 @@ describe("extension credit-ledger", () => {
     expect(summary.balance).toBe(0);
     expect(summary.entryCount).toBe(0);
   });
+
+  // ---------------------------------------------------------------------------
+  // Welcome grant (Option A) — 50 MiB offset for new users
+  // ---------------------------------------------------------------------------
+
+  describe("welcome grant", () => {
+    const GRANT = 52_428_800; // 50 MiB
+
+    it("fresh storage with grant initialized → balance equals 50 MiB", async () => {
+      const { getCreditSummary, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+      const summary = await getCreditSummary();
+
+      expect(summary.balance).toBe(GRANT);
+    });
+
+    it("welcomeGrantBytes field is exposed in the summary payload", async () => {
+      const { getCreditSummary, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+      const summary = await getCreditSummary();
+
+      expect(summary.welcomeGrantBytes).toBe(GRANT);
+    });
+
+    it("grant is additive with real upload/download activity", async () => {
+      const { getCreditSummary, recordUploadCredit, recordDownloadCredit, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+
+      await recordUploadCredit({
+        peerPubkey: "peer-a",
+        bytes: 10_000_000,
+        chunkHash: "seed-chunk",
+        receiptSignature: "sig-seed",
+        timestamp: 1
+      });
+
+      await recordDownloadCredit({
+        peerPubkey: "peer-b",
+        bytes: 5_000_000,
+        chunkHash: "dl-chunk",
+        receiptSignature: "sig-dl",
+        timestamp: 2
+      });
+
+      const summary = await getCreditSummary();
+      // balance = grant + uploads − downloads
+      expect(summary.balance).toBe(GRANT + 10_000_000 - 5_000_000);
+      expect(summary.totalUploaded).toBe(10_000_000);
+      expect(summary.totalDownloaded).toBe(5_000_000);
+      expect(summary.welcomeGrantBytes).toBe(GRANT);
+    });
+
+    it("user with only grant can cover downloads up to 50 MiB", async () => {
+      const { getCreditSummary, recordDownloadCredit, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+
+      // Download 30 MiB — well within the 50 MiB grant
+      await recordDownloadCredit({
+        peerPubkey: "peer-provider",
+        bytes: 30_000_000,
+        chunkHash: "first-video-chunk",
+        receiptSignature: "p2p-fetch",
+        timestamp: 1
+      });
+
+      const summary = await getCreditSummary();
+      expect(summary.balance).toBe(GRANT - 30_000_000);
+      expect(summary.balance).toBeGreaterThan(0);
+    });
+
+    it("initWelcomeGrant is idempotent — second call does not change the grant", async () => {
+      const { getCreditSummary, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+      await initWelcomeGrant(); // second call — must be a no-op
+      await initWelcomeGrant(); // third call — still a no-op
+
+      const summary = await getCreditSummary();
+      expect(summary.welcomeGrantBytes).toBe(GRANT);
+      expect(summary.balance).toBe(GRANT);
+    });
+
+    it("legacy user (pre-existing storage without grant key) gets zero grant", async () => {
+      // Simulate an existing user whose storage has entries but no welcomeGrantBytes key
+      __setMockStorageValue("creditLedgerEntries", [
+        {
+          id: "old-1",
+          peerPubkey: "peer-old",
+          direction: "up",
+          bytes: 5000,
+          chunkHash: "old-chunk",
+          receiptSignature: "old-sig",
+          timestamp: 100
+        }
+      ]);
+
+      const { getCreditSummary } = await loadModule();
+      const summary = await getCreditSummary();
+
+      // No grant key → welcomeGrantBytes must be 0, balance comes only from uploads
+      expect(summary.welcomeGrantBytes).toBe(0);
+      expect(summary.balance).toBe(5000);
+      expect(summary.entryCount).toBe(1);
+    });
+
+    it("grant does NOT create any CreditEntry in the ledger", async () => {
+      const { getCreditSummary, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+      const summary = await getCreditSummary();
+
+      // No entries should exist — the grant is pure offset, not a ledger entry
+      expect(summary.entryCount).toBe(0);
+      expect(summary.history).toHaveLength(0);
+    });
+
+    it("integrityValid remains true when grant is active alongside real entries", async () => {
+      const { recordUploadCredit, getCreditSummary, initWelcomeGrant } = await loadModule();
+
+      await initWelcomeGrant();
+
+      await recordUploadCredit({
+        peerPubkey: "peer-a",
+        bytes: 5_242_880,
+        chunkHash: "chunk-integrity-test",
+        receiptSignature: "sig-integrity",
+        timestamp: 1
+      });
+
+      const summary = await getCreditSummary();
+      expect(summary.integrityValid).toBe(true);
+      expect(summary.balance).toBe(GRANT + 5_242_880);
+    });
+  });
 });

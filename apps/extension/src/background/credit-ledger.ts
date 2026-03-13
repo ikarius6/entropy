@@ -5,6 +5,7 @@ import {
   computeIntegrityHash,
   verifyIntegrityChain,
   logger,
+  WELCOME_GRANT_BYTES,
   type CreditEntry,
   type CreditEntryInput,
   type CreditSummaryPayload,
@@ -14,13 +15,35 @@ import {
 
 interface CreditStorageSchema {
   creditLedgerEntries: CreditEntry[];
+  /** One-time welcome grant offset (bytes). Written once on new identity creation. */
+  welcomeGrantBytes?: number;
 }
 
 const STORAGE_KEY = "creditLedgerEntries";
+const WELCOME_GRANT_KEY = "welcomeGrantBytes";
 
-async function toCreditSummaryPayload(entries: CreditEntry[]): Promise<CreditSummaryPayload> {
+async function readWelcomeGrant(): Promise<number> {
+  const result = (await browser.storage.local.get(WELCOME_GRANT_KEY)) as Partial<CreditStorageSchema>;
+  const stored = result[WELCOME_GRANT_KEY];
+  return typeof stored === "number" && stored > 0 ? stored : 0;
+}
+
+/**
+ * Write the welcome grant once on new identity creation.
+ * Idempotent: does nothing if the key already exists in storage.
+ */
+export async function initWelcomeGrant(): Promise<void> {
+  const existing = (await browser.storage.local.get(WELCOME_GRANT_KEY)) as Partial<CreditStorageSchema>;
+  if (typeof existing[WELCOME_GRANT_KEY] === "number") {
+    // Grant already initialized — do not overwrite.
+    return;
+  }
+  await browser.storage.local.set({ [WELCOME_GRANT_KEY]: WELCOME_GRANT_BYTES });
+  logger.log("[credit-ledger] Welcome grant initialized:", WELCOME_GRANT_BYTES, "bytes");
+}
+async function toCreditSummaryPayload(entries: CreditEntry[], grantBytes: number): Promise<CreditSummaryPayload> {
   const ledger = createCreditLedger(entries);
-  const summary = ledger.getSummary();
+  const summary = ledger.getSummary(grantBytes);
 
   const integrity = await verifyIntegrityChain(entries);
 
@@ -40,6 +63,7 @@ async function toCreditSummaryPayload(entries: CreditEntry[]): Promise<CreditSum
     integrityValid: integrity.valid,
     trustScore,
     receiptVerifiedEntries: receiptVerified,
+    welcomeGrantBytes: grantBytes,
     history: ledger.getHistory(20).map((entry) => ({
       id: entry.id,
       peerPubkey: entry.peerPubkey,
@@ -86,6 +110,7 @@ async function stampIntegrityHash(entries: CreditEntry[]): Promise<CreditEntry[]
 export async function recordUploadCredit(entry: CreditEntryInput): Promise<CreditSummaryPayload> {
   let entries = await readCreditEntries();
   entries = await enforceIntegrity(entries);
+  const grantBytes = await readWelcomeGrant();
 
   const ledger = createCreditLedger(entries);
   ledger.recordUpload(entry);
@@ -93,12 +118,13 @@ export async function recordUploadCredit(entry: CreditEntryInput): Promise<Credi
   const nextEntries = await stampIntegrityHash(ledger.getEntries());
   await writeCreditEntries(nextEntries);
 
-  return toCreditSummaryPayload(nextEntries);
+  return toCreditSummaryPayload(nextEntries, grantBytes);
 }
 
 export async function recordDownloadCredit(entry: CreditEntryInput): Promise<CreditSummaryPayload> {
   let entries = await readCreditEntries();
   entries = await enforceIntegrity(entries);
+  const grantBytes = await readWelcomeGrant();
 
   // Dedup guard: never charge twice for the same chunk.
   // When chunks are evicted and re-fetched, the P2P layer fires another
@@ -111,7 +137,7 @@ export async function recordDownloadCredit(entry: CreditEntryInput): Promise<Cre
       "[credit-ledger] skipping duplicate download charge for chunk",
       entry.chunkHash.slice(0, 12) + "…"
     );
-    return toCreditSummaryPayload(entries);
+    return toCreditSummaryPayload(entries, grantBytes);
   }
 
   const ledger = createCreditLedger(entries);
@@ -120,7 +146,7 @@ export async function recordDownloadCredit(entry: CreditEntryInput): Promise<Cre
   const nextEntries = await stampIntegrityHash(ledger.getEntries());
   await writeCreditEntries(nextEntries);
 
-  return toCreditSummaryPayload(nextEntries);
+  return toCreditSummaryPayload(nextEntries, grantBytes);
 }
 
 export async function verifyLedgerIntegrity(): Promise<IntegrityVerificationResult> {
@@ -161,7 +187,8 @@ async function enforceIntegrity(entries: CreditEntry[]): Promise<CreditEntry[]> 
 
 export async function getCreditSummary(): Promise<CreditSummaryPayload> {
   const entries = await readCreditEntries();
-  return toCreditSummaryPayload(entries);
+  const grantBytes = await readWelcomeGrant();
+  return toCreditSummaryPayload(entries, grantBytes);
 }
 
 export async function getFullCreditHistory(): Promise<CreditHistoryPayload> {
