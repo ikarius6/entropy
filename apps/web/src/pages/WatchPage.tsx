@@ -6,7 +6,7 @@ import { useChunkBlob } from "../hooks/useChunkBlob";
 import { useCreditGate } from "../hooks/useCreditGate";
 import { CreditGate } from "../components/CreditGate";
 import { VideoPlayer } from "../components/player/VideoPlayer";
-import { Server, Download, ShieldCheck, Loader2, Heart, Share2, Repeat2 } from "lucide-react";
+import { Server, Download, ShieldCheck, Loader2, Heart, Share2, Repeat2, ShieldAlert, FileDown } from "lucide-react";
 import { SeederTagInput } from "../components/SeederTagInput";
 import { parseEntropyChunkMapTags, type EntropyChunkMap, type NostrEvent } from "@entropy/core";
 import { KINDS } from "../lib/constants";
@@ -123,7 +123,9 @@ export default function WatchPage() {
   const mime = chunkMap?.mimeType || "";
   const isImage = mime.startsWith("image/");
   const isAudio = mime.startsWith("audio/");
-  const isVideo = mime.startsWith("video/") || (!isImage && !isAudio && !!chunkMap);
+  const isPdf = mime === "application/pdf";
+  const isVideo = mime.startsWith("video/");
+  const isUnknown = !isImage && !isAudio && !isPdf && !isVideo && !!chunkMap;
 
   function handleDownload() {
     if (!blobUrl || !chunkMap) return;
@@ -215,6 +217,49 @@ export default function WatchPage() {
                 )}
                 {blobStatus === "ready" && blobUrl && isVideo && (
                   <video controls src={blobUrl} className="w-full max-h-[70vh]" autoPlay />
+                )}
+                {blobStatus === "ready" && blobUrl && isPdf && (
+                  <object
+                    data={blobUrl}
+                    type="application/pdf"
+                    className="h-[70vh] w-full"
+                  >
+                    <div className="flex flex-col items-center justify-center gap-3 py-10">
+                      <span className="text-muted text-sm">PDF preview not supported in this browser.</span>
+                      <a
+                        href={blobUrl}
+                        download={chunkMap.title || rootHash || "entropy-file"}
+                        className="inline-flex items-center gap-2 rounded-md border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-main transition-colors hover:bg-white/[0.08]"
+                      >
+                        <Download size={15} /> Download PDF
+                      </a>
+                    </div>
+                  </object>
+                )}
+                {isUnknown && blobStatus !== "loading" && blobStatus !== "error" && (
+                  <div className="flex flex-col items-center gap-4 px-6 py-10">
+                    <FileDown size={48} className="text-muted" />
+                    <span className="text-sm font-medium text-main">
+                      {chunkMap.title || "Downloadable file"}
+                    </span>
+                    <span className="font-mono text-xs text-muted">{mime || "Unknown type"} · {(chunkMap.size / 1024 / 1024).toFixed(2)} MB</span>
+                    {blobStatus === "ready" && blobUrl && (
+                      <a
+                        href={blobUrl}
+                        download={chunkMap.title || rootHash || "entropy-file"}
+                        className="inline-flex items-center gap-2 rounded-md border border-border bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-main transition-colors hover:bg-white/[0.08]"
+                      >
+                        <Download size={15} /> Download file
+                      </a>
+                    )}
+                    <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs leading-relaxed text-amber-300/90">
+                      <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        Be careful when downloading files from unknown sources.
+                        Only open files you trust — they may contain harmful content.
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
 
