@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEntropyStore } from "../stores/entropy-store";
 import { useContactList } from "./useContactList";
 import { KINDS } from "../lib/constants";
@@ -26,12 +26,18 @@ const FOLLOW_BOOST_SECONDS = 3_600;
 
 const EMPTY_PREFS: UserTagPreference[] = [];
 
+/** How many events to request per subscription page. Keeps initial load small. */
+const PAGE_SIZE = 20;
+
+/** Milliseconds to wait after the last event arrives before committing to state.
+ *  Coalesces event bursts into a single React render. */
+const FLUSH_DEBOUNCE_MS = 120;
+
 export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   const { pubkey, relayPool, relayUrls, cacheChunkMap, networkTags } = useEntropyStore();
   const { follows: myFollows } = useContactList(pubkey);
 
   const kinds = options.kinds ?? [KINDS.TEXT_NOTE, KINDS.ENTROPY_CHUNK_MAP, KINDS.REPOST];
-  const limit = options.limit ?? 50;
   const entropyOnly = options.entropyOnly !== false; // default true
 
   const followSet = new Set([...(pubkey ? [pubkey] : []), ...myFollows]);
@@ -57,19 +63,22 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
   // Accumulate events keyed by id; each entry carries a sort score.
   const accRef = useRef<Map<string, { item: FeedItem; score: number; contentTags: ContentTag[] }>>(new Map());
 
-  const flush = () => {
+  // --- Debounced flush -------------------------------------------------------
+  // Only re-sort & commit to React state after a quiet period, so event bursts
+  // from the relay don't each trigger their own full re-render.
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flush = useCallback(() => {
     const mode = feedModeRef.current;
     const prefs = userPrefsRef.current;
     let entries = Array.from(accRef.current.values());
 
     if (mode === "for_you" && prefs.length > 0) {
-      // Re-score with tag relevance
       entries = entries.map((e) => {
         const relevance = scoreContentRelevance(e.contentTags, prefs);
         return { ...e, score: e.score + relevance * 1000 };
       });
     } else if (mode === "explore") {
-      // Boost by max tag counter (popular content first)
       entries = entries.map((e) => {
         const maxCounter = e.contentTags.reduce((m, t) => Math.max(m, t.counter), 0);
         return { ...e, score: e.score + maxCounter * 100 };
@@ -80,7 +89,17 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       .sort((a, b) => b.score - a.score)
       .map((v) => v.item);
     setItems(sorted);
-  };
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      flush();
+    }, FLUSH_DEBOUNCE_MS);
+  }, [flush]);
 
   // Re-sort existing items when feedMode or userPrefs change
   useEffect(() => {
@@ -180,7 +199,7 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
       try {
         item.chunkMap = parseEntropyChunkMapTags(event.tags);
         console.log("[feed] parsed chunkMap:", {
-          rootHash: item.chunkMap.rootHash.slice(0, 12) + "\u2026",
+          rootHash: item.chunkMap.rootHash.slice(0, 12) + "…",
           chunks: item.chunkMap.chunks.length,
           mimeType: item.chunkMap.mimeType,
           size: item.chunkMap.size,
@@ -204,6 +223,13 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     accRef.current.set(event.id, { item, score, contentTags });
   };
 
+  // Track active "loadMore" subscriptions so we can unsubscribe them
+  const loadMoreSubsRef = useRef<{ unsubscribe: () => void }[]>([]);
+
+  // Ref to the EOSE awaiting counter for the initial load
+  const eoseCountRef = useRef(0);
+  const expectedEoseRef = useRef(0);
+
   useEffect(() => {
     if (!relayPool || relayUrls.length === 0) {
       console.log("[feed] no relayPool or relays, skipping");
@@ -218,92 +244,181 @@ export function useNostrFeed(options: UseNostrFeedOptions = {}) {
     setIsLoading(true);
     setItems([]);
     accRef.current = new Map();
+    eoseCountRef.current = 0;
 
     const subs: { unsubscribe: () => void }[] = [];
-    let eoseCount = 0;
 
     const onEose = () => {
-      eoseCount++;
-      if (eoseCount >= expectedEose) {
+      eoseCountRef.current++;
+      if (eoseCountRef.current >= expectedEoseRef.current) {
         console.log("[feed] all EOSE received, total events:", accRef.current.size);
+        // Flush immediately on EOSE (don't wait for the debounce timer)
+        if (flushTimerRef.current !== null) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        flush();
         setIsLoading(false);
       }
     };
 
-    let expectedEose: number;
-
     if (options.authors !== undefined) {
       // ── Explicit authors mode (profile page, etc.) ──────────────────────────
-      // Split into three subscriptions:
-      //  1. Media posts (kind:7001) — must have the entropy #t tag
-      //  2. Text notes (kind:1)    — no tag filter, plain Nostr events
-      //  3. Reposts (kind:6)       — no tag filter (reposts don't carry #t)
       const authorFilter = options.authors.length > 0 ? { authors: options.authors } : {};
-
       const mediaKinds  = kinds.filter(k => k !== KINDS.TEXT_NOTE && k !== KINDS.REPOST);
       const textKinds   = kinds.filter(k => k === KINDS.TEXT_NOTE);
       const repostKinds = kinds.filter(k => k === KINDS.REPOST);
 
-      expectedEose = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0) + (repostKinds.length > 0 ? 1 : 0);
-      if (expectedEose === 0) expectedEose = 1; // safety guard
+      expectedEoseRef.current = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0) + (repostKinds.length > 0 ? 1 : 0);
+      if (expectedEoseRef.current === 0) expectedEoseRef.current = 1;
 
       if (mediaKinds.length > 0) {
         subs.push(relayPool.subscribe(
-          [{ kinds: mediaKinds, limit, "#t": networkTags, ...authorFilter }],
-          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          [{ kinds: mediaKinds, limit: PAGE_SIZE, "#t": networkTags, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
           onEose
         ));
       }
 
       if (textKinds.length > 0) {
         subs.push(relayPool.subscribe(
-          [{ kinds: textKinds, limit, ...authorFilter }],
-          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          [{ kinds: textKinds, limit: PAGE_SIZE, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
           onEose
         ));
       }
 
       if (repostKinds.length > 0) {
         subs.push(relayPool.subscribe(
-          [{ kinds: repostKinds, limit, ...authorFilter }],
-          (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+          [{ kinds: repostKinds, limit: PAGE_SIZE, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
           onEose
         ));
       }
 
     } else {
       // ── Home feed mode: follows-priority + global discovery ─────────────────
-      // Always run global discovery so content is never hidden.
-      // Follow-posts get a score boost so they float to the top.
-      expectedEose = followSet.size > 0 ? 2 : 1;
+      expectedEoseRef.current = followSet.size > 0 ? 2 : 1;
 
       if (followSet.size > 0) {
         // 1. Follows + self (boosted)
         subs.push(relayPool.subscribe(
-          [{ kinds, limit, ...(entropyOnly ? { "#t": networkTags } : {}), authors: [...followSet] }],
-          (event: NostrEvent) => { ingestEvent(event, FOLLOW_BOOST_SECONDS); flush(); },
+          [{ kinds, limit: PAGE_SIZE, ...(entropyOnly ? { "#t": networkTags } : {}), authors: [...followSet] }],
+          (event: NostrEvent) => { ingestEvent(event, FOLLOW_BOOST_SECONDS); scheduleFlush(); },
           onEose
         ));
       }
 
       // 2. Global discovery (no author filter, no boost)
       subs.push(relayPool.subscribe(
-        [{ kinds, limit, ...(entropyOnly ? { "#t": networkTags } : {}) }],
-        (event: NostrEvent) => { ingestEvent(event, 0); flush(); },
+        [{ kinds, limit: PAGE_SIZE, ...(entropyOnly ? { "#t": networkTags } : {}) }],
+        (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
         onEose
       ));
     }
 
     return () => {
       console.log("[feed] unsubscribing");
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       subs.forEach((s) => s.unsubscribe());
+      // Also clean up any dangling loadMore subs
+      loadMoreSubsRef.current.forEach((s) => s.unsubscribe());
+      loadMoreSubsRef.current = [];
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, networkTagsKey, limit, entropyOnly]);
+  }, [relayPool, relayUrls.join(","), authorsKey, followsKey, kindsKey, networkTagsKey, entropyOnly]);
 
-  const loadMore = () => {
-    console.log("[feed] loadMore not yet implemented");
-  };
+  // ---------------------------------------------------------------------------
+  // loadMore — cursor-based pagination using the `until:` relay filter field.
+  // Finds the oldest event currently accumulated and requests the next page
+  // of events that are older than that timestamp.
+  // ---------------------------------------------------------------------------
+  const loadMore = useCallback(() => {
+    if (!relayPool || relayUrls.length === 0) return;
+    if (kinds.length === 0) return;
+
+    // Find the oldest created_at among currently accumulated events
+    const allEntries = Array.from(accRef.current.values());
+    if (allEntries.length === 0) return;
+
+    // Use raw created_at (before boost) as the cursor — take the min
+    const oldestTimestamp = allEntries.reduce(
+      (min, e) => Math.min(min, e.item.created_at),
+      Infinity
+    );
+
+    console.log("[feed] loadMore — until:", new Date(oldestTimestamp * 1000).toISOString());
+    setIsLoading(true);
+
+    // Clean up previous loadMore subs before opening new ones
+    loadMoreSubsRef.current.forEach((s) => s.unsubscribe());
+    loadMoreSubsRef.current = [];
+
+    let eoseCount = 0;
+    let expectedEose: number;
+
+    const onEose = () => {
+      eoseCount++;
+      if (eoseCount >= expectedEose) {
+        if (flushTimerRef.current !== null) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        flush();
+        setIsLoading(false);
+      }
+    };
+
+    if (options.authors !== undefined) {
+      const authorFilter = options.authors.length > 0 ? { authors: options.authors } : {};
+      const mediaKinds  = kinds.filter(k => k !== KINDS.TEXT_NOTE && k !== KINDS.REPOST);
+      const textKinds   = kinds.filter(k => k === KINDS.TEXT_NOTE);
+      const repostKinds = kinds.filter(k => k === KINDS.REPOST);
+
+      expectedEose = (mediaKinds.length > 0 ? 1 : 0) + (textKinds.length > 0 ? 1 : 0) + (repostKinds.length > 0 ? 1 : 0);
+      if (expectedEose === 0) expectedEose = 1;
+
+      if (mediaKinds.length > 0) {
+        loadMoreSubsRef.current.push(relayPool.subscribe(
+          [{ kinds: mediaKinds, limit: PAGE_SIZE, until: oldestTimestamp - 1, "#t": networkTags, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
+          onEose
+        ));
+      }
+      if (textKinds.length > 0) {
+        loadMoreSubsRef.current.push(relayPool.subscribe(
+          [{ kinds: textKinds, limit: PAGE_SIZE, until: oldestTimestamp - 1, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
+          onEose
+        ));
+      }
+      if (repostKinds.length > 0) {
+        loadMoreSubsRef.current.push(relayPool.subscribe(
+          [{ kinds: repostKinds, limit: PAGE_SIZE, until: oldestTimestamp - 1, ...authorFilter }],
+          (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
+          onEose
+        ));
+      }
+    } else {
+      expectedEose = followSet.size > 0 ? 2 : 1;
+      if (followSet.size > 0) {
+        loadMoreSubsRef.current.push(relayPool.subscribe(
+          [{ kinds, limit: PAGE_SIZE, until: oldestTimestamp - 1, ...(entropyOnly ? { "#t": networkTags } : {}), authors: [...followSet] }],
+          (event: NostrEvent) => { ingestEvent(event, FOLLOW_BOOST_SECONDS); scheduleFlush(); },
+          onEose
+        ));
+      }
+      loadMoreSubsRef.current.push(relayPool.subscribe(
+        [{ kinds, limit: PAGE_SIZE, until: oldestTimestamp - 1, ...(entropyOnly ? { "#t": networkTags } : {}) }],
+        (event: NostrEvent) => { ingestEvent(event, 0); scheduleFlush(); },
+        onEose
+      ));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relayPool, relayUrls, kinds, entropyOnly, networkTags, followSet, options.authors, scheduleFlush, flush]);
 
   /** Remove an event from the feed (e.g. after undoing a repost) */
   const removeItem = (eventId: string) => {

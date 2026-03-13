@@ -1,10 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNostrFeed, type FeedSortMode } from "../../hooks/useNostrFeed";
 import { useTagPreferences } from "../../hooks/useTagPreferences";
 import { PostCard } from "./PostCard";
 import { Loader2, Zap, Globe, Sparkles } from "lucide-react";
+import type { FeedItem } from "../../types/nostr";
+import type { ContentTag, UserSignalType } from "@entropy/core";
 
 type FeedFilter = "entropy" | "global";
+
+// ─── Lazy mount wrapper ───────────────────────────────────────────────────────
+// Only renders the real <PostCard> once the placeholder scrolls close to the
+// viewport (rootMargin: 400px). This prevents hooks inside PostCard — profile
+// fetches, reactions, reposts, content-tags — from opening relay subscriptions
+// for off-screen posts the user may never see.
+
+interface LazyPostCardProps {
+  item: FeedItem;
+  onSignal?: (contentTags: ContentTag[], signal: UserSignalType) => void;
+  onRemoveItem?: (eventId: string) => void;
+}
+
+function LazyPostCard({ item, onSignal, onRemoveItem }: LazyPostCardProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.disconnect(); // stays rendered once visible — no unmount on scroll-up
+        }
+      },
+      { rootMargin: "400px", threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  if (!visible) {
+    // Placeholder with approximate card height to keep scroll stable
+    return <div ref={ref} className="panel h-[140px]" aria-hidden />;
+  }
+
+  return <PostCard item={item} onSignal={onSignal} onRemoveItem={onRemoveItem} />;
+}
+
+// ─── Feed ─────────────────────────────────────────────────────────────────────
 
 export function Feed() {
   const [filter, setFilter] = useState<FeedFilter>("entropy");
@@ -16,7 +60,8 @@ export function Feed() {
     userPrefs: preferences,
   });
 
-  // Infinite scroll intersection observer
+  // Infinite scroll — fires 200 px before the sentinel enters the viewport so
+  // the user never visually hits the end. threshold: 0 means "any intersection".
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -24,9 +69,9 @@ export function Feed() {
           loadMore();
         }
       },
-      { threshold: 1.0 }
+      { rootMargin: "200px", threshold: 0 }
     );
-    
+
     const target = document.getElementById("feed-loader");
     if (target) observer.observe(target);
 
@@ -104,7 +149,7 @@ export function Feed() {
       ) : (
         <div className="flex flex-col gap-4">
           {items.map(item => (
-            <PostCard key={item.id} item={item} onSignal={recordSignal} onRemoveItem={removeItem} />
+            <LazyPostCard key={item.id} item={item} onSignal={recordSignal} onRemoveItem={removeItem} />
           ))}
 
           <div id="feed-loader" className="h-16 flex items-center justify-center text-muted">
