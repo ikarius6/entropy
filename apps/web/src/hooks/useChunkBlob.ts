@@ -61,7 +61,7 @@ export function useChunkBlob(chunkMap: EntropyChunkMap | null): UseChunkBlobResu
                 throw new Error(`Chunk ${i} (${hash.slice(0, 8)}…) not found in local store.`);
               }
 
-              buffers[result.index] = new Uint8Array(result.data).buffer;
+              buffers[i] = new Uint8Array(result.data).buffer;
             }
 
             return buffers;

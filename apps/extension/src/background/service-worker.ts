@@ -673,7 +673,7 @@ browser.runtime.onMessage.addListener(
                       await chunkStore.storeChunk({
                         hash: peerResult.hash,
                         rootHash: peerResult.rootHash,
-                        index: 0,
+                        index: -1,
                         data: peerResult.data,
                         createdAt: Date.now(),
                         lastAccessed: Date.now(),
@@ -710,7 +710,7 @@ browser.runtime.onMessage.addListener(
                 return chunkDataResponse(message.requestId, {
                   hash: peerResult.hash,
                   rootHash: peerResult.rootHash,
-                  index: 0,
+                  index: -1,
                   data: Array.from(new Uint8Array(peerResult.data))
                 });
               }
